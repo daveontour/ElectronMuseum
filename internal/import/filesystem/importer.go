@@ -92,7 +92,6 @@ type ProgressCallback func(ImportStats)
 // CancelledCheck returns true if the import should be cancelled
 type CancelledCheck func() bool
 
-const progressCallbackInterval = 25
 const imageBatchSize = 100
 
 type imageWork struct {
@@ -109,6 +108,8 @@ func ImportImagesFromDirectories(
 	excludePatterns []string,
 	maxImages *int,
 	referenceMode bool,
+	includeSubfolders bool,
+	overwriteExisting bool,
 	progressCallback ProgressCallback,
 	cancelledCheck CancelledCheck,
 ) (*ImportStats, error) {
@@ -149,6 +150,9 @@ func ImportImagesFromDirectories(
 			}
 			if d.IsDir() {
 				if shouldExcludeDirectory(path, d.Name(), excludePatterns) {
+					return filepath.SkipDir
+				}
+				if !includeSubfolders && path != rootPath {
 					return filepath.SkipDir
 				}
 				return nil
@@ -242,7 +246,19 @@ func ImportImagesFromDirectories(
 				stats.CurrentFile = work.Path
 				stats.mu.Unlock()
 
+				if progressCallback != nil {
+					progressCallback(stats.copyStats())
+				}
+
 				absPath, _ := filepath.Abs(work.Path)
+
+				if !overwriteExisting {
+					exists, _ := storage.FilesystemMediaItemExists(ctx, absPath)
+					if exists {
+						continue
+					}
+				}
+
 				mediaType := utils.DetectMIMEType(work.Name)
 				title := strings.TrimSuffix(work.Name, filepath.Ext(work.Name))
 				tags := generateDirectoryTags(work.Path, work.RootPath)
@@ -274,12 +290,6 @@ func ImportImagesFromDirectories(
 
 				if len(batch) >= imageBatchSize {
 					flushBatch()
-					stats.mu.Lock()
-					current := stats.FilesProcessed
-					stats.mu.Unlock()
-					if progressCallback != nil && (current%progressCallbackInterval == 0) {
-						progressCallback(stats.copyStats())
-					}
 				}
 			}
 			flushBatch()

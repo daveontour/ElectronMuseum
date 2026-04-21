@@ -57,8 +57,10 @@ func (s *ImageStorage) SaveImage(ctx context.Context, sourceRef string, imageDat
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.ExecContext(ctx, "SET LOCAL synchronous_commit = off"); err != nil {
-		return 0, false, fmt.Errorf("failed to set synchronous_commit: %w", err)
+	if !sqlutil.IsSQLite(ctx, s.pool) {
+		if _, err = tx.ExecContext(ctx, "SET LOCAL synchronous_commit = off"); err != nil {
+			return 0, false, fmt.Errorf("failed to set synchronous_commit: %w", err)
+		}
 	}
 
 	var existingID int64

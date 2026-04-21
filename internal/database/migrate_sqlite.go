@@ -11,6 +11,39 @@ import (
 
 // repairSQLiteCorruptTimestampDefaults fixes rows where an older pgDDLToSQLite bug
 // turned CURRENT_TIMESTAMP into the literal string "CURRENT_TEXT" (or related) in TEXT columns.
+// repairSQLiteFacebookPostsTimestampColumn adds facebook_posts.timestamp when missing.
+// Older pgDDLToSQLite used (?i)\bTIMESTAMP\b, which rewrote the column identifier `timestamp`
+// so CREATE TABLE could leave the table without a usable timestamp column for app queries.
+func repairSQLiteFacebookPostsTimestampColumn(ctx context.Context, db *sql.DB) error {
+	var n int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'facebook_posts'`,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("sqlite_master facebook_posts: %w", err)
+	}
+	if n == 0 {
+		return nil
+	}
+	var has int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('facebook_posts') WHERE name = 'timestamp'`,
+	).Scan(&has); err != nil {
+		return fmt.Errorf("pragma_table_info facebook_posts: %w", err)
+	}
+	if has > 0 {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE facebook_posts ADD COLUMN timestamp TEXT`); err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "duplicate column") {
+			return nil
+		}
+		return fmt.Errorf("add facebook_posts.timestamp: %w", err)
+	}
+	slog.Info("repaired facebook_posts: added missing timestamp column (SQLite)")
+	return nil
+}
+
 func repairSQLiteCorruptTimestampDefaults(ctx context.Context, db *sql.DB) error {
 	// users.created_at is NOT NULL — must be a valid instant for scanning.
 	if _, err := db.ExecContext(ctx, `
@@ -59,6 +92,10 @@ func MigrateSQLite(ctx context.Context, db *sql.DB) error {
 	}
 
 	if err := repairSQLiteCorruptTimestampDefaults(ctx, db); err != nil {
+		return err
+	}
+
+	if err := repairSQLiteFacebookPostsTimestampColumn(ctx, db); err != nil {
 		return err
 	}
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/daveontour/aimuseum/internal/sqlutil"
@@ -109,11 +110,14 @@ type SubjectIdentifiers struct {
 // Truncates the contacts table (and dependent relationships) before inserting.
 // Preserves and restores subject (id=0) identifiers (whatsappid, imessageid, smsid, facebookid, instagramid).
 func WriteContactsToDatabase(ctx context.Context, db *sql.DB, records []FormattedOutputRecord, ownerUserID int64) error {
+	totalRecords := len(records)
+	fmt.Fprintf(os.Stderr, "Starting contacts transaction (%d records)\n", totalRecords)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
+	fmt.Fprintf(os.Stderr, "Contacts transaction begun\n")
 
 	var subjectIds SubjectIdentifiers
 	err = tx.QueryRowContext(ctx, "SELECT whatsappid, imessageid, smsid, facebookid, instagramid FROM contacts WHERE id = 0").Scan(
@@ -121,18 +125,34 @@ func WriteContactsToDatabase(ctx context.Context, db *sql.DB, records []Formatte
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("read subject identifiers: %w", err)
 	}
+	fmt.Fprintf(os.Stderr, "Subject identifiers loaded\n")
 
 	if sqlutil.IsSQLite(ctx, db) {
 		// SQLite has no TRUNCATE; FKs from relationships ON DELETE CASCADE clear dependent rows.
 		_, err = tx.ExecContext(ctx, "DELETE FROM contacts")
+		fmt.Fprintf(os.Stderr, "SQLite contacts table cleared\n")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error clearing SQLite contacts table: %v\n", err)
+		}
 	} else {
 		_, err = tx.ExecContext(ctx, "TRUNCATE contacts CASCADE")
+		fmt.Fprintf(os.Stderr, "PostgreSQL contacts table cleared\n")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error clearing PostgreSQL contacts table: %v\n", err)
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("truncate contacts: %w", err)
 	}
+	fmt.Fprintf(os.Stderr, "Contacts table cleared, inserting records\n")
 
-	for _, r := range records {
+	const progressInterval = 1000
+	for i, r := range records {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("write contacts cancelled: %w", ctx.Err())
+		default:
+		}
 		nemails := r.NumEmails
 		nw, ni, nf, ns, ninst := r.NumWhatsApp, r.NumIMessage, r.NumFacebook, r.NumSMS, r.NumInstagram
 		if nemails < 0 {
@@ -165,6 +185,9 @@ func WriteContactsToDatabase(ctx context.Context, db *sql.DB, records []Formatte
 		if err != nil {
 			return fmt.Errorf("insert contact id=%d: %w", r.ID, err)
 		}
+		if (i+1)%progressInterval == 0 || i+1 == totalRecords {
+			fmt.Fprintf(os.Stderr, "Inserted %d/%d contacts records\n", i+1, totalRecords)
+		}
 	}
 
 	// Restore subject (id=0) identifiers if we had them before truncate
@@ -188,7 +211,12 @@ func WriteContactsToDatabase(ctx context.Context, db *sql.DB, records []Formatte
 		return fmt.Errorf("reset contacts sequence: %w", err)
 	}
 
-	return tx.Commit()
+	fmt.Fprintf(os.Stderr, "Committing contacts transaction\n")
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit contacts transaction: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "Contacts transaction committed\n")
+	return nil
 }
 
 func resetSQLiteContactsSequence(ctx context.Context, tx *sql.Tx) error {

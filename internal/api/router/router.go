@@ -202,10 +202,6 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 	importDataPurgeHandler := handler.NewImportDataPurgeHandler(pool, sessionMasterStore, sensitiveSvc, authSvc)
 	importDataPurgeHandler.RegisterRoutes(r)
 
-	// ── Admin user management ──────────────────────────────────────────────────
-	adminUsersHandler := handler.NewAdminUsersHandler(userRepo, authSvc, sensitiveSvc, subjectConfigSvc, dashboardSvc, billingRepo, appInstrRepo, cfg.Server.SessionCookieSecure)
-	adminUsersHandler.RegisterRoutes(r)
-
 	billingExportHandler := handler.NewBillingExportHandler(userRepo, billingRepo)
 	billingExportHandler.RegisterRoutes(r)
 	chatRepo := repository.NewChatRepo(pool)

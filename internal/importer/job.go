@@ -45,6 +45,20 @@ func (j *ImportJob) GetState() map[string]any {
 	return out
 }
 
+// AppendLogLine appends a line to the "log_lines" ring buffer in the progress map.
+// The key must already exist in the initial state (as []string{}).
+// Capped at 200 entries; older lines are dropped.
+func (j *ImportJob) AppendLogLine(line string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	lines, _ := j.progress["log_lines"].([]string)
+	lines = append(lines, line)
+	if len(lines) > 200 {
+		lines = lines[len(lines)-200:]
+	}
+	j.progress["log_lines"] = lines
+}
+
 // UpdateState merges updates into progress (only updates keys that already exist).
 func (j *ImportJob) UpdateState(updates map[string]any) {
 	j.mu.Lock()

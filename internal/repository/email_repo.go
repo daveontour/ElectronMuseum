@@ -304,6 +304,12 @@ func (r *EmailRepo) Update(ctx context.Context, id int64, isPersonal, isBusiness
 // Returns false, nil when the email does not exist.
 func (r *EmailRepo) SoftDelete(ctx context.Context, id int64) (bool, error) {
 	uid := uidFromCtx(ctx)
+	tx, err := r.pool.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("email SoftDelete %d: %w", id, err)
+	}
+	defer tx.Rollback()
+
 	q := `
 		UPDATE emails
 		SET raw_message      = NULL,
@@ -315,24 +321,20 @@ func (r *EmailRepo) SoftDelete(ctx context.Context, id int64) (bool, error) {
 		WHERE id = $1 AND user_deleted = FALSE`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
-	tag, err := r.pool.ExecContext(ctx, q, args...)
+	tag, err := tx.ExecContext(ctx, q, args...)
 	if err != nil {
 		return false, fmt.Errorf("email SoftDelete %d: %w", id, err)
 	}
 	if rowsAffectedOrZero(tag) == 0 {
 		return false, nil
 	}
-	// Remove IMAP/Gmail email attachment media_items for this email; delete blobs no longer referenced.
 	ref := fmt.Sprintf("%d", id)
-	_, _ = r.pool.ExecContext(ctx, `
-		WITH deleted AS (
-			DELETE FROM media_items
-			WHERE source IN ('email_attachment', 'gmail_attachment') AND source_reference = $1
-			RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs b
-		WHERE b.id IN (SELECT DISTINCT media_blob_id FROM deleted WHERE media_blob_id IS NOT NULL)
-		  AND NOT EXISTS (SELECT 1 FROM media_items m WHERE m.media_blob_id = b.id)`, ref)
+	if err := sqlutil.DeleteEmailAttachmentMediaBySourceRefsTx(ctx, tx, []string{ref}); err != nil {
+		return false, fmt.Errorf("email SoftDelete %d: attachment media: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("email SoftDelete %d: commit: %w", id, err)
+	}
 	return true, nil
 }
 
@@ -343,6 +345,12 @@ func (r *EmailRepo) BulkSoftDelete(ctx context.Context, ids []int64) (int64, err
 		return 0, nil
 	}
 	uid := uidFromCtx(ctx)
+	tx, err := r.pool.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("email BulkSoftDelete: %w", err)
+	}
+	defer tx.Rollback()
+
 	idCond, idArgs, nextArg := sqlutil.Int64IN("id", ids, 1)
 	q := fmt.Sprintf(`
 		UPDATE emails
@@ -359,7 +367,7 @@ func (r *EmailRepo) BulkSoftDelete(ctx context.Context, ids []int64) (int64, err
 		args = append(args, uid)
 		q += fmt.Sprintf(" AND user_id = $%d", nextArg)
 	}
-	tag, err := r.pool.ExecContext(ctx, q, args...)
+	tag, err := tx.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("email BulkSoftDelete: %w", err)
 	}
@@ -367,17 +375,12 @@ func (r *EmailRepo) BulkSoftDelete(ctx context.Context, ids []int64) (int64, err
 	for i, id := range ids {
 		refs[i] = fmt.Sprintf("%d", id)
 	}
-	refCond, refArgs, _ := sqlutil.StringIN("source_reference", refs, 1)
-	delMediaQ := fmt.Sprintf(`
-		WITH deleted AS (
-			DELETE FROM media_items
-			WHERE source IN ('email_attachment', 'gmail_attachment') AND %s
-			RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs b
-		WHERE b.id IN (SELECT DISTINCT media_blob_id FROM deleted WHERE media_blob_id IS NOT NULL)
-		  AND NOT EXISTS (SELECT 1 FROM media_items m WHERE m.media_blob_id = b.id)`, refCond)
-	_, _ = r.pool.ExecContext(ctx, delMediaQ, refArgs...)
+	if err := sqlutil.DeleteEmailAttachmentMediaBySourceRefsTx(ctx, tx, refs); err != nil {
+		return 0, fmt.Errorf("email BulkSoftDelete attachment media: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("email BulkSoftDelete: commit: %w", err)
+	}
 	return rowsAffectedOrZero(tag), nil
 }
 

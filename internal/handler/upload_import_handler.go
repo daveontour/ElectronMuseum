@@ -6,11 +6,11 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -31,18 +31,19 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// ── Upload job singleton ───────────────────────────────────────────────────────
+// ── ZIP import job singleton ──────────────────────────────────────────────────
 
-var uploadJob = appimporter.NewImportJob("ZIP upload import", map[string]any{
+var uploadJob = appimporter.NewImportJob("ZIP import", map[string]any{
 	"status":        "idle",
 	"status_line":   nil,
 	"error_message": nil,
 	"import_type":   nil,
+	"job_id":        nil,
 })
 
 // ── UploadImportHandler ───────────────────────────────────────────────────────
 
-// UploadImportHandler handles web-based upload import endpoints.
+// UploadImportHandler handles local-path import endpoints.
 type UploadImportHandler struct {
 	pool              *sql.DB
 	subjectConfigRepo *repository.SubjectConfigRepo
@@ -57,22 +58,23 @@ func NewUploadImportHandler(pool *sql.DB, subjectRepo *repository.SubjectConfigR
 	return &UploadImportHandler{pool: pool, subjectConfigRepo: subjectRepo, sessionStore: sessionStore, sensitiveSvc: sensitiveSvc, authSvc: authSvc, uploadCfg: uploadCfg}
 }
 
-// RegisterRoutes mounts upload import routes.
+// RegisterRoutes mounts import routes.
 func (h *UploadImportHandler) RegisterRoutes(r chi.Router) error {
-	r.Post("/import/upload", h.Upload)
-	r.Get("/import/upload/stream", h.UploadStream)
-	r.Post("/import/upload/cancel", h.UploadCancel)
-	r.Get("/import/upload/status", h.UploadStatus)
-	r.Post("/import/photo-batch", h.PhotoBatch)
+	r.Post("/import/from-path", h.ImportFromPath)
+	r.Get("/import/upload/stream", h.ImportStream)
+	r.Post("/import/upload/cancel", h.ImportCancel)
+	r.Get("/import/upload/status", h.ImportStatus)
 	r.Get("/import/jobs", h.Jobs)
 	r.Get("/api/upload-config", h.UploadConfigJSON)
-	return h.mountTUS(r)
+	return nil
 }
 
-// ── POST /import/upload ───────────────────────────────────────────────────────
+// ── POST /import/from-path ────────────────────────────────────────────────────
 
-// Upload accepts a ZIP file and starts a background import.
-func (h *UploadImportHandler) Upload(w http.ResponseWriter, r *http.Request) {
+// ImportFromPath starts a background import from a local filesystem path.
+// file_path may be a .zip archive or an already-extracted directory.
+// When a directory is given, the files are read directly — no extraction step.
+func (h *UploadImportHandler) ImportFromPath(w http.ResponseWriter, r *http.Request) {
 	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
 		return
 	}
@@ -81,233 +83,66 @@ func (h *UploadImportHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, h.uploadCfg.MaxUploadBytes)
-
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "failed to parse multipart form: "+err.Error())
+	var req struct {
+		FilePath string `json:"file_path"`
+		Type     string `json:"type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
 		return
 	}
-
-	importType := r.FormValue("type")
+	req.FilePath = strings.TrimSpace(req.FilePath)
 	validTypes := map[string]bool{
 		"facebook":  true,
 		"instagram": true,
 		"whatsapp":  true,
 		"imessage":  true,
 	}
-	if !validTypes[importType] {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid import type %q; must be one of: facebook, instagram, whatsapp, imessage", importType))
+	if !validTypes[req.Type] {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid import type %q; must be one of: facebook, instagram, whatsapp, imessage", req.Type))
 		return
 	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "missing or unreadable file field: "+err.Error())
+	if req.FilePath == "" {
+		writeError(w, http.StatusBadRequest, "file_path is required")
 		return
 	}
-	defer file.Close()
 
 	uid := appctx.UserIDFromCtx(r.Context())
 	jobID := randomJobID()
-
-	var uidStr string
+	uidStr := fmt.Sprintf("%d", uid)
 	if uid == 0 {
 		uidStr = "0"
-	} else {
-		uidStr = fmt.Sprintf("%d", uid)
 	}
-
 	tmpDir := filepath.Join("tmp", "imports", uidStr, jobID)
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create temp directory: "+err.Error())
-		return
-	}
-
-	// Ensure tmpDir is always removed — either by this handler on error, or by
-	// the background goroutine on completion.  The flag is flipped to false just
-	// before the goroutine is launched so the defer becomes a no-op on the
-	// happy path.
-	handlerOwnsCleanup := true
-	defer func() {
-		if handlerOwnsCleanup {
-			os.RemoveAll(tmpDir)
-		}
-	}()
-
-	// Write uploaded ZIP to temp file
-	zipPath := filepath.Join(tmpDir, "upload.zip")
-	zipFile, err := os.Create(zipPath)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create temp ZIP: "+err.Error())
-		return
-	}
-	if _, err := io.Copy(zipFile, file); err != nil {
-		zipFile.Close()
-		writeError(w, http.StatusInternalServerError, "failed to write uploaded file: "+err.Error())
-		return
-	}
-	zipFile.Close()
-
-	// Extract ZIP, then remove the archive immediately to free disk space
-	extractDir := filepath.Join(tmpDir, "extracted")
-	if err := os.MkdirAll(extractDir, 0755); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create extract directory: "+err.Error())
-		return
-	}
-	if err := extractZip(zipPath, extractDir); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to extract ZIP: "+err.Error())
-		return
-	}
-	_ = os.Remove(zipPath) // ZIP is no longer needed once extracted
-
-	// Unwrap single-folder ZIPs: most platform exports wrap everything in one
-	// top-level directory (e.g. "facebook-export-2024/"). Pass the actual data
-	// root to the importer rather than the extraction wrapper directory.
-	importRoot := resolveImportRoot(extractDir)
-
-	handlerOwnsCleanup = false // goroutine takes over from here
-	h.startZipImportBackground(uid, importType, tmpDir, importRoot, false)
-
+	uploadJob.Start()
+	setUploadJobStage("in_progress", fmt.Sprintf("Queued %s import from %s", req.Type, req.FilePath), req.Type, nil, jobID)
+	go h.preparePathImportAndStart(uid, req.Type, req.FilePath, tmpDir, jobID)
 	writeJSON(w, map[string]any{
-		"message": fmt.Sprintf("%s import started from uploaded ZIP (original: %s)", importType, header.Filename),
+		"message": fmt.Sprintf("%s import queued from %s", req.Type, req.FilePath),
 		"job_id":  jobID,
 	})
 }
 
 // ── GET /import/upload/stream ─────────────────────────────────────────────────
 
-// UploadStream serves SSE progress for the upload import job.
-func (h *UploadImportHandler) UploadStream(w http.ResponseWriter, r *http.Request) {
+// ImportStream serves SSE progress for the ZIP import job.
+func (h *UploadImportHandler) ImportStream(w http.ResponseWriter, r *http.Request) {
 	uploadJob.ServeSSE(w, r)
 }
 
 // ── GET /import/upload/status ─────────────────────────────────────────────────
 
-// UploadStatus returns the current JSON status of the upload import job.
-func (h *UploadImportHandler) UploadStatus(w http.ResponseWriter, r *http.Request) {
+// ImportStatus returns the current JSON status of the ZIP import job.
+func (h *UploadImportHandler) ImportStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, uploadJob.Status())
 }
 
-// UploadCancel handles POST /import/upload/cancel (ZIP/TUS upload import job).
-func (h *UploadImportHandler) UploadCancel(w http.ResponseWriter, r *http.Request) {
+// ImportCancel handles POST /import/upload/cancel.
+func (h *UploadImportHandler) ImportCancel(w http.ResponseWriter, r *http.Request) {
 	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
 		return
 	}
 	writeJSON(w, uploadJob.Cancel())
-}
-
-// normalizeUploadSourceRef trims and normalizes slashes for multipart paths.
-func normalizeUploadSourceRef(s string) string {
-	return strings.TrimSpace(strings.ReplaceAll(s, `\`, `/`))
-}
-
-// ── POST /import/photo-batch ──────────────────────────────────────────────────
-
-// PhotoBatch accepts multipart image files and inserts them with the user_id from context.
-func (h *UploadImportHandler) PhotoBatch(w http.ResponseWriter, r *http.Request) {
-	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
-		return
-	}
-	if err := r.ParseMultipartForm(100 << 20); err != nil {
-		writeError(w, http.StatusBadRequest, "failed to parse multipart form: "+err.Error())
-		return
-	}
-
-	ctx := r.Context()
-	storage := importstorage.NewImageStorage(h.pool)
-
-	overwriteExisting := false
-	if r.MultipartForm != nil {
-		if vals := r.MultipartForm.Value["overwrite_existing"]; len(vals) > 0 {
-			v := strings.TrimSpace(strings.ToLower(vals[0]))
-			overwriteExisting = v == "1" || v == "true" || v == "on" || v == "yes"
-		}
-	}
-
-	var imported, updated, skipped, errors int
-
-	// Use explicit "files" field order (do not range MultipartForm.File — map order is random).
-	// Client sends matching "rel_paths" entries because some browsers strip path segments from Filename.
-	fileHeaders := r.MultipartForm.File["files"]
-	relPaths := r.MultipartForm.Value["rel_paths"]
-	for i, fh := range fileHeaders {
-		sourceRef := normalizeUploadSourceRef(fh.Filename)
-		if i < len(relPaths) {
-			if p := normalizeUploadSourceRef(relPaths[i]); p != "" {
-				sourceRef = p
-			}
-		}
-		if sourceRef == "" {
-			errors++
-			continue
-		}
-
-		if !overwriteExisting {
-			exists, err := storage.FilesystemMediaItemExists(ctx, sourceRef)
-			if err != nil {
-				errors++
-				continue
-			}
-			if exists {
-				skipped++
-				continue
-			}
-		}
-
-		f, err := fh.Open()
-		if err != nil {
-			errors++
-			continue
-		}
-		data, err := io.ReadAll(f)
-		f.Close()
-		if err != nil {
-			errors++
-			continue
-		}
-
-		mediaType := importstorage.NormalizeFilesystemUploadMediaType(sourceRef, fh.Header.Get("Content-Type"), data)
-		title := path.Base(sourceRef)
-		if title == "." || title == "/" {
-			title = sourceRef
-		}
-		tags := importstorage.TagsFromSourceRef(sourceRef)
-		_, isUpdate, err := storage.SaveImage(ctx, sourceRef, data, mediaType, title, tags, false)
-		if err != nil {
-			errors++
-			continue
-		}
-		if isUpdate {
-			updated++
-		} else {
-			imported++
-		}
-	}
-
-	writeJSON(w, map[string]any{
-		"imported": imported,
-		"updated":  updated,
-		"skipped":  skipped,
-		"errors":   errors,
-	})
-}
-
-// signalUploadZipTUSPreExtract starts the upload job and broadcasts SSE status after the
-// tus upload has finished but before the blob is copied from tus storage and extracted.
-func (h *UploadImportHandler) signalUploadZipTUSPreExtract(importType string) error {
-	if err := uploadJob.AssertNotRunning(); err != nil {
-		return err
-	}
-	uploadJob.Start()
-	msg := "Upload complete — copying file and extracting archive…"
-	uploadJob.UpdateState(map[string]any{
-		"status":        "in_progress",
-		"status_line":   msg,
-		"error_message": nil,
-		"import_type":   importType,
-	})
-	uploadJob.Broadcast("status", map[string]any{"status_line": msg})
-	return nil
 }
 
 // startZipImportBackground starts the shared ZIP import goroutine. tmpDir is the job temp
@@ -317,12 +152,7 @@ func (h *UploadImportHandler) startZipImportBackground(uid int64, importType, tm
 	if !jobAlreadyStarted {
 		uploadJob.Start()
 	}
-	uploadJob.UpdateState(map[string]any{
-		"status":        "in_progress",
-		"status_line":   fmt.Sprintf("Starting %s import...", importType),
-		"error_message": nil,
-		"import_type":   importType,
-	})
+	setUploadJobStage("in_progress", fmt.Sprintf("Starting %s import...", importType), importType, nil, nil)
 	uploadJob.Broadcast("status", map[string]any{"status_line": fmt.Sprintf("Starting %s import...", importType)})
 
 	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
@@ -339,6 +169,105 @@ func (h *UploadImportHandler) startZipImportBackground(uid int64, importType, tm
 			runUploadFacebook(ctx, h.pool, h.subjectConfigRepo, uploadJob, importRoot)
 		}
 	}()
+}
+
+func setUploadJobStage(status, statusLine, importType string, err error, jobID any) {
+	updates := map[string]any{
+		"status":        status,
+		"status_line":   statusLine,
+		"error_message": nil,
+		"import_type":   importType,
+	}
+	if err != nil {
+		updates["error_message"] = err.Error()
+	}
+	if jobID != nil {
+		updates["job_id"] = jobID
+	}
+	uploadJob.UpdateState(updates)
+	uploadJob.Broadcast("progress", uploadJob.GetState())
+}
+
+func (h *UploadImportHandler) preparePathImportAndStart(uid int64, importType, filePath, tmpDir, jobID string) {
+	handlerOwnsCleanup := true
+	defer func() {
+		if handlerOwnsCleanup {
+			os.RemoveAll(tmpDir)
+		}
+	}()
+	defer func() {
+		if handlerOwnsCleanup {
+			uploadJob.Finish()
+		}
+	}()
+
+	setUploadJobStage("in_progress", "Validating source path...", importType, nil, jobID)
+	info, err := os.Stat(filePath)
+	if err != nil {
+		setUploadJobStage("error", "Path not found: "+filePath, importType, err, jobID)
+		uploadJob.Broadcast("error", uploadJob.GetState())
+		return
+	}
+
+	if uploadJob.IsCancelled() {
+		setUploadJobStage("cancelled", "Import cancelled before file handling began.", importType, nil, jobID)
+		uploadJob.Broadcast("cancelled", uploadJob.GetState())
+		return
+	}
+
+	if info.IsDir() {
+		setUploadJobStage("in_progress", "Source is a directory; preparing import root...", importType, nil, jobID)
+		// tmpDir is created so startZipImportBackground can clean it up safely.
+		if err := os.MkdirAll(tmpDir, 0755); err != nil {
+			setUploadJobStage("error", "Failed to create temp directory", importType, err, jobID)
+			uploadJob.Broadcast("error", uploadJob.GetState())
+			return
+		}
+		setUploadJobStage("in_progress", "Directory ready; resolving import root...", importType, nil, jobID)
+		importRoot := resolveImportRoot(filePath)
+		handlerOwnsCleanup = false
+		h.startZipImportBackground(uid, importType, tmpDir, importRoot, true)
+		return
+	}
+
+	if !strings.HasSuffix(strings.ToLower(filePath), ".zip") {
+		err := fmt.Errorf("path must be a .zip file or a directory")
+		setUploadJobStage("error", err.Error(), importType, err, jobID)
+		uploadJob.Broadcast("error", uploadJob.GetState())
+		return
+	}
+
+	setUploadJobStage("in_progress", "ZIP file detected; preparing extraction directory...", importType, nil, jobID)
+	extractDir := filepath.Join(tmpDir, "extracted")
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		setUploadJobStage("error", "Failed to create temp directory", importType, err, jobID)
+		uploadJob.Broadcast("error", uploadJob.GetState())
+		return
+	}
+
+	if uploadJob.IsCancelled() {
+		setUploadJobStage("cancelled", "Import cancelled before ZIP extraction.", importType, nil, jobID)
+		uploadJob.Broadcast("cancelled", uploadJob.GetState())
+		return
+	}
+
+	setUploadJobStage("in_progress", "Extracting ZIP archive...", importType, nil, jobID)
+	if err := extractZip(filePath, extractDir); err != nil {
+		setUploadJobStage("error", "Failed to extract ZIP archive", importType, err, jobID)
+		uploadJob.Broadcast("error", uploadJob.GetState())
+		return
+	}
+
+	if uploadJob.IsCancelled() {
+		setUploadJobStage("cancelled", "Import cancelled after ZIP extraction.", importType, nil, jobID)
+		uploadJob.Broadcast("cancelled", uploadJob.GetState())
+		return
+	}
+
+	setUploadJobStage("in_progress", "ZIP extracted; resolving import root...", importType, nil, jobID)
+	importRoot := resolveImportRoot(extractDir)
+	handlerOwnsCleanup = false
+	h.startZipImportBackground(uid, importType, tmpDir, importRoot, true)
 }
 
 // UploadConfigJSON exposes tus chunk size and max upload GiB for the SPA.

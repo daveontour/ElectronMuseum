@@ -88,6 +88,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	user, err := h.svc.Register(r.Context(), req.Email, req.Password, req.DisplayName, req.FamilyName)
 	if err != nil {
 		switch {
+		case errors.Is(err, service.ErrRegistrationClosed):
+			writeError(w, http.StatusConflict, err.Error())
 		case errors.Is(err, service.ErrEmailTaken):
 			writeError(w, http.StatusConflict, err.Error())
 		case errors.Is(err, service.ErrWeakPassword):

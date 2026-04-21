@@ -270,10 +270,14 @@ func (s *MessageStorage) SetIsGroupChat(ctx context.Context) error {
 		GROUP BY chat_session, service
 		HAVING COUNT(DISTINCT sender_id) > 2
 	)
-	UPDATE messages m
+	UPDATE messages
 	SET is_group_chat = TRUE
-	FROM GroupSessions gs
-	WHERE m.chat_session = gs.chat_session AND m.service = gs.service`
+	WHERE EXISTS (
+		SELECT 1
+		FROM GroupSessions gs
+		WHERE messages.chat_session = gs.chat_session
+			AND messages.service = gs.service
+	)`
 
 	_, err := s.pool.ExecContext(ctx, query)
 	if err != nil {

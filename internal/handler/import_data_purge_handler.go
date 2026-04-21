@@ -163,13 +163,7 @@ func (h *ImportDataPurgeHandler) purgeFacebookMessenger(ctx context.Context, uid
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, `
-		WITH deleted_items AS (
-			DELETE FROM media_items WHERE source = 'Facebook' AND user_id = $1 RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs WHERE id IN (SELECT media_blob_id FROM deleted_items WHERE media_blob_id IS NOT NULL)
-	`, uid)
-	if err != nil {
+	if _, err = sqlutil.DeleteMediaItemsByUserAndSourceTx(ctx, tx, uid, "Facebook"); err != nil {
 		return 0, fmt.Errorf("facebook messenger media: %w", err)
 	}
 
@@ -191,13 +185,7 @@ func (h *ImportDataPurgeHandler) purgeFacebookAlbums(ctx context.Context, uid in
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, `
-		WITH deleted_items AS (
-			DELETE FROM media_items WHERE source = 'facebook_album' AND user_id = $1 RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs WHERE id IN (SELECT media_blob_id FROM deleted_items WHERE media_blob_id IS NOT NULL)
-	`, uid)
-	if err != nil {
+	if _, err = sqlutil.DeleteMediaItemsByUserAndSourceTx(ctx, tx, uid, "facebook_album"); err != nil {
 		return 0, fmt.Errorf("facebook albums media: %w", err)
 	}
 
@@ -219,13 +207,7 @@ func (h *ImportDataPurgeHandler) purgeFacebookPosts(ctx context.Context, uid int
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, `
-		WITH deleted_items AS (
-			DELETE FROM media_items WHERE source = 'facebook_post' AND user_id = $1 RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs WHERE id IN (SELECT media_blob_id FROM deleted_items WHERE media_blob_id IS NOT NULL)
-	`, uid)
-	if err != nil {
+	if _, err = sqlutil.DeleteMediaItemsByUserAndSourceTx(ctx, tx, uid, "facebook_post"); err != nil {
 		return 0, fmt.Errorf("facebook posts media: %w", err)
 	}
 
@@ -247,17 +229,10 @@ func (h *ImportDataPurgeHandler) purgeFilesystemMedia(ctx context.Context, uid i
 	}
 	defer tx.Rollback()
 
-	tag, err := tx.ExecContext(ctx, `
-		WITH deleted_items AS (
-			DELETE FROM media_items WHERE source = 'filesystem' AND user_id = $1 RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs WHERE id IN (SELECT media_blob_id FROM deleted_items WHERE media_blob_id IS NOT NULL)
-	`, uid)
+	n, err := sqlutil.DeleteMediaItemsByUserAndSourceTx(ctx, tx, uid, "filesystem")
 	if err != nil {
 		return 0, fmt.Errorf("filesystem media: %w", err)
 	}
-
-	n := sqlutil.RowsAffected(tag)
 	if err = tx.Commit(); err != nil {
 		return 0, err
 	}

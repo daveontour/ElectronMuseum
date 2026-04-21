@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog, globalShortcut } = require('electron');
 const { spawn, spawnSync, execFile } = require('child_process');
 const net = require('net');
 const path = require('path');
@@ -230,9 +230,11 @@ function createMainWindow(port) {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      // No preload — app loads from HTTP, naturally sandboxed
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
+
+  //mainWindow.loadURL(`http://localhost:${port}/`);
 
   mainWindow.loadURL(`http://localhost:${port}/`);
 
@@ -394,7 +396,8 @@ app.whenReady().then(async () => {
     await killZombies();
 
     sendStatus('Finding available port...');
-    appPort = await findFreePort(8080);
+    //appPort = await findFreePort(8080);
+    appPort = 8081;
     log(`Using port ${appPort}`);
 
     startGoServer(appPort, paths, dotenv);
@@ -419,6 +422,9 @@ app.on('window-all-closed', () => {
   // On Windows/Linux, keep running in tray instead of quitting
   // (macOS convention would be different but this is a Windows-first app)
 });
+
+// ── File / directory picker (used by import dialogs) ─────────────────────────
+ipcMain.handle('show-open-dialog', (_event, options) => dialog.showOpenDialog(options));
 
 app.on('before-quit', () => {
   isQuitting = true;

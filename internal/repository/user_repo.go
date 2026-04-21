@@ -163,6 +163,16 @@ func (r *UserRepo) AdminExists(ctx context.Context) (bool, error) {
 	return exists, err
 }
 
+// AnyNonAdminUserExists reports whether at least one non-admin user account exists.
+// Used by single-tenant registration to enforce the one-account limit.
+func (r *UserRepo) AnyNonAdminUserExists(ctx context.Context) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE is_admin = FALSE OR is_admin IS NULL)`,
+	).Scan(&exists)
+	return exists, err
+}
+
 // SetIsAdmin sets the is_admin flag for the given user.
 func (r *UserRepo) SetIsAdmin(ctx context.Context, id int64, isAdmin bool) error {
 	_, err := r.pool.ExecContext(ctx,

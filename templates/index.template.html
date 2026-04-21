@@ -1194,14 +1194,31 @@
                                     <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="facebook_all" title="Removes Messenger, albums, posts, and Facebook places for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
                                 </tr>
                                 <tr class="data-import-row" data-import="upload_photos">
-                                    <td><i class="fas fa-cloud-upload-alt"></i> Upload Photos from Device (images are stored in the database)</td>
+                                    <td><i class="fas fa-cloud-upload-alt"></i> Images stored in the database</td>
                                     <td class="data-import-count" data-import-count-key="imported_images">—</td>
                                     <td class="data-import-last-run" data-import-last-run="imported_images"></td>
-                                    <td><button type="button" class="modal-btn modal-btn-primary data-import-open-modal-btn" data-open-modal="upload-photos-modal"><i class="fas fa-play"></i> Upload</button></td>
+                                    <td class="data-import-actions-td">
+                                        <!-- <div class="data-import-action-group">
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-open-modal-btn" data-open-modal="upload-photos-modal"><i class="fas fa-play"></i> Upload</button>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                        </div> -->
+                                    </td>
                                     <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="filesystem_media" title="Removes all filesystem-sourced images (includes folder uploads and scans)"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
                                 </tr>
                                 
-                                {{ index_filesystem_import_tile }}
+                                <!-- {{ index_filesystem_import_tile }} -->
+                                <tr class="data-import-row data-import-path-row" data-import="filesystem">
+                                    <td><i class="fas fa-link"></i>Create References to Images on Disk</td>
+                                    <td class="data-import-count" data-import-count-key="filesystem">—</td>
+                                    <td class="data-import-last-run" data-import-last-run="filesystem"></td>
+                                    <td class="data-import-actions-td">
+                                        <div class="data-import-action-group">
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="filesystem"><i class="fas fa-play"></i> Start</button>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                        </div>
+                                    </td>
+                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="filesystem_media" title="Remove filesystem-sourced images from the library"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
+                                </tr>
                                 <tr class="data-import-row" data-import="reference_modal">
                                     <td><i class="fas fa-book"></i> Import and Manage Reference Documents</td>
                                     <td class="data-import-count" data-import-count-key="reference_docs">—</td>
@@ -2641,21 +2658,27 @@
         <div id="upload-zip-modal" class="modal" style="display: none; position: fixed; z-index: 4100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.55); justify-content: center; align-items: center;">
             <div class="modal-content" style="max-width: 540px; width: 92vw; padding: 0; display: flex; flex-direction: column; overflow: hidden;" onclick="event.stopPropagation()">
                 <div class="modal-header">
-                    <h2><i class="fas fa-file-archive" style="margin-right: 8px; color: #10b981;"></i>Upload Archive (ZIP)</h2>
+                    <h2><i class="fas fa-file-import" style="margin-right: 8px; color: #10b981;"></i>Import Archive</h2>
                     <button class="modal-close-btn" id="close-upload-zip-modal">&times;</button>
                 </div>
                 <div style="padding: 20px; overflow-y: auto; flex: 1;">
-                    <p style="margin: 0 0 16px 0; font-size: 0.9em; color: #64748b; line-height: 1.5;">
-                        Download your data export ZIP from Facebook, Instagram, WhatsApp, or iMessage, then upload it here. After you choose <strong>Upload &amp; Import</strong>, you will confirm which platform the archive came from.
+                    <p style="margin: 0 0 14px 0; font-size: 0.9em; color: #64748b; line-height: 1.5;">
+                        Choose a platform export ZIP file, or point directly to an already-extracted directory. After clicking <strong>Import</strong> you will confirm the platform.
                     </p>
                     <div class="upload-import-form-group">
-                        <label class="upload-import-label">ZIP file</label>
-                        <div class="upload-import-dropzone" id="upload-zip-dropzone">
-                            <i class="fas fa-cloud-upload-alt" style="font-size: 2rem; color: #10b981; margin-bottom: 8px;"></i>
-                            <div id="upload-zip-drop-text">Drag &amp; drop your ZIP here, or <span class="upload-import-browse-link">browse</span></div>
-                            <div id="upload-zip-filename" style="display: none; margin-top: 8px; font-weight: 600; color: #1e293b;"></div>
-                            <input type="file" id="upload-zip-file" accept=".zip" style="display: none;">
+                        <label class="upload-import-label" id="upload-zip-path-label">Choose source</label>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" class="modal-btn modal-btn-secondary" id="upload-zip-browse-zip-btn" style="flex: 1; justify-content: center;" onclick="window.pickUploadImportPath && window.pickUploadImportPath('zip')">
+                                <i class="fas fa-file-archive" style="margin-right: 8px; color: #10b981;"></i>
+                                Browse for ZIP file
+                            </button>
+                            <button type="button" class="modal-btn modal-btn-secondary" id="upload-zip-browse-dir-btn" style="flex: 1; justify-content: center;" onclick="window.pickUploadImportPath && window.pickUploadImportPath('directory')">
+                                <i class="fas fa-folder-open" style="margin-right: 8px; color: #10b981;"></i>
+                                Browse for directory
+                            </button>
                         </div>
+                        <input type="hidden" id="upload-zip-selected-path" value="">
+                        <div id="upload-zip-filename" style="display: none; margin-top: 8px; font-weight: 600; color: #1e293b; word-break: break-all;"></div>
                     </div>
                     <div id="upload-zip-progress-wrap" style="display: none;">
                         <div class="upload-import-label" style="margin-bottom: 6px;" id="upload-zip-progress-label">Uploading…</div>
@@ -2668,7 +2691,7 @@
                 </div>
                 <div style="padding: 12px 20px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; background: #f8fafc;">
                     <button type="button" class="modal-btn modal-btn-secondary" id="upload-zip-cancel-btn">Cancel</button>
-                    <button type="button" class="modal-btn modal-btn-primary" id="upload-zip-start-btn"><i class="fas fa-upload"></i> Upload &amp; Import</button>
+                    <button type="button" class="modal-btn modal-btn-primary" id="upload-zip-start-btn" disabled onclick="return window.startUploadImportFromSelected && window.startUploadImportFromSelected(event)"><i class="fas fa-upload"></i> Upload &amp; Import</button>
                 </div>
             </div>
         </div>
@@ -2708,7 +2731,7 @@
                 </div>
                 <div style="padding: 12px 20px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; background: #f8fafc;">
                     <button type="button" class="modal-btn modal-btn-secondary" id="upload-zip-confirm-back-btn">Back</button>
-                    <button type="button" class="modal-btn modal-btn-primary" id="upload-zip-confirm-start-btn"><i class="fas fa-upload"></i> Confirm &amp; upload</button>
+                    <button type="button" class="modal-btn modal-btn-primary" id="upload-zip-confirm-start-btn" onclick="return window.confirmUploadImportFromSelected && window.confirmUploadImportFromSelected(event)"><i class="fas fa-file-import"></i> Confirm &amp; Import</button>
                 </div>
             </div>
         </div>
@@ -3285,8 +3308,168 @@
     <script src="/static/js/museum/have-a-chat.js" defer></script>
     <script src="/static/js/museum/pam-bot.js" defer></script>
     <script src="/static/js/museum/auth.js" defer></script>
-    <script src="/static/js/tus.min.js" defer></script>
     <script src="/static/js/museum/upload-import.js" defer></script>
+    <script>
+    window.__uploadImportSelectedPath = '';
+    window.startUploadImportFromSelected = function(evt) {
+        if (evt) {
+            if (typeof evt.preventDefault === 'function') evt.preventDefault();
+            if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+            if (typeof evt.stopImmediatePropagation === 'function') evt.stopImmediatePropagation();
+        }
+        const hiddenPath = document.getElementById('upload-zip-selected-path');
+        const filenameEl = document.getElementById('upload-zip-filename');
+        const confirmModal = document.getElementById('upload-zip-confirm-modal');
+        const resultEl = document.getElementById('upload-zip-result');
+        const p = (hiddenPath && hiddenPath.value) || (filenameEl && filenameEl.title) || window.__uploadImportSelectedPath || '';
+        if (!p) {
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.style.backgroundColor = 'rgba(239,68,68,0.1)';
+                resultEl.style.border = '1px solid rgba(239,68,68,0.4)';
+                resultEl.style.color = '#991b1b';
+                resultEl.textContent = 'Please choose a ZIP file or directory first.';
+            }
+            return false;
+        }
+        window.__uploadImportSelectedPath = p;
+        if (hiddenPath) hiddenPath.value = p;
+        if (resultEl) resultEl.style.display = 'none';
+        if (confirmModal) confirmModal.style.display = 'flex';
+        return false;
+    };
+    window.confirmUploadImportFromSelected = async function(evt) {
+        if (evt) {
+            if (typeof evt.preventDefault === 'function') evt.preventDefault();
+            if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+            if (typeof evt.stopImmediatePropagation === 'function') evt.stopImmediatePropagation();
+        }
+        const hiddenPath = document.getElementById('upload-zip-selected-path');
+        const filenameEl = document.getElementById('upload-zip-filename');
+        const resultEl = document.getElementById('upload-zip-result');
+        const modal = document.getElementById('upload-zip-modal');
+        const confirmModal = document.getElementById('upload-zip-confirm-modal');
+        const confirmBtn = document.getElementById('upload-zip-confirm-start-btn');
+        const selectedType = document.querySelector('input[name="upload-zip-archive-type"]:checked');
+        const importType = (selectedType && selectedType.value) ? selectedType.value : 'facebook';
+        const labels = {
+            facebook: 'Facebook (full export)',
+            instagram: 'Instagram',
+            whatsapp: 'WhatsApp',
+            imessage: 'iMessage / SMS (iMaizing export)',
+        };
+        const p = (hiddenPath && hiddenPath.value) || (filenameEl && filenameEl.title) || window.__uploadImportSelectedPath || '';
+        if (!p) {
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.style.backgroundColor = 'rgba(239,68,68,0.1)';
+                resultEl.style.border = '1px solid rgba(239,68,68,0.4)';
+                resultEl.style.color = '#991b1b';
+                resultEl.textContent = 'Please choose a ZIP file or directory first.';
+            }
+            return false;
+        }
+        window.__uploadImportSelectedPath = p;
+        if (hiddenPath) hiddenPath.value = p;
+        if (resultEl) resultEl.style.display = 'none';
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting…';
+        }
+        try {
+            const res = await fetch('/import/from-path', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: p, type: importType }),
+            });
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                const msg = errBody.error || ('Import request failed: HTTP ' + res.status);
+                if (resultEl) {
+                    resultEl.style.display = 'block';
+                    resultEl.style.backgroundColor = 'rgba(239,68,68,0.1)';
+                    resultEl.style.border = '1px solid rgba(239,68,68,0.4)';
+                    resultEl.style.color = '#991b1b';
+                    resultEl.textContent = msg;
+                }
+                return false;
+            }
+            if (confirmModal) confirmModal.style.display = 'none';
+            if (modal) modal.style.display = 'none';
+            if (window.ImportControls && window.ImportControls.attachUploadStream) {
+                window.ImportControls.attachUploadStream(labels[importType] || importType, importType);
+            }
+            return false;
+        } catch (err) {
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.style.backgroundColor = 'rgba(239,68,68,0.1)';
+                resultEl.style.border = '1px solid rgba(239,68,68,0.4)';
+                resultEl.style.color = '#991b1b';
+                resultEl.textContent = (err && err.message) ? err.message : 'Import request failed.';
+            }
+            return false;
+        } finally {
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i class="fas fa-file-import"></i> Confirm &amp; Import';
+            }
+        }
+    };
+    window.pickUploadImportPath = async function(type) {
+        const filenameEl = document.getElementById('upload-zip-filename');
+        const startBtn = document.getElementById('upload-zip-start-btn');
+        const hiddenPath = document.getElementById('upload-zip-selected-path');
+        const resultEl = document.getElementById('upload-zip-result');
+        window.__uploadImportSelectedPath = '';
+        if (hiddenPath) hiddenPath.value = '';
+        if (filenameEl) {
+            filenameEl.textContent = '';
+            filenameEl.title = '';
+            filenameEl.style.display = 'none';
+        }
+        if (startBtn) startBtn.disabled = true;
+        if (resultEl) resultEl.style.display = 'none';
+        if (!window.electronAPI || !window.electronAPI.showOpenDialog) {
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.style.backgroundColor = 'rgba(239,68,68,0.1)';
+                resultEl.style.border = '1px solid rgba(239,68,68,0.4)';
+                resultEl.style.color = '#991b1b';
+                resultEl.textContent = 'Picker API is unavailable.';
+            }
+            return;
+        }
+        const options = type === 'directory'
+            ? { title: 'Select export directory', properties: ['openDirectory'] }
+            : { title: 'Select export ZIP file', properties: ['openFile'], filters: [{ name: 'ZIP archives', extensions: ['zip'] }] };
+        try {
+            const picked = await window.electronAPI.showOpenDialog(options);
+            const p = picked && !picked.canceled && picked.filePaths && picked.filePaths.length ? picked.filePaths[0] : '';
+            if (!p) return;
+            const parts = String(p).replace(/[\\/]+$/, '').split(/[\\/]/);
+            const name = parts[parts.length - 1] || p;
+            window.__uploadImportSelectedPath = p;
+            if (hiddenPath) hiddenPath.value = p;
+            document.dispatchEvent(new CustomEvent('upload-import-path-selected', { detail: { path: p } }));
+            if (filenameEl) {
+                filenameEl.textContent = name;
+                filenameEl.title = p;
+                filenameEl.style.display = 'block';
+            }
+            if (startBtn) startBtn.disabled = false;
+        } catch (err) {
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.style.backgroundColor = 'rgba(239,68,68,0.1)';
+                resultEl.style.border = '1px solid rgba(239,68,68,0.4)';
+                resultEl.style.color = '#991b1b';
+                resultEl.textContent = (err && err.message) ? err.message : 'Could not open picker.';
+            }
+        }
+    };
+    </script>
     <script src="/static/js/leaflet.js"></script>
     <script src="/static/js/images_grid.js"></script>
     <script>

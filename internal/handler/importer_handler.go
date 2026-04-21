@@ -74,7 +74,7 @@ var (
 		"status": "idle", "status_line": nil, "current_file": nil,
 		"files_processed": 0, "total_files": 0, "images_imported": 0,
 		"images_referenced": 0, "images_updated": 0,
-		"errors": 0, "error_messages": []string{},
+		"errors": 0, "error_messages": []string{}, "log_lines": []string{},
 	})
 
 	// facebookAlbumsJob = importer.NewImportJob("Facebook Albums import", map[string]any{
@@ -320,9 +320,11 @@ func (h *ImporterHandler) FilesystemStart(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		RootDirectory string `json:"root_directory"`
-		MaxImages     *int   `json:"max_images"`
-		ReferenceMode bool   `json:"reference_mode"`
+		RootDirectory     string `json:"root_directory"`
+		MaxImages         *int   `json:"max_images"`
+		ReferenceMode     bool   `json:"reference_mode"`
+		IncludeSubfolders *bool  `json:"include_subfolders"`
+		OverwriteExisting bool   `json:"overwrite_existing"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -362,16 +364,18 @@ func (h *ImporterHandler) FilesystemStart(w http.ResponseWriter, r *http.Request
 		"status": "in_progress", "status_line": "Starting filesystem images import...",
 		"current_file": nil, "files_processed": 0, "total_files": 0,
 		"images_imported": 0, "images_referenced": 0, "images_updated": 0,
-		"errors": 0, "error_messages": []string{},
+		"errors": 0, "error_messages": []string{}, "log_lines": []string{},
 	})
+	filesystemJob.AppendLogLine("Starting filesystem images import...")
 	filesystemJob.Broadcast("status", map[string]any{"status_line": "Starting filesystem images import..."})
 
 	maxImages := req.MaxImages
 	if maxImages != nil && *maxImages <= 0 {
 		maxImages = nil
 	}
+	includeSubfolders := req.IncludeSubfolders == nil || *req.IncludeSubfolders
 	uid := appctx.UserIDFromCtx(r.Context())
-	go runFilesystemInProcess(h.pool, filesystemJob, validPaths, h.excludePatterns, maxImages, req.ReferenceMode, uid)
+	go runFilesystemInProcess(h.pool, filesystemJob, validPaths, h.excludePatterns, maxImages, req.ReferenceMode, includeSubfolders, req.OverwriteExisting, uid)
 
 	writeJSON(w, map[string]any{
 		"message":        "Filesystem images import started",
@@ -379,7 +383,7 @@ func (h *ImporterHandler) FilesystemStart(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func runFilesystemInProcess(pool *sql.DB, job *importer.ImportJob, directories []string, excludePatterns []string, maxImages *int, referenceMode bool, uid int64) {
+func runFilesystemInProcess(pool *sql.DB, job *importer.ImportJob, directories []string, excludePatterns []string, maxImages *int, referenceMode bool, includeSubfolders bool, overwriteExisting bool, uid int64) {
 	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
 	defer job.Finish()
 
@@ -389,6 +393,7 @@ func runFilesystemInProcess(pool *sql.DB, job *importer.ImportJob, directories [
 		statusLine := fmt.Sprintf("Processing file %d of %d: %s | Imported: %d, Referenced: %d, Updated: %d, Errors: %d",
 			stats.FilesProcessed, stats.TotalFiles, stats.CurrentFile,
 			stats.ImagesImported, stats.ImagesReferenced, stats.ImagesUpdated, stats.Errors)
+		job.AppendLogLine(statusLine)
 		job.UpdateState(map[string]any{
 			"total_files":       stats.TotalFiles,
 			"files_processed":   stats.FilesProcessed,
@@ -400,12 +405,14 @@ func runFilesystemInProcess(pool *sql.DB, job *importer.ImportJob, directories [
 			"current_file":      stats.CurrentFile,
 			"status_line":       statusLine,
 		})
-		job.Broadcast("progress", job.GetState())
+		if stats.FilesProcessed%25 == 0 {
+			job.Broadcast("progress", job.GetState())
+		}
 	}
 
 	cancelledCheck := func() bool { return job.IsCancelled() }
 
-	stats, err := filesystemimport.ImportImagesFromDirectories(ctx, storage, directories, excludePatterns, maxImages, referenceMode, progressCallback, cancelledCheck)
+	stats, err := filesystemimport.ImportImagesFromDirectories(ctx, storage, directories, excludePatterns, maxImages, referenceMode, includeSubfolders, overwriteExisting, progressCallback, cancelledCheck)
 
 	if job.IsCancelled() {
 		job.UpdateState(map[string]any{"status": "cancelled", "status_line": "Import cancelled."})

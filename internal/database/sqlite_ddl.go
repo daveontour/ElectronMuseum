@@ -15,7 +15,9 @@ var (
 	reTDefCur         = regexp.MustCompile(`(?i)TIMESTAMP\s+DEFAULT\s+CURRENT_TIMESTAMP`)
 	reTSNotNull       = regexp.MustCompile(`(?i)TIMESTAMPTZ\s+NOT NULL\b`)
 	reTSPlain         = regexp.MustCompile(`(?i)\bTIMESTAMPTZ\b`)
-	reTPlain          = regexp.MustCompile(`(?i)\bTIMESTAMP\b`)
+	// Case-sensitive: (?i) would match the column name `timestamp` in DDL (e.g. facebook_posts)
+	// and corrupt it to `TEXT`. Schema DDL uses uppercase TIMESTAMP for the type.
+	reTPlain = regexp.MustCompile(`\bTIMESTAMP\b`)
 )
 
 // sqliteStatements returns DDL strings suitable for SQLite, derived from the

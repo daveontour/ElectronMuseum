@@ -37,7 +37,7 @@ func (p *Processor) execImageMagickConvert(args ...string) *exec.Cmd {
 			return exec.Command("convert", args...)
 		}
 	}
-	return exec.Command("magick", args...)
+	return exec.Command("bin/ImageMagick/magick", args...)
 }
 
 // execImageMagickIdentify runs EXIF/metadata identify. On Linux prefer standalone "identify" (IM6).
@@ -47,7 +47,7 @@ func (p *Processor) execImageMagickIdentify(args ...string) *exec.Cmd {
 			return exec.Command("identify", args...)
 		}
 	}
-	return exec.Command("magick", append([]string{"identify"}, args...)...)
+	return exec.Command("bin/ImageMagick/magick", append([]string{"identify"}, args...)...)
 }
 
 // parseGPSCoordinate parses GPS coordinate from ImageMagick format (degrees/minutes/seconds as fractions)

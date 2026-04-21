@@ -1,137 +1,34 @@
 'use strict';
 
 /**
- * UploadImport — handles web-based data import via file upload.
+ * UploadImport — handles local-path data import for the Electron desktop app.
  *
  * Two flows:
- *  1. ZIP archive upload  → tus resumable upload → /import/tus/ → SSE /import/upload/stream
- *  2. Photo batch upload  → batched POST /import/photo-batch
+ *  1. ZIP archive import  → pick .zip via native dialog → POST /import/from-path → SSE /import/upload/stream
+ *  2. Photo directory import → pick directory via native dialog → POST /images/import → SSE /images/import/stream
  *
  * Self-initialises because it is loaded after app.js (defer order).
  */
 const UploadImport = (() => {
-    // ── ZIP upload state ──────────────────────────────────────────────────────
-    let zipFile = null;
+    // ── ZIP import state ──────────────────────────────────────────────────────
+    let zipFilePath = null;
     let zipEventSource = null;
-    let zipUploading = false;
-    let currentTusUpload = null;
-    let chunkSizeMB = 10; // default; refreshed from /api/upload-config on init
-    let maxUploadGB = 32; // default GiB cap for ZIP tus upload; refreshed from /api/upload-config
+    let zipImporting = false;
 
-    // ── Photo upload state ────────────────────────────────────────────────────
-    const PHOTO_BATCH_SIZE = 10;
-    let photoFiles = [];
-    /** Unfiltered selection (folder picker or drop); used to re-apply subfolder checkbox. */
-    let photoFilesRaw = null;
-    let photoUploading = false;
+    // ── Photo import state ────────────────────────────────────────────────────
+    let photoDirPath = null;
+    let photoImporting = false;
+    let photoEventSource = null;
 
-    function readAllDirectoryEntries(dirReader) {
-        return new Promise((resolve, reject) => {
-            const acc = [];
-            const read = () => {
-                dirReader.readEntries((batch) => {
-                    if (batch.length === 0) resolve(acc);
-                    else {
-                        acc.push(...batch);
-                        read();
-                    }
-                }, reject);
-            };
-            read();
-        });
-    }
-
-    /**
-     * Walks a dropped directory and records path-from-root on each File (drag-drop does not set webkitRelativePath).
-     * @param {string} prefix POSIX-style path without leading slash (e.g. "Vacation/beach")
-     */
-    async function collectFromDirectoryRecursive(dirEntry, out, prefix) {
-        const reader = dirEntry.createReader();
-        const entries = await readAllDirectoryEntries(reader);
-        for (const entry of entries) {
-            const rel = prefix ? prefix + '/' + entry.name : entry.name;
-            if (entry.isFile) {
-                await new Promise((resolve, reject) => {
-                    entry.file((f) => {
-                        f._dmRelativePath = rel.replace(/\\/g, '/');
-                        out.push(f);
-                        resolve();
-                    }, reject);
-                });
-            } else if (entry.isDirectory) {
-                await collectFromDirectoryRecursive(entry, out, rel.replace(/\\/g, '/'));
-            }
-        }
-    }
-
-    async function collectFromDirectoryShallow(dirEntry, out) {
-        const reader = dirEntry.createReader();
-        const entries = await readAllDirectoryEntries(reader);
-        for (const entry of entries) {
-            if (entry.isFile) {
-                await new Promise((resolve, reject) => {
-                    entry.file((f) => {
-                        f._dmRelativePath = entry.name.replace(/\\/g, '/');
-                        out.push(f);
-                        resolve();
-                    }, reject);
-                });
-            }
-        }
-    }
-
-    /** Relative path for multipart + server rel_paths (folder picker, drop traversal, or basename). */
-    function photoUploadRelativePath(file) {
-        const raw = file._dmRelativePath || file.webkitRelativePath || file.name || '';
-        const p = String(raw).replace(/\\/g, '/').trim();
-        return p || file.name;
-    }
-
-    /**
-     * @param {DataTransfer} dt
-     * @param {boolean} includeSubfolders
-     */
-    async function collectDroppedFiles(dt, includeSubfolders) {
-        const out = [];
-        let anyEntry = false;
-        if (dt.items && dt.items.length) {
-            for (const item of Array.from(dt.items)) {
-                const entry = item.webkitGetAsEntry?.();
-                if (!entry) continue;
-                anyEntry = true;
-                if (entry.isFile) {
-                    await new Promise((resolve, reject) => {
-                        entry.file((f) => {
-                            f._dmRelativePath = entry.name.replace(/\\/g, '/');
-                            out.push(f);
-                            resolve();
-                        }, reject);
-                    });
-                } else if (entry.isDirectory) {
-                    if (includeSubfolders) await collectFromDirectoryRecursive(entry, out, '');
-                    else await collectFromDirectoryShallow(entry, out);
-                }
-            }
-        }
-        if (anyEntry) return out;
-        return dt.files && dt.files.length ? Array.from(dt.files) : [];
-    }
-
-    /** Display labels for ZIP import type (must match server tusPreCreate + radio values). */
+    /** Display labels for ZIP import type. */
     const ZIP_ARCHIVE_LABELS = {
         facebook: 'Facebook (full export)',
         instagram: 'Instagram',
         whatsapp: 'WhatsApp',
-        imessage: 'iMessage / SMS (iMazing export)',
+        imessage: 'iMessage / SMS (iMaizing export)',
     };
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    function fmtBytes(n) {
-        if (n < 1024) return n + ' B';
-        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-        return (n / (1024 * 1024)).toFixed(1) + ' MB';
-    }
 
     function setProgress(barEl, pct) {
         if (barEl) barEl.style.width = Math.min(100, Math.max(0, pct)) + '%';
@@ -147,85 +44,66 @@ const UploadImport = (() => {
     }
 
     function closeZipSSE() {
-        if (zipEventSource) {
-            zipEventSource.close();
-            zipEventSource = null;
-        }
+        if (zipEventSource) { zipEventSource.close(); zipEventSource = null; }
     }
 
-    function fileFingerprint(f) {
-        return 'tus_upload_' + f.name + '|' + f.size + '|' + f.lastModified;
+    function closePhotoSSE() {
+        if (photoEventSource) { photoEventSource.close(); photoEventSource = null; }
     }
 
-    /**
-     * tus-js-client stores the upload URL in localStorage for resume. The server
-     * returns an absolute URL (host from the POST request). If the user later
-     * opens the app via a different host (e.g. 127.0.0.1 vs localhost), PATCH
-     * becomes cross-origin, session cookies are not sent, the server returns
-     * 401 without CORS headers, and the browser surfaces xhr.onerror as a
-     * ProgressEvent with no status — the error you saw. We only persist the
-     * path and always resume against the current origin.
-     */
-    function normalizeStoredTusUrl(raw) {
-        if (!raw || typeof raw !== 'string') return undefined;
-        const trimmed = raw.trim();
-        if (!trimmed) return undefined;
-        if (trimmed.startsWith('/')) {
-            return trimmed.startsWith('/import/tus/') ? trimmed : undefined;
-        }
-        try {
-            const u = new URL(trimmed);
-            if (u.pathname.startsWith('/import/tus/')) {
-                return u.pathname + u.search;
+    /** Open a native Electron file/directory picker. Falls back to null if API unavailable. */
+    async function showOpenDialog(options) {
+        if (window.electronAPI && window.electronAPI.showOpenDialog) {
+            const result = await window.electronAPI.showOpenDialog(options);
+            if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+                return result.filePaths[0];
             }
-        } catch (_) {
-            /* ignore */
         }
-        return undefined;
+        return null;
     }
 
-    function persistTusUrl(fingerprint, uploadUrl) {
-        if (!uploadUrl) return;
-        const path = normalizeStoredTusUrl(uploadUrl);
-        if (path) {
-            localStorage.setItem(fingerprint, path);
-        }
-    }
-
-    // ── ZIP modal ─────────────────────────────────────────────────────────────
+    // ── ZIP / Directory modal ─────────────────────────────────────────────────
 
     function initZipModal() {
         const modal = document.getElementById('upload-zip-modal');
         const confirmModal = document.getElementById('upload-zip-confirm-modal');
         if (!modal) return;
 
-        const closeBtn    = document.getElementById('close-upload-zip-modal');
-        const cancelBtn   = document.getElementById('upload-zip-cancel-btn');
-        const startBtn    = document.getElementById('upload-zip-start-btn');
-        const fileInput   = document.getElementById('upload-zip-file');
-        const dropzone    = document.getElementById('upload-zip-dropzone');
-        const dropText    = document.getElementById('upload-zip-drop-text');
-        const filenameEl  = document.getElementById('upload-zip-filename');
+        const closeBtn      = document.getElementById('close-upload-zip-modal');
+        const cancelBtn     = document.getElementById('upload-zip-cancel-btn');
+        const startBtn      = document.getElementById('upload-zip-start-btn');
+        const filenameEl    = document.getElementById('upload-zip-filename');
+        const selectedPathEl = document.getElementById('upload-zip-selected-path');
         const progressWrap  = document.getElementById('upload-zip-progress-wrap');
         const progressBar   = document.getElementById('upload-zip-progress-bar');
         const progressLabel = document.getElementById('upload-zip-progress-label');
-        const statusEl    = document.getElementById('upload-zip-status');
-        const resultEl    = document.getElementById('upload-zip-result');
+        const statusEl      = document.getElementById('upload-zip-status');
+        const resultEl      = document.getElementById('upload-zip-result');
 
         const confirmCloseBtn = document.getElementById('close-upload-zip-confirm-modal');
-        const confirmBackBtn = document.getElementById('upload-zip-confirm-back-btn');
+        const confirmBackBtn  = document.getElementById('upload-zip-confirm-back-btn');
         const confirmStartBtn = document.getElementById('upload-zip-confirm-start-btn');
 
-        function abortTusUpload() {
-            if (currentTusUpload) {
-                currentTusUpload.abort();
-                currentTusUpload = null;
+        // ── Helpers ───────────────────────────────────────────────────────────
+        function syncPathFromAnySource() {
+            if (!zipFilePath && selectedPathEl && selectedPathEl.value) {
+                zipFilePath = selectedPathEl.value;
+            }
+            if (!zipFilePath && filenameEl && filenameEl.title) {
+                zipFilePath = filenameEl.title;
+            }
+            if (!zipFilePath && typeof window.__uploadImportSelectedPath === 'string' && window.__uploadImportSelectedPath) {
+                zipFilePath = window.__uploadImportSelectedPath;
+            }
+            if (zipFilePath && selectedPathEl && !selectedPathEl.value) {
+                selectedPathEl.value = zipFilePath;
             }
         }
 
-        function resetArchiveTypeRadios() {
-            const fb = document.querySelector('input[name="upload-zip-archive-type"][value="facebook"]');
-            if (fb) fb.checked = true;
+        function updateStartButtonState() {
+            if (!startBtn) return;
+            syncPathFromAnySource();
+            startBtn.disabled = zipImporting || !zipFilePath;
         }
 
         function getSelectedZipArchiveType() {
@@ -235,168 +113,95 @@ const UploadImport = (() => {
             return { value, label };
         }
 
-        function openConfirmModal() {
-            if (confirmModal) confirmModal.style.display = 'flex';
-        }
+        function openConfirmModal() { if (confirmModal) confirmModal.style.display = 'flex'; }
+        function closeConfirmModal() { if (confirmModal) confirmModal.style.display = 'none'; }
 
-        function closeConfirmModal() {
-            if (confirmModal) confirmModal.style.display = 'none';
+        function resetArchiveTypeRadios() {
+            const fb = document.querySelector('input[name="upload-zip-archive-type"][value="facebook"]');
+            if (fb) fb.checked = true;
         }
 
         function resetZipModal() {
-            abortTusUpload();
-            zipFile = null;
-            zipUploading = false;
+            zipFilePath = null;
+            zipImporting = false;
             closeZipSSE();
             closeConfirmModal();
             resetArchiveTypeRadios();
-            if (fileInput) fileInput.value = '';
-            if (dropText) dropText.style.display = '';
             if (filenameEl) { filenameEl.textContent = ''; filenameEl.style.display = 'none'; }
+            if (selectedPathEl) selectedPathEl.value = '';
+            window.__uploadImportSelectedPath = '';
             if (progressWrap) progressWrap.style.display = 'none';
             if (progressBar) progressBar.style.width = '0%';
             if (statusEl) statusEl.textContent = '';
             if (resultEl) { resultEl.style.display = 'none'; resultEl.textContent = ''; }
-            if (startBtn) { startBtn.disabled = false; startBtn.innerHTML = '<i class="fas fa-upload"></i> Upload &amp; Import'; }
+            if (startBtn) startBtn.innerHTML = '<i class="fas fa-file-import"></i> Import';
+            updateStartButtonState();
         }
 
         function closeModal() {
-            // Allow closing even mid-upload (tus upload can be resumed later)
-            abortTusUpload();
-            zipUploading = false;
+            zipImporting = false;
             resetZipModal();
             modal.style.display = 'none';
         }
 
-        function beginZipTusUpload(importType, importTypeLabel) {
-            if (!zipFile) return;
-
-            const fingerprint = fileFingerprint(zipFile);
-            const savedUrl = normalizeStoredTusUrl(localStorage.getItem(fingerprint));
-
-            zipUploading = true;
-            if (startBtn) {
-                startBtn.disabled = true;
-                startBtn.innerHTML = savedUrl
-                    ? '<i class="fas fa-spinner fa-spin"></i> Resuming…'
-                    : '<i class="fas fa-spinner fa-spin"></i> Uploading…';
-            }
-            if (progressWrap) progressWrap.style.display = 'block';
+        function setSelectedPath(p) {
+            if (!p) return;
+            zipFilePath = p;
+            if (selectedPathEl) selectedPathEl.value = p;
+            window.__uploadImportSelectedPath = p;
             if (resultEl) resultEl.style.display = 'none';
-            if (progressLabel) progressLabel.textContent = savedUrl ? 'Resuming upload…' : 'Uploading ZIP…';
-            if (statusEl) statusEl.textContent = '';
-
-            const upload = new tus.Upload(zipFile, {
-                endpoint: '/import/tus/',
-                chunkSize: chunkSizeMB * 1024 * 1024,
-                retryDelays: [0, 3000, 10000, 30000],
-                metadata: { import_type: importType, filename: zipFile.name },
-                uploadUrl: savedUrl,
-
-                onProgress(bytesSent, bytesTotal) {
-                    const pct = bytesTotal > 0 ? (bytesSent / bytesTotal) * 100 : 0;
-                    setProgress(progressBar, pct);
-                    if (progressLabel) {
-                        progressLabel.textContent = `Uploading… ${fmtBytes(bytesSent)} / ${fmtBytes(bytesTotal)}`;
-                    }
-                },
-
-                onSuccess() {
-                    localStorage.removeItem(fingerprint);
-                    currentTusUpload = null;
-                    zipUploading = false;
-                    closeZipSSE();
-                    closeConfirmModal();
-                    resetZipModal();
-                    modal.style.display = 'none';
-                    if (window.ImportControls && window.ImportControls.attachUploadStream) {
-                        window.ImportControls.attachUploadStream(importTypeLabel, importType);
-                    }
-                },
-
-                onError(err) {
-                    currentTusUpload = null;
-                    zipUploading = false;
-                    if (startBtn) {
-                        startBtn.disabled = false;
-                        startBtn.innerHTML = '<i class="fas fa-upload"></i> Upload &amp; Import';
-                    }
-                    if (progressWrap) progressWrap.style.display = 'none';
-                    let msg = err.message || 'Upload failed.';
-                    if (msg.includes('403') || msg.includes('forbidden')) {
-                        msg = 'Owner master unlock required. Please unlock the keyring and try again.';
-                    } else if (msg.includes('409') || msg.includes('conflict')) {
-                        msg = 'Another import is already running. Please wait for it to finish.';
-                    } else if (msg.includes('413') || msg.includes('MAX_SIZE') || msg.includes('maximum size exceeded')) {
-                        msg = `This ZIP is larger than the server allows (${maxUploadGB} GB). Set TUS_MAX_UPLOAD_GB in the server .env to raise the limit, then restart.`;
-                    }
-                    showResult(resultEl, false, msg);
-                },
-
-                onAfterResponse(req, res) {
-                    persistTusUrl(fingerprint, upload.url);
-                },
-            });
-
-            currentTusUpload = upload;
-            upload.start();
-        }
-
-        function setFile(f) {
-            if (!f || !f.name.toLowerCase().endsWith('.zip')) {
-                if (f) showResult(resultEl, false, 'Only .zip files are accepted.');
-                return;
-            }
-            zipFile = f;
-            if (resultEl) resultEl.style.display = 'none';
-            if (dropText) dropText.style.display = 'none';
             if (filenameEl) {
-                filenameEl.textContent = f.name + ' (' + fmtBytes(f.size) + ')';
+                filenameEl.textContent = getPathDisplayName(p);
+                filenameEl.title = p;
                 filenameEl.style.display = 'block';
             }
+            updateStartButtonState();
+        }
 
-            // Check for a resumable previous upload of this exact file.
-            const saved = localStorage.getItem(fileFingerprint(f));
-            if (saved && statusEl) {
-                statusEl.textContent = 'Previous upload found — click Upload to resume where it left off.';
-            } else if (statusEl) {
-                statusEl.textContent = '';
+        function getPathDisplayName(p) {
+            const normalized = String(p || '').replace(/[\\/]+$/, '');
+            const parts = normalized.split(/[\\/]/);
+            return parts[parts.length - 1] || normalized;
+        }
+
+        function clearSelectedPath() {
+            zipFilePath = null;
+            if (selectedPathEl) selectedPathEl.value = '';
+            window.__uploadImportSelectedPath = '';
+            if (filenameEl) {
+                filenameEl.textContent = '';
+                filenameEl.title = '';
+                filenameEl.style.display = 'none';
             }
+            if (resultEl) resultEl.style.display = 'none';
+            updateStartButtonState();
         }
 
-        // Drag-and-drop
-        if (dropzone) {
-            dropzone.addEventListener('click', () => { if (!zipUploading) fileInput.click(); });
-            dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('upload-import-dropzone-hover'); });
-            dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('upload-import-dropzone-hover'); });
-            dropzone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropzone.classList.remove('upload-import-dropzone-hover');
-                const f = e.dataTransfer.files[0];
-                if (f) setFile(f);
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                const target = e.target;
+                if (!(target instanceof Element)) return;
+                if (target.closest('#upload-zip-browse-zip-btn') || target.closest('#upload-zip-browse-dir-btn')) return;
             });
         }
-
-        if (fileInput) {
-            fileInput.addEventListener('change', () => {
-                if (fileInput.files.length) setFile(fileInput.files[0]);
-            });
-        }
-
-        const browseLink = dropzone && dropzone.querySelector('.upload-import-browse-link');
-        if (browseLink) {
-            browseLink.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
-        }
+        document.addEventListener('upload-import-path-selected', (e) => {
+            const p = e && e.detail && typeof e.detail.path === 'string' ? e.detail.path : '';
+            if (p) setSelectedPath(p);
+        });
+        updateStartButtonState();
 
         if (closeBtn) closeBtn.addEventListener('click', closeModal);
         if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
+        // ── Start button → confirm modal ──────────────────────────────────────
+
         if (startBtn) {
             startBtn.addEventListener('click', () => {
-                if (zipUploading) return;
-                if (!zipFile) {
-                    showResult(resultEl, false, 'Please select a ZIP file first.');
+                if (zipImporting) return;
+                syncPathFromAnySource();
+                if (!zipFilePath) {
+                    showResult(resultEl, false, 'Please choose a ZIP file or directory first.');
                     return;
                 }
                 if (resultEl) resultEl.style.display = 'none';
@@ -405,20 +210,65 @@ const UploadImport = (() => {
         }
 
         if (confirmModal) {
-            confirmModal.addEventListener('click', (e) => {
-                if (e.target === confirmModal) closeConfirmModal();
-            });
+            confirmModal.addEventListener('click', (e) => { if (e.target === confirmModal) closeConfirmModal(); });
         }
         if (confirmCloseBtn) confirmCloseBtn.addEventListener('click', closeConfirmModal);
-        if (confirmBackBtn) confirmBackBtn.addEventListener('click', closeConfirmModal);
+        if (confirmBackBtn)  confirmBackBtn.addEventListener('click', closeConfirmModal);
+
         if (confirmStartBtn) {
             confirmStartBtn.addEventListener('click', () => {
-                if (zipUploading || !zipFile) return;
-                const { value, label } = getSelectedZipArchiveType();
+                syncPathFromAnySource();
+                if (zipImporting || !zipFilePath) return;
+                const { value: importType, label: importTypeLabel } = getSelectedZipArchiveType();
                 closeConfirmModal();
-                beginZipTusUpload(value, label);
+                beginImport(importType, importTypeLabel);
             });
         }
+
+        // ── Run the import ────────────────────────────────────────────────────
+
+        function beginImport(importType, importTypeLabel) {
+            zipImporting = true;
+            if (startBtn) {
+                startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing…';
+            }
+            updateStartButtonState();
+            if (progressWrap) progressWrap.style.display = 'block';
+            if (progressLabel) progressLabel.textContent = 'Starting import…';
+            if (statusEl) statusEl.textContent = '';
+            if (resultEl) resultEl.style.display = 'none';
+
+            fetch('/import/from-path', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: zipFilePath, type: importType }),
+            }).then(async (res) => {
+                if (!res.ok) {
+                    const errBody = await res.json().catch(() => ({}));
+                    const msg = errBody.error || ('Import request failed: HTTP ' + res.status);
+                    zipImporting = false;
+                    if (startBtn) startBtn.innerHTML = '<i class="fas fa-file-import"></i> Import';
+                    updateStartButtonState();
+                    if (progressWrap) progressWrap.style.display = 'none';
+                    showResult(resultEl, false, msg);
+                    return;
+                }
+                modal.style.display = 'none';
+                resetZipModal();
+                if (window.ImportControls && window.ImportControls.attachUploadStream) {
+                    window.ImportControls.attachUploadStream(importTypeLabel, importType);
+                }
+            }).catch((err) => {
+                zipImporting = false;
+                if (startBtn) startBtn.innerHTML = '<i class="fas fa-file-import"></i> Import';
+                updateStartButtonState();
+                if (progressWrap) progressWrap.style.display = 'none';
+                showResult(resultEl, false, err.message || 'Import request failed.');
+            });
+        }
+
+        // ── Public API ────────────────────────────────────────────────────────
 
         function openZipModalWithArchiveType(archiveType) {
             resetZipModal();
@@ -430,34 +280,24 @@ const UploadImport = (() => {
         window.UploadImport = window.UploadImport || {};
         window.UploadImport.openZipModalWithArchiveType = openZipModalWithArchiveType;
 
-        // Wire the tiles that open this modal
         document.querySelectorAll('[data-open-modal="upload-zip-modal"]').forEach(el => {
-            el.addEventListener('click', () => {
-                resetZipModal();
-                modal.style.display = 'flex';
-            });
+            el.addEventListener('click', () => { resetZipModal(); modal.style.display = 'flex'; });
         });
     }
 
-    // ── Photo upload modal ────────────────────────────────────────────────────
+    // ── Photo import modal ────────────────────────────────────────────────────
 
     function initPhotosModal() {
         const modal = document.getElementById('upload-photos-modal');
         if (!modal) return;
 
-        /** AbortController only for explicit Cancel; closing the dialog does not abort. */
-        let photoBatchAbort = null;
-
-        const closeBtn    = document.getElementById('close-upload-photos-modal');
-        const cancelBtn   = document.getElementById('upload-photos-cancel-btn');
+        const closeBtn      = document.getElementById('close-upload-photos-modal');
+        const cancelBtn     = document.getElementById('upload-photos-cancel-btn');
         const backgroundBtn = document.getElementById('upload-photos-background-btn');
-        const startBtn    = document.getElementById('upload-photos-start-btn');
-        const fileInput   = document.getElementById('upload-photos-file');
-        const dropzone    = document.getElementById('upload-photos-dropzone');
-        const dropText    = document.getElementById('upload-photos-drop-text');
-        const countEl     = document.getElementById('upload-photos-count');
-        const includeSubfoldersCb = document.getElementById('upload-photos-include-subfolders');
-        const overwriteExistingCb = document.getElementById('upload-photos-overwrite-existing');
+        const startBtn      = document.getElementById('upload-photos-start-btn');
+        const dropzone      = document.getElementById('upload-photos-dropzone');
+        const dropText      = document.getElementById('upload-photos-drop-text');
+        const countEl       = document.getElementById('upload-photos-count');
         const progressWrap  = document.getElementById('upload-photos-progress-wrap');
         const progressBar   = document.getElementById('upload-photos-progress-bar');
         const progressLabel = document.getElementById('upload-photos-progress-label');
@@ -465,251 +305,128 @@ const UploadImport = (() => {
         const resultEl      = document.getElementById('upload-photos-result');
         const backgroundHint = document.getElementById('upload-photos-background-hint');
 
-        const IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif', 'image/tiff', 'image/bmp']);
-        const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'tiff', 'bmp'];
-
-        function isImageFile(f) {
-            const ext = f.name.split('.').pop().toLowerCase();
-            const mime = f.type.toLowerCase();
-            return IMAGE_TYPES.has(mime) || IMAGE_EXTS.includes(ext);
-        }
-
-        /** True if file is not under a subfolder relative to picked root (webkitdirectory). */
-        function isImmediateChildOnly(f) {
-            const p = f.webkitRelativePath;
-            if (!p || typeof p !== 'string') return true;
-            return !/[\\/]/.test(p);
-        }
-
-        function includeSubfoldersEnabled() {
-            return !includeSubfoldersCb || includeSubfoldersCb.checked;
-        }
-
-        function applyPhotoSelection(rawArr) {
-            let imgs = rawArr.filter(isImageFile);
-            if (!includeSubfoldersEnabled()) {
-                imgs = imgs.filter(isImmediateChildOnly);
-            }
-            photoFiles = imgs;
-            if (resultEl) resultEl.style.display = 'none';
-            if (imgs.length === 0) {
-                if (dropText) dropText.style.display = '';
-                if (countEl) { countEl.style.display = 'none'; }
-                const hadRawImages = rawArr.some(isImageFile);
-                if (hadRawImages && !includeSubfoldersEnabled()) {
-                    showResult(resultEl, false, 'No images in the top-level folder. Turn on “Include photos in subfolders” or choose a folder that contains images directly inside it.');
-                } else {
-                    showResult(resultEl, false, 'No image files found in the selected folder.');
-                }
-                return;
-            }
-            if (dropText) dropText.style.display = 'none';
-            if (countEl) {
-                countEl.textContent = imgs.length + ' image' + (imgs.length !== 1 ? 's' : '') + ' selected';
-                countEl.style.display = 'block';
-            }
-        }
-
-        function setFilesFromRaw(filesIterable) {
-            photoFilesRaw = Array.from(filesIterable);
-            applyPhotoSelection(photoFilesRaw);
-        }
-
-        function clearRunningPhotoModalChrome() {
+        function resetPhotosModal() {
+            photoDirPath = null;
+            photoImporting = false;
+            closePhotoSSE();
             if (backgroundHint) backgroundHint.style.display = 'none';
             modal.classList.remove('upload-photos-modal-busy');
-            if (includeSubfoldersCb) includeSubfoldersCb.disabled = false;
-            if (overwriteExistingCb) overwriteExistingCb.disabled = false;
-            if (cancelBtn) cancelBtn.removeAttribute('title');
-            if (closeBtn) closeBtn.removeAttribute('title');
-            if (backgroundBtn) {
-                backgroundBtn.style.display = 'none';
-                backgroundBtn.removeAttribute('title');
-            }
-        }
-
-        function syncRunningPhotoModalUI() {
-            if (progressWrap) progressWrap.style.display = 'block';
-            if (backgroundHint) backgroundHint.style.display = 'block';
-            if (startBtn) {
-                startBtn.disabled = true;
-                startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
-            }
-            modal.classList.add('upload-photos-modal-busy');
-            if (includeSubfoldersCb) includeSubfoldersCb.disabled = true;
-            if (overwriteExistingCb) overwriteExistingCb.disabled = true;
-            if (backgroundBtn) {
-                backgroundBtn.style.display = '';
-                backgroundBtn.title = 'Hide this dialog; uploads keep running';
-            }
-            if (cancelBtn) cancelBtn.title = 'Stop upload and close';
-            if (closeBtn) closeBtn.title = 'Close dialog — upload continues in the background';
-        }
-
-        function resetPhotosModal() {
-            photoFiles = [];
-            photoFilesRaw = null;
-            photoUploading = false;
-            clearRunningPhotoModalChrome();
-            if (fileInput) fileInput.value = '';
-            if (includeSubfoldersCb) includeSubfoldersCb.checked = true;
-            if (overwriteExistingCb) overwriteExistingCb.checked = false;
             if (dropText) dropText.style.display = '';
             if (countEl) { countEl.textContent = ''; countEl.style.display = 'none'; }
             if (progressWrap) progressWrap.style.display = 'none';
             if (progressBar) progressBar.style.width = '0%';
             if (statusEl) statusEl.textContent = '';
             if (resultEl) { resultEl.style.display = 'none'; resultEl.textContent = ''; }
-            if (startBtn) { startBtn.disabled = false; startBtn.innerHTML = '<i class="fas fa-upload"></i> Upload Photos'; }
+            if (startBtn) { startBtn.disabled = false; startBtn.innerHTML = '<i class="fas fa-folder-open"></i> Import Photos'; }
+            if (backgroundBtn) backgroundBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.removeAttribute('title');
+            if (closeBtn) closeBtn.removeAttribute('title');
         }
 
-        /** Hide dialog; if uploading, leave the job running. */
         function dismissPhotoModal() {
-            if (photoUploading) {
-                modal.style.display = 'none';
-                return;
-            }
-            resetPhotosModal();
+            if (!photoImporting) resetPhotosModal();
             modal.style.display = 'none';
         }
 
-        /** Cancel stops an in-flight upload; when idle, same as dismiss + reset. */
-        function cancelPhotoModal() {
-            if (photoUploading) {
-                photoBatchAbort?.abort();
-                modal.style.display = 'none';
-                return;
+        function setDirPath(p) {
+            if (!p) return;
+            photoDirPath = p;
+            if (resultEl) resultEl.style.display = 'none';
+            if (dropText) dropText.style.display = 'none';
+            if (countEl) {
+                countEl.textContent = p;
+                countEl.style.display = 'block';
             }
-            resetPhotosModal();
-            modal.style.display = 'none';
         }
 
-        if (includeSubfoldersCb) {
-            includeSubfoldersCb.addEventListener('change', () => {
-                if (photoUploading) return;
-                if (photoFilesRaw && photoFilesRaw.length) applyPhotoSelection(photoFilesRaw);
-            });
-        }
-
+        // Dropzone click → native directory picker
         if (dropzone) {
-            dropzone.addEventListener('click', () => { if (!photoUploading) fileInput.click(); });
-            dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('upload-import-dropzone-hover'); });
-            dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('upload-import-dropzone-hover'); });
-            dropzone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropzone.classList.remove('upload-import-dropzone-hover');
-                if (photoUploading) return;
+            dropzone.style.cursor = 'pointer';
+            dropzone.addEventListener('click', () => {
+                if (photoImporting) return;
                 void (async () => {
-                    const raw = await collectDroppedFiles(e.dataTransfer, includeSubfoldersEnabled());
-                    if (raw.length) setFilesFromRaw(raw);
+                    const p = await showOpenDialog({
+                        title: 'Select photo folder',
+                        properties: ['openDirectory'],
+                    });
+                    if (p) setDirPath(p);
                 })();
             });
         }
 
-        if (fileInput) {
-            fileInput.addEventListener('change', () => {
-                if (photoUploading) return;
-                if (fileInput.files.length) setFilesFromRaw(fileInput.files);
-            });
-        }
-
         if (closeBtn) closeBtn.addEventListener('click', dismissPhotoModal);
-        if (cancelBtn) cancelBtn.addEventListener('click', cancelPhotoModal);
+        if (cancelBtn) cancelBtn.addEventListener('click', () => {
+            if (photoImporting) {
+                fetch('/images/import/cancel', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+                closePhotoSSE();
+            }
+            resetPhotosModal();
+            modal.style.display = 'none';
+        });
         if (backgroundBtn) backgroundBtn.addEventListener('click', dismissPhotoModal);
         modal.addEventListener('click', (e) => { if (e.target === modal) dismissPhotoModal(); });
 
         if (startBtn) {
             startBtn.addEventListener('click', () => {
-                void (async () => {
-                    if (photoUploading) return;
-                    if (photoFiles.length === 0) {
-                        showResult(resultEl, false, 'Please select a folder of photos first.');
+                if (photoImporting) return;
+                if (!photoDirPath) {
+                    showResult(resultEl, false, 'Please choose a photo folder first.');
+                    return;
+                }
+
+                photoImporting = true;
+                if (startBtn) {
+                    startBtn.disabled = true;
+                    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing…';
+                }
+                if (progressWrap) progressWrap.style.display = 'block';
+                if (progressLabel) progressLabel.textContent = 'Starting import…';
+                modal.classList.add('upload-photos-modal-busy');
+                if (backgroundBtn) backgroundBtn.style.display = '';
+                if (resultEl) resultEl.style.display = 'none';
+
+                const includeSubfoldersEl = document.getElementById('upload-photos-include-subfolders');
+                const overwriteExistingEl = document.getElementById('upload-photos-overwrite-existing');
+                const includeSubfolders = includeSubfoldersEl ? includeSubfoldersEl.checked : true;
+                const overwriteExisting = overwriteExistingEl ? overwriteExistingEl.checked : false;
+
+                fetch('/images/import', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        root_directory: photoDirPath,
+                        include_subfolders: includeSubfolders,
+                        overwrite_existing: overwriteExisting,
+                    }),
+                }).then(async (res) => {
+                    if (!res.ok) {
+                        const errBody = await res.json().catch(() => ({}));
+                        const msg = errBody.error || ('Import request failed: HTTP ' + res.status);
+                        photoImporting = false;
+                        resetPhotosModal();
+                        showResult(resultEl, false, msg);
+                        modal.style.display = 'flex';
                         return;
                     }
-
-                    photoUploading = true;
-                    photoBatchAbort = new AbortController();
-                    syncRunningPhotoModalUI();
-                    if (resultEl) resultEl.style.display = 'none';
-
-                    const total = photoFiles.length;
-                    let done = 0;
-                    let totalImported = 0;
-                    let totalUpdated = 0;
-                    let totalSkipped = 0;
-                    let totalErrors = 0;
-                    const overwriteVal = (overwriteExistingCb && overwriteExistingCb.checked) ? '1' : '0';
-
-                    try {
-                        for (let i = 0; i < photoFiles.length; i += PHOTO_BATCH_SIZE) {
-                            const batch = photoFiles.slice(i, i + PHOTO_BATCH_SIZE);
-                            const fd = new FormData();
-                            fd.append('overwrite_existing', overwriteVal);
-                            batch.forEach((f) => {
-                                const relPath = photoUploadRelativePath(f);
-                                fd.append('files', f, relPath);
-                                fd.append('rel_paths', relPath);
-                            });
-
-                            if (progressLabel) {
-                                progressLabel.textContent = `Uploading batch ${Math.floor(i / PHOTO_BATCH_SIZE) + 1} of ${Math.ceil(total / PHOTO_BATCH_SIZE)}…`;
-                            }
-                            if (statusEl) statusEl.textContent = `${done} / ${total} files sent`;
-                            setProgress(progressBar, (done / total) * 100);
-
-                            try {
-                                const res = await fetch('/import/photo-batch', {
-                                    method: 'POST',
-                                    credentials: 'same-origin',
-                                    body: fd,
-                                    signal: photoBatchAbort.signal,
-                                });
-                                if (res.ok) {
-                                    const data = await res.json();
-                                    totalImported += data.imported || 0;
-                                    totalUpdated += data.updated || 0;
-                                    totalSkipped += data.skipped || 0;
-                                    totalErrors += data.errors || 0;
-                                } else {
-                                    totalErrors += batch.length;
-                                }
-                            } catch (err) {
-                                if (err && err.name === 'AbortError') {
-                                    break;
-                                }
-                                totalErrors += batch.length;
-                            }
-                            done += batch.length;
-                        }
-                        setProgress(progressBar, 100);
-                    } finally {
-                        photoUploading = false;
-                        photoBatchAbort = null;
-                    }
-
-                    if (statusEl) statusEl.textContent = '';
-
+                    photoImporting = false;
                     resetPhotosModal();
-                    if (modal.style.display !== 'none') {
-                        modal.style.display = 'none';
+                    modal.style.display = 'none';
+                    if (window.ImportControls && typeof window.ImportControls.attachFilesystemStream === 'function') {
+                        window.ImportControls.attachFilesystemStream();
                     }
-
-                    const savedAny = totalImported + totalUpdated > 0;
-                    if (savedAny && window.ImportControls && typeof window.ImportControls.startThumbnailsAfterPhotoImport === 'function') {
-                        void window.ImportControls.startThumbnailsAfterPhotoImport();
-                    }
-                })();
+                }).catch((err) => {
+                    photoImporting = false;
+                    resetPhotosModal();
+                    showResult(resultEl, false, err.message || 'Import request failed.');
+                    modal.style.display = 'flex';
+                });
             });
         }
 
-        // Wire tiles
         document.querySelectorAll('[data-open-modal="upload-photos-modal"]').forEach(el => {
             el.addEventListener('click', () => {
-                if (!photoUploading) {
-                    resetPhotosModal();
-                } else {
-                    syncRunningPhotoModalUI();
-                }
+                if (!photoImporting) resetPhotosModal();
                 modal.style.display = 'flex';
             });
         });
@@ -718,15 +435,6 @@ const UploadImport = (() => {
     // ── init ──────────────────────────────────────────────────────────────────
 
     function init() {
-        // Fetch server-configured chunk size (falls back to module default of 10 MB).
-        fetch('/api/upload-config', { credentials: 'same-origin' })
-            .then(r => r.ok ? r.json() : null)
-            .then(d => {
-                if (d && d.chunkSizeMB > 0) chunkSizeMB = d.chunkSizeMB;
-                if (d && d.maxUploadGB > 0) maxUploadGB = d.maxUploadGB;
-            })
-            .catch(() => {});
-
         initZipModal();
         initPhotosModal();
     }

@@ -16,7 +16,6 @@ import (
 	"github.com/daveontour/aimuseum/internal/config"
 	"github.com/daveontour/aimuseum/internal/database"
 	"github.com/daveontour/aimuseum/internal/repository"
-	"github.com/daveontour/aimuseum/internal/service"
 )
 
 func main() {
@@ -74,11 +73,6 @@ func run() error {
 		return fmt.Errorf("clear sessions on startup: %w", err)
 	} else if n > 0 {
 		slog.Info("cleared auth sessions after restart", "deleted", n)
-	}
-
-	authSvc := service.NewAuthService(userRepo, cfg.Server.SessionCookieSecure)
-	if err := authSvc.EnsureAdminUser(migrateCtx, cfg.Server.AdminEmail, cfg.Server.AdminPassword); err != nil {
-		return fmt.Errorf("ensure admin user: %w", err)
 	}
 
 	if err := database.SeedEmailExclusionsFromJSON(migrateCtx, db.Std, "static/data/exclusions.json"); err != nil {

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/daveontour/aimuseum/internal/sqlutil"
 )
 
 const maxSourceRefLen = 500
@@ -102,8 +104,10 @@ func (s *FacebookAlbumStorage) SaveAlbumImagesBatch(ctx context.Context, items [
 	}
 	defer tx.Rollback()
 
-	if _, err = tx.ExecContext(ctx, "SET LOCAL synchronous_commit = off"); err != nil {
-		return 0, fmt.Errorf("failed to set synchronous_commit: %w", err)
+	if !sqlutil.IsSQLite(ctx, s.pool) {
+		if _, err = tx.ExecContext(ctx, "SET LOCAL synchronous_commit = off"); err != nil {
+			return 0, fmt.Errorf("failed to set synchronous_commit: %w", err)
+		}
 	}
 
 	imported := 0

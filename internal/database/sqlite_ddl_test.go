@@ -58,3 +58,16 @@ func TestPgDDLToSQLite_ParenthesizedCurrentTimestamp(t *testing.T) {
 		t.Fatalf("reTPlain must not replace TIMESTAMP inside CURRENT_TIMESTAMP: %q", out)
 	}
 }
+
+func TestSqliteFacebookPostsDDLPreservesTimestampColumn(t *testing.T) {
+	for _, stmt := range sqliteStatements() {
+		if !strings.Contains(stmt, "CREATE TABLE IF NOT EXISTS facebook_posts") {
+			continue
+		}
+		if !strings.Contains(stmt, "timestamp") {
+			t.Fatalf("facebook_posts SQLite DDL must keep a column named timestamp:\n%s", stmt)
+		}
+		return
+	}
+	t.Fatal("CREATE TABLE facebook_posts not found in sqliteStatements")
+}

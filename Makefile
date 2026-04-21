@@ -1,32 +1,42 @@
-.PHONY: build build-exe build-exe-electron build-linux build-launcher test generate lint run clean tidy
+.PHONY: check-go build build-exe build-exe-electron build-linux build-launcher test generate lint run clean tidy
 
 MODULE := github.com/daveontour/aimuseum
 BINARY := digitalmuseum
 CMD     := ./cmd/server
 
-build:
+# go.mod is 1.25+; grpc and stdlib (log/slog, slices, …) need a current toolchain.
+check-go:
+	@go version >/dev/null 2>&1 || { echo >&2 "go: not found in PATH"; exit 1; }
+	@if go version | grep -qE ' go1\.([0-9]\.|1[0-9]\.|2[0-4]\.)'; then \
+		echo >&2 "This project requires Go 1.25 or newer."; \
+		echo >&2 "Current: $$(go version)"; \
+		echo >&2 "Install: winget upgrade GoLang.Go   or   https://go.dev/dl/"; \
+		exit 1; \
+	fi
+
+build: check-go
 	go build -o bin/$(BINARY) $(CMD)
 
-build-exe:
+build-exe: check-go
 	go build -o bin/$(BINARY).exe $(CMD)
 
 # Windowsgui subsystem build — no console window when launched by Electron.
-build-exe-electron:
+build-exe-electron: check-go
 	go build -ldflags="-H windowsgui" -o bin/$(BINARY).exe $(CMD)
 
-build-linux:
+build-linux: check-go
 	GOOS=linux GOARCH=amd64 go build -o bin/$(BINARY)-linux-amd64 $(CMD)
 
-build-launcher:
+build-launcher: check-go
 	go build -buildvcs=false -ldflags="-H windowsgui" -o launcher.exe ./cmd/launcher
 
-run:
+run: check-go
 	go run $(CMD)
 
-test:
+test: check-go
 	go test ./...
 
-test-verbose:
+test-verbose: check-go
 	go test -v ./...
 
 generate:
@@ -35,14 +45,14 @@ generate:
 lint:
 	golangci-lint run ./...
 
-tidy:
+tidy: check-go
 	go mod tidy
 
 clean:
 	rm -f bin/$(BINARY)
 
 # Run with race detector
-race:
+race: check-go
 	go run -race $(CMD)
 
 # Build and run (convenience)

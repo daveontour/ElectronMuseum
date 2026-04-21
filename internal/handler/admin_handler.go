@@ -44,7 +44,6 @@ func (h *AdminHandler) WithBilling(b *repository.BillingRepo, users *repository.
 func (h *AdminHandler) RegisterRoutes(r chi.Router) {
 	r.Get("/api/import-control-last-run", h.GetImportControlLastRun)
 	r.Get("/api/control-defaults", h.GetControlDefaults)
-	r.Delete("/admin/empty-media-tables", h.DeleteEmptyMediaTables)
 	r.Post("/writing-style/summarize", h.SummarizeWritingStyle)
 	r.Post("/psychological-profile/summarize", h.SummarizePsychologicalProfile)
 }

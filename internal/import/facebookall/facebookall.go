@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"github.com/daveontour/aimuseum/internal/sqlutil"
 )
 
 // ClearFacebookAllDataForUser removes Messenger, Albums, Places, and Posts data for one archive (user_id).
@@ -19,13 +21,7 @@ func ClearFacebookAllDataForUser(ctx context.Context, pool *sql.DB, userID int64
 	defer tx.Rollback()
 
 	// Messenger: delete attachment media_items and their blobs.
-	_, err = tx.ExecContext(ctx, `
-		WITH deleted_items AS (
-			DELETE FROM media_items WHERE source = 'Facebook' AND user_id = $1 RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs WHERE id IN (SELECT media_blob_id FROM deleted_items WHERE media_blob_id IS NOT NULL)
-	`, userID)
-	if err != nil {
+	if _, err = sqlutil.DeleteMediaItemsByUserAndSourceTx(ctx, tx, userID, "Facebook"); err != nil {
 		return fmt.Errorf("failed to clear Facebook Messenger media: %w", err)
 	}
 
@@ -34,13 +30,7 @@ func ClearFacebookAllDataForUser(ctx context.Context, pool *sql.DB, userID int64
 		return fmt.Errorf("failed to clear Facebook Messenger messages: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `
-		WITH deleted_items AS (
-			DELETE FROM media_items WHERE source = 'facebook_album' AND user_id = $1 RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs WHERE id IN (SELECT media_blob_id FROM deleted_items WHERE media_blob_id IS NOT NULL)
-	`, userID)
-	if err != nil {
+	if _, err = sqlutil.DeleteMediaItemsByUserAndSourceTx(ctx, tx, userID, "facebook_album"); err != nil {
 		return fmt.Errorf("failed to clear Facebook album media: %w", err)
 	}
 
@@ -54,13 +44,7 @@ func ClearFacebookAllDataForUser(ctx context.Context, pool *sql.DB, userID int64
 		return fmt.Errorf("failed to clear Facebook places: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `
-		WITH deleted_items AS (
-			DELETE FROM media_items WHERE source = 'facebook_post' AND user_id = $1 RETURNING media_blob_id
-		)
-		DELETE FROM media_blobs WHERE id IN (SELECT media_blob_id FROM deleted_items WHERE media_blob_id IS NOT NULL)
-	`, userID)
-	if err != nil {
+	if _, err = sqlutil.DeleteMediaItemsByUserAndSourceTx(ctx, tx, userID, "facebook_post"); err != nil {
 		return fmt.Errorf("failed to clear Facebook post media: %w", err)
 	}
 

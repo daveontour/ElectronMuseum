@@ -2373,7 +2373,7 @@ const App = (() => {
             if (t === 'reference_modal') {
                 return null;
             }
-            if (t === 'filesystem_reference') {
+            if (t === 'filesystem_reference' || t === 'upload_photos') {
                 return { jobKey: 'filesystem', importType: 'filesystem' };
             }
             const importType = t || '';
@@ -3349,6 +3349,47 @@ const App = (() => {
                             appendJobLine(jobKey, data.status_line || '');
                         } else if (type === 'completed') {
                             finishImport(jobKey, true, data.status_line || 'Upload import completed');
+                        } else if (type === 'error') {
+                            finishImport(jobKey, false, data.error_message || data.status_line || 'Import error');
+                        } else if (type === 'cancelled') {
+                            finishImport(jobKey, false, 'Import cancelled');
+                        }
+                    } catch (e) { /* ignore */ }
+                };
+                es.onerror = function () { /* SSE auto-reconnects */ };
+            },
+            /** Wire a running “Upload Photos from Device” job into the Import Status panel. */
+            attachFilesystemStream: function () {
+                const jobKey = makeJobKey('filesystem', {});
+                if (runningJobs.has(jobKey)) return;
+                registerRunningJob(jobKey, 'filesystem', {});
+                setExecuting('filesystem', true, {});
+                appendJobLine(jobKey, 'Starting photo import…');
+                closeEventSourceForJob(jobKey);
+                const es = new EventSource('/images/import/stream');
+                const job = runningJobs.get(jobKey);
+                if (job) job.eventSource = es;
+                let logLinesShown = 0;
+                es.onmessage = function (event) {
+                    try {
+                        const ed = JSON.parse(event.data);
+                        const type = ed.type;
+                        const data = ed.data || {};
+                        // Replay any server-buffered log lines not yet shown
+                        if (Array.isArray(data.log_lines) && data.log_lines.length > logLinesShown) {
+                            data.log_lines.slice(logLinesShown).forEach(function (line) {
+                                if (line) appendJobLine(jobKey, line);
+                            });
+                            logLinesShown = data.log_lines.length;
+                        } else if ((type === 'progress' || type === 'status') && data.status_line) {
+                            appendJobLine(jobKey, data.status_line);
+                        }
+                        if (type === 'completed') {
+                            if (data.status_line) appendJobLine(jobKey, data.status_line);
+                            finishImport(jobKey, true, data.status_line || 'Photo import completed');
+                            if (window.ImportControls && typeof window.ImportControls.startThumbnailsAfterPhotoImport === 'function') {
+                                void window.ImportControls.startThumbnailsAfterPhotoImport();
+                            }
                         } else if (type === 'error') {
                             finishImport(jobKey, false, data.error_message || data.status_line || 'Import error');
                         } else if (type === 'cancelled') {

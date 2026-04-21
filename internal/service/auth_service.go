@@ -31,6 +31,9 @@ var ErrInvalidCredentials = errors.New("invalid email or password")
 // ErrEmailTaken is returned when registering with an already-used email.
 var ErrEmailTaken = errors.New("email address is already registered")
 
+// ErrRegistrationClosed is returned when a second account is attempted.
+var ErrRegistrationClosed = errors.New("an account already exists — only one account is permitted")
+
 // ErrWeakPassword is returned when the password does not meet length requirements.
 var ErrWeakPassword = fmt.Errorf("password must be at least %d characters", minPasswordLength)
 
@@ -84,6 +87,15 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 
 	if len(password) < minPasswordLength {
 		return nil, ErrWeakPassword
+	}
+
+	// Single-tenant: only one non-admin account is permitted.
+	anyExists, err := s.users.AnyNonAdminUserExists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("check existing users: %w", err)
+	}
+	if anyExists {
+		return nil, ErrRegistrationClosed
 	}
 
 	exists, err := s.users.EmailExists(ctx, email)

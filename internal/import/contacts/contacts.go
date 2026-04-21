@@ -150,10 +150,12 @@ func writeContactsAndClassifications(ctx context.Context, db *sql.DB, classifica
 	if err := WriteContactsToDatabase(ctx, db, formattedOutput, ownerUserID); err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "Contacts write complete, loading email classifications\n")
 	classifications, err := LoadEmailClassifications(ctx, db)
 	if err != nil {
 		return fmt.Errorf("load classifications: %w", err)
 	}
+	fmt.Fprintf(os.Stderr, "Loaded email classifications, applying to contacts\n")
 	if err := ApplyClassificationsToContacts(ctx, db, classifications); err != nil {
 		return fmt.Errorf("apply classifications: %w", err)
 	}
