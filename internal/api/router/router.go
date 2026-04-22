@@ -59,7 +59,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 	privateStoreSvc := service.NewPrivateStoreService(privateStoreRepo, pool, cfg.Crypto.KeyringPepper)
 
 	// ── Import dialog saved settings (private_store, RAM master key) ────────────
-	importDialogSettingsHandler := handler.NewImportDialogSettingsHandler(privateStoreSvc, sessionMasterStore)
+	importDialogSettingsHandler := handler.NewImportDialogSettingsHandler(privateStoreSvc, sessionMasterStore, authSvc)
 	importDialogSettingsHandler.RegisterRoutes(r)
 
 	// ── IMAP ──────────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 	interviewHandler := handler.NewInterviewHandler(chatSvc, interviewRepo, sessionMasterStore)
 	interviewHandler.RegisterRoutes(r)
 
-	llmToolsAccessHandler := handler.NewLLMToolsAccessHandler(privateStoreSvc, sessionMasterStore)
+	llmToolsAccessHandler := handler.NewLLMToolsAccessHandler(privateStoreSvc, sessionMasterStore, authSvc)
 	llmToolsAccessHandler.RegisterRoutes(r)
 
 	// ── Pam Bot (dementia companion) ─────────────────────────────────────────

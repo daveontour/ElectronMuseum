@@ -11,7 +11,7 @@ import (
 )
 
 // VisitorHandler provides unauthenticated endpoints that let a visitor discover
-// an archive by subject name or email and log in with a visitor key.
+// an archive by subject name or username/email and log in with a visitor key.
 type VisitorHandler struct {
 	svc          *service.VisitorService
 	authSvc      *service.AuthService
@@ -36,9 +36,9 @@ func (h *VisitorHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/visitor/login", h.Login)
 }
 
-// GET /visitor/hints?identifier=<email>
-// Returns hint strings for the archive owner identified by email address.
-// Always responds 200 with { "hints": [] } even when the email is unknown,
+// GET /visitor/hints?identifier=<username-or-email-or-name>
+// Returns hint strings for the archive owner identified by username/email or subject name.
+// Always responds 200 with { "hints": [] } even when the identifier is unknown,
 // to avoid leaking account existence.
 func (h *VisitorHandler) GetHints(w http.ResponseWriter, r *http.Request) {
 	identifier := r.URL.Query().Get("identifier")
@@ -53,7 +53,7 @@ func (h *VisitorHandler) GetHints(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /visitor/login
-// Body: { "identifier": "<name or email>", "key": "<visitor key>" }
+// Body: { "identifier": "<name or username/email>", "key": "<visitor key>" }
 // Verifies the visitor key against the named archive's keyring, creates a
 // dm_session cookie scoped to that archive's owner, and stores the key in the
 // RAM keystore so encrypted data is accessible.

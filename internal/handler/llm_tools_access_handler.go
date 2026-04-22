@@ -17,11 +17,19 @@ import (
 type LLMToolsAccessHandler struct {
 	privateStore *service.PrivateStoreService
 	sessionStore *keystore.SessionMasterStore
+	authSvc      *service.AuthService
 }
 
 // NewLLMToolsAccessHandler constructs the handler.
-func NewLLMToolsAccessHandler(privateStore *service.PrivateStoreService, sessionStore *keystore.SessionMasterStore) *LLMToolsAccessHandler {
-	return &LLMToolsAccessHandler{privateStore: privateStore, sessionStore: sessionStore}
+func NewLLMToolsAccessHandler(privateStore *service.PrivateStoreService, sessionStore *keystore.SessionMasterStore, authSvc *service.AuthService) *LLMToolsAccessHandler {
+	return &LLMToolsAccessHandler{privateStore: privateStore, sessionStore: sessionStore, authSvc: authSvc}
+}
+
+func (h *LLMToolsAccessHandler) resolveLLMToolsMasterPassword(r *http.Request) string {
+	if v := strings.TrimSpace(r.Header.Get("X-Master-Password")); v != "" {
+		return appcrypto.NormalizeKeyringPassword(v)
+	}
+	return resolveMasterPassword(r.URL.Query().Get("master_password"), r, h.sessionStore)
 }
 
 // RegisterRoutes mounts GET/PUT /api/settings/llm-tools-access.
@@ -31,10 +39,7 @@ func (h *LLMToolsAccessHandler) RegisterRoutes(r chi.Router) {
 }
 
 func (h *LLMToolsAccessHandler) masterPassword(w http.ResponseWriter, r *http.Request) (string, bool) {
-	if v := strings.TrimSpace(r.Header.Get("X-Master-Password")); v != "" {
-		return appcrypto.NormalizeKeyringPassword(v), true
-	}
-	mp := resolveMasterPassword(r.URL.Query().Get("master_password"), r, h.sessionStore)
+	mp := h.resolveLLMToolsMasterPassword(r)
 	if strings.TrimSpace(mp) == "" {
 		writeError(w, http.StatusForbidden, "keyring password required (unlock session or pass X-Master-Password)")
 		return "", false
@@ -44,12 +49,9 @@ func (h *LLMToolsAccessHandler) masterPassword(w http.ResponseWriter, r *http.Re
 
 // Get returns all tools with visitor / master flags (default false if unset).
 func (h *LLMToolsAccessHandler) Get(w http.ResponseWriter, r *http.Request) {
-	mp, ok := h.masterPassword(w, r)
-	if !ok {
-		return
-	}
+	mp := h.resolveLLMToolsMasterPassword(r)
 	var policy appai.ToolAccessPolicy
-	if h.privateStore != nil {
+	if strings.TrimSpace(mp) != "" && h.privateStore != nil {
 		rec, err := h.privateStore.GetByKey(r.Context(), appai.LLMToolsAccessStoreKey, mp)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("load policy: %s", err))
@@ -63,6 +65,9 @@ func (h *LLMToolsAccessHandler) Get(w http.ResponseWriter, r *http.Request) {
 			}
 			policy = p
 		}
+	} else if !ArchiveOwnerAuthenticated(r, h.authSvc) {
+		writeError(w, http.StatusForbidden, "keyring password required (unlock session or pass X-Master-Password)")
+		return
 	}
 	out := make([]map[string]any, 0)
 	for _, meta := range appai.AllToolMetas() {

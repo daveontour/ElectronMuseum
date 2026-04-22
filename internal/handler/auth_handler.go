@@ -53,7 +53,7 @@ func (h *AuthHandler) RegisterRoutes(r chi.Router) {
 }
 
 // POST /auth/register
-// Body: { "email": "...", "password": "...", "display_name": "...", "family_name": "...", "gender": "..." }
+// Body: { "username": "...", "password": "...", "display_name": "...", "family_name": "...", "gender": "..." }
 // Returns 201 on success.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.Allow(realIP(r)) {
@@ -62,7 +62,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Email       string `json:"email"`
+		Username    string `json:"username"`
+		Email       string `json:"email"` // backward-compatible alias
 		Password    string `json:"password"`
 		DisplayName string `json:"display_name"`
 		FamilyName  string `json:"family_name"`
@@ -72,11 +73,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.Email == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "email and password are required")
+	username := strings.ToLower(strings.TrimSpace(req.Username))
+	if username == "" {
+		username = strings.ToLower(strings.TrimSpace(req.Email))
+	}
+	if username == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "username and password are required")
 		return
 	}
+	password := strings.ToLower(req.Password)
 	if req.DisplayName == "" {
 		writeError(w, http.StatusBadRequest, "first name is required")
 		return
@@ -85,12 +90,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		req.Gender = "Male"
 	}
 
-	user, err := h.svc.Register(r.Context(), req.Email, req.Password, req.DisplayName, req.FamilyName)
+	user, err := h.svc.Register(r.Context(), username, password, req.DisplayName, req.FamilyName)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrRegistrationClosed):
 			writeError(w, http.StatusConflict, err.Error())
-		case errors.Is(err, service.ErrEmailTaken):
+		case errors.Is(err, service.ErrUsernameTaken):
 			writeError(w, http.StatusConflict, err.Error())
 		case errors.Is(err, service.ErrWeakPassword):
 			writeError(w, http.StatusUnprocessableEntity, err.Error())
@@ -103,10 +108,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Initialise the master keyring using the registration password, then
 	// cache the password in RAM so the keyring is unlocked immediately.
 	userCtx := context.WithValue(r.Context(), appctx.ContextKeyUserID, user.ID)
-	if err := h.sensitiveSvc.InitKeyring(userCtx, req.Password); err != nil {
+	if err := h.sensitiveSvc.InitKeyring(userCtx, password); err != nil {
 		slog.Warn("keyring init on registration failed", "user_id", user.ID, "err", err)
 	} else {
-		_ = h.sessionStore.Put(w, r, req.Password, true)
+		_ = h.sessionStore.Put(w, r, password, true)
 	}
 
 	// Create the subject configuration so the user lands directly on the main page.
@@ -131,7 +136,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /auth/login
-// Body: { "email": "...", "password": "..." }
+// Body: { "username": "...", "password": "..." }
 // Sets dm_session cookie on success.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.Allow(realIP(r)) {
@@ -140,22 +145,29 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Email    string `json:"email"`
+		Username string `json:"username"`
+		Email    string `json:"email"` // backward-compatible alias
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if strings.TrimSpace(req.Email) == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "email and password are required")
+	username := strings.TrimSpace(req.Username)
+	if username == "" {
+		username = strings.TrimSpace(req.Email)
+	}
+	if username == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "username and password are required")
 		return
 	}
+	rawPassword := req.Password
+	password := strings.ToLower(rawPassword)
 
-	sessionID, user, err := h.svc.Login(r.Context(), req.Email, req.Password)
+	sessionID, user, err := h.svc.Login(r.Context(), username, rawPassword)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {
-			writeError(w, http.StatusUnauthorized, "invalid email or password")
+			writeError(w, http.StatusUnauthorized, "invalid username or password")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "login failed")
@@ -168,8 +180,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// For legacy users whose keyring uses a different password this is a no-op;
 	// they will still see the manual unlock prompt.
 	userCtx := context.WithValue(r.Context(), appctx.ContextKeyUserID, user.ID)
-	if ok, _ := h.sensitiveSvc.VerifyMasterPassword(userCtx, req.Password); ok {
-		_ = h.sessionStore.Put(w, r, req.Password, true)
+	if ok, _ := h.sensitiveSvc.VerifyMasterPassword(userCtx, password); ok {
+		_ = h.sessionStore.Put(w, r, password, true)
 	}
 
 	writeJSON(w, map[string]any{
@@ -364,8 +376,10 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
 		return
 	}
+	currentPassword := req.CurrentPassword
+	newPassword := req.NewPassword
 
-	if err := h.svc.ChangePassword(r.Context(), user.ID, req.CurrentPassword, req.NewPassword); err != nil {
+	if err := h.svc.ChangePassword(r.Context(), user.ID, currentPassword, newPassword); err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
 			writeError(w, http.StatusUnauthorized, "current password is incorrect")

@@ -40,6 +40,24 @@ func OwnerMasterUnlockOK(r *http.Request, sessionStore *keystore.SessionMasterSt
 	return err == nil && auth != nil && auth.User != nil && !auth.IsVisitor
 }
 
+// ArchiveOwnerAuthenticated is true when the session cookie identifies a logged-in
+// archive owner (not a visitor / share key seat). It does not imply the master key
+// is unlocked in RAM — use for read-only owner UI when decryption is optional.
+func ArchiveOwnerAuthenticated(r *http.Request, authSvc *service.AuthService) bool {
+	if authSvc == nil {
+		return false
+	}
+	var sid string
+	if c, err := r.Cookie(service.AuthSessionCookieName); err == nil && c != nil {
+		sid = strings.TrimSpace(c.Value)
+	}
+	if sid == "" {
+		return false
+	}
+	auth, err := authSvc.Authenticate(r.Context(), sid)
+	return err == nil && auth != nil && auth.User != nil && !auth.IsVisitor
+}
+
 // RequireOwnerMasterUnlockOrNoKeyring is like RequireOwnerMasterUnlock but allows archive owners
 // when no keyring exists (nothing to unlock). See OwnerMasterUnlockOK.
 func RequireOwnerMasterUnlockOrNoKeyring(w http.ResponseWriter, r *http.Request, sessionStore *keystore.SessionMasterStore, sensitiveSvc *service.SensitiveService, authSvc *service.AuthService) bool {

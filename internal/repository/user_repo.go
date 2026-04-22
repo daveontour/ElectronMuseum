@@ -191,6 +191,18 @@ func (r *UserRepo) EmailExists(ctx context.Context, email string) (bool, error) 
 	return exists, err
 }
 
+// HasAnyVisitorKeys reports whether any non-master sensitive_keyring seat exists.
+func (r *UserRepo) HasAnyVisitorKeys(ctx context.Context) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM sensitive_keyring WHERE is_master = FALSE)`,
+	).Scan(&exists)
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "no such table") {
+		return false, nil
+	}
+	return exists, err
+}
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 // CreateSession inserts a new authenticated session.

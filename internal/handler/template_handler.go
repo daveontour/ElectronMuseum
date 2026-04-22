@@ -66,6 +66,28 @@ func (h *TemplateHandler) GetLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "login page not found")
 		return
 	}
+	hasRegisteredUser := false
+	hasVisitorKeys := false
+	if h.userRepo != nil {
+		exists, err := h.userRepo.AnyNonAdminUserExists(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not load login state")
+			return
+		}
+		hasRegisteredUser = exists
+		if hasRegisteredUser {
+			visitorKeysExist, err := h.userRepo.HasAnyVisitorKeys(r.Context())
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "could not load visitor login state")
+				return
+			}
+			hasVisitorKeys = visitorKeysExist
+		}
+	}
+	content = renderJinja(content, map[string]string{}, map[string]string{
+		"has_registered_user": fmt.Sprintf("%t", hasRegisteredUser),
+		"has_visitor_keys":    fmt.Sprintf("%t", hasVisitorKeys),
+	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(content))
 }
@@ -105,6 +127,18 @@ func (h *TemplateHandler) GetRoot(w http.ResponseWriter, r *http.Request) {
 	extras := map[string]string{
 		"page_title": pageTitle,
 	}
+	// Bust browser/Electron disk cache for the main app bundle when the file changes on disk.
+	if fi, err := os.Stat(filepath.Join(h.pythonStaticDir, "js", "museum", "app.js")); err == nil {
+		extras["static_app_js_cache_bust"] = fmt.Sprintf("%d", fi.ModTime().Unix())
+	} else {
+		extras["static_app_js_cache_bust"] = "0"
+	}
+	// Bust cache for modals-settings.js because upload modal wiring lives there.
+	if fi, err := os.Stat(filepath.Join(h.pythonStaticDir, "js", "museum", "modals-settings.js")); err == nil {
+		extras["static_modals_settings_js_cache_bust"] = fmt.Sprintf("%d", fi.ModTime().Unix())
+	} else {
+		extras["static_modals_settings_js_cache_bust"] = "0"
+	}
 	// Non-local deployments hide server filesystem path import tiles; local shows them.
 	if h.deploymentNatureLocal {
 		extras["deployment_nature_body_class"] = ""
@@ -118,6 +152,7 @@ func (h *TemplateHandler) GetRoot(w http.ResponseWriter, r *http.Request) {
 	rendered := renderJinja(content, ctx, extras)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	_, _ = w.Write([]byte(rendered))
 }
 

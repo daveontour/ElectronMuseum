@@ -41,7 +41,7 @@ func NewVisitorService(
 	}
 }
 
-// ResolveUserID finds the archive owner's user_id from an email address or subject name.
+// ResolveUserID finds the archive owner's user_id from a username/email or subject name.
 // Returns notFound (-1) when no matching archive exists.
 // Returns 0 for a legacy single-tenant row (user_id IS NULL in the DB).
 func (s *VisitorService) ResolveUserID(ctx context.Context, identifier string) (int64, error) {
@@ -50,14 +50,12 @@ func (s *VisitorService) ResolveUserID(ctx context.Context, identifier string) (
 		return notFound, nil
 	}
 
-	if strings.Contains(identifier, "@") {
-		u, err := s.users.FindByEmail(ctx, strings.ToLower(identifier))
-		if err != nil {
-			return notFound, err
-		}
-		if u == nil {
-			return notFound, nil
-		}
+	// Try username/email first so visitor login works with either identifier.
+	u, err := s.users.FindByEmail(ctx, strings.ToLower(identifier))
+	if err != nil {
+		return notFound, err
+	}
+	if u != nil {
 		return u.ID, nil
 	}
 

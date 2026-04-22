@@ -21,15 +21,15 @@ const (
 	AuthSessionCookieName = "dm_session"
 
 	authSessionTTL     = 24 * time.Hour
-	minPasswordLength  = 12
+	minPasswordLength  = 1
 	sessionCleanupFreq = 30 * time.Minute
 )
 
-// ErrInvalidCredentials is returned when email/password does not match.
-var ErrInvalidCredentials = errors.New("invalid email or password")
+// ErrInvalidCredentials is returned when username/password does not match.
+var ErrInvalidCredentials = errors.New("invalid username or password")
 
-// ErrEmailTaken is returned when registering with an already-used email.
-var ErrEmailTaken = errors.New("email address is already registered")
+// ErrUsernameTaken is returned when registering with an already-used username.
+var ErrUsernameTaken = errors.New("username is already registered")
 
 // ErrRegistrationClosed is returned when a second account is attempted.
 var ErrRegistrationClosed = errors.New("an account already exists — only one account is permitted")
@@ -61,7 +61,7 @@ type AuthService struct {
 // is served over HTTPS.
 func NewAuthService(users *repository.UserRepo, secure bool) *AuthService {
 	// Pre-compute a genuine argon2id hash so that Login always runs the full
-	// verification even when the email is not found, keeping timing constant.
+	// verification even when the username is not found, keeping timing constant.
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		panic("auth: failed to generate dummy hash seed: " + err.Error())
@@ -75,13 +75,52 @@ func NewAuthService(users *repository.UserRepo, secure bool) *AuthService {
 	return svc
 }
 
+func canonicalPassword(password string) string {
+	return strings.ToLower(password)
+}
+
+// verifyPasswordCanonicalFirst checks the canonical lowercase password first.
+// If that fails and legacy raw-case hashing matches, it upgrades the stored hash
+// to canonical lowercase so future logins follow the new rule.
+func (s *AuthService) verifyPasswordCanonicalFirst(ctx context.Context, userID int64, rawPassword, storedHash string) (bool, error) {
+	canonical := canonicalPassword(rawPassword)
+	ok, err := appcrypto.VerifyPassword(canonical, storedHash)
+	if err != nil {
+		return false, err
+	}
+	if ok {
+		return true, nil
+	}
+	// If canonical == raw, there is no legacy variant to try.
+	if rawPassword == canonical {
+		return false, nil
+	}
+	legacyOK, err := appcrypto.VerifyPassword(rawPassword, storedHash)
+	if err != nil {
+		return false, err
+	}
+	if !legacyOK {
+		return false, nil
+	}
+	// Upgrade legacy hash to canonical lowercase.
+	newHash, err := appcrypto.HashPassword(canonical)
+	if err != nil {
+		return false, err
+	}
+	if err := s.users.UpdatePasswordHash(ctx, userID, newHash); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ── Registration ─────────────────────────────────────────────────────────────
 
-// Register creates a new user account.  Returns ErrEmailTaken if the email is
+// Register creates a new user account. Returns ErrUsernameTaken if the username is
 // already in use, ErrWeakPassword if the password is too short.
 // displayName is stored as display_name (and first_name); familyName is stored as family_name.
-func (s *AuthService) Register(ctx context.Context, email, password, displayName, familyName string) (*repository.User, error) {
-	email = strings.ToLower(strings.TrimSpace(email))
+func (s *AuthService) Register(ctx context.Context, username, password, displayName, familyName string) (*repository.User, error) {
+	username = strings.ToLower(strings.TrimSpace(username))
+	password = canonicalPassword(password)
 	displayName = strings.TrimSpace(displayName)
 	familyName = strings.TrimSpace(familyName)
 
@@ -98,12 +137,12 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		return nil, ErrRegistrationClosed
 	}
 
-	exists, err := s.users.EmailExists(ctx, email)
+	exists, err := s.users.EmailExists(ctx, username)
 	if err != nil {
-		return nil, fmt.Errorf("check email: %w", err)
+		return nil, fmt.Errorf("check username: %w", err)
 	}
 	if exists {
-		return nil, ErrEmailTaken
+		return nil, ErrUsernameTaken
 	}
 
 	hash, err := appcrypto.HashPassword(password)
@@ -111,7 +150,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
-	user, err := s.users.Create(ctx, email, hash, displayName, displayName, familyName)
+	user, err := s.users.Create(ctx, username, hash, displayName, displayName, familyName)
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
@@ -123,10 +162,11 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 // Login validates credentials and creates a new session.  Returns the session
 // ID (to be stored in the cookie) and the authenticated user.
 // Returns ErrInvalidCredentials on any mismatch to prevent user enumeration.
-func (s *AuthService) Login(ctx context.Context, email, password string) (sessionID string, user *repository.User, err error) {
-	email = strings.ToLower(strings.TrimSpace(email))
+func (s *AuthService) Login(ctx context.Context, username, password string) (sessionID string, user *repository.User, err error) {
+	username = strings.ToLower(strings.TrimSpace(username))
+	rawPassword := password
 
-	u, err := s.users.FindByEmail(ctx, email)
+	u, err := s.users.FindByEmail(ctx, username)
 	if err != nil {
 		return "", nil, fmt.Errorf("find user: %w", err)
 	}
@@ -137,12 +177,22 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (sessio
 	if u != nil {
 		checkHash = u.PasswordHash
 	}
-	ok, verifyErr := appcrypto.VerifyPassword(password, checkHash)
+	ok, verifyErr := appcrypto.VerifyPassword(canonicalPassword(rawPassword), checkHash)
 	if verifyErr != nil {
 		return "", nil, fmt.Errorf("verify password: %w", verifyErr)
 	}
+	if !ok && rawPassword != canonicalPassword(rawPassword) {
+		legacyOK, legacyErr := appcrypto.VerifyPassword(rawPassword, checkHash)
+		if legacyErr != nil {
+			return "", nil, fmt.Errorf("verify legacy password: %w", legacyErr)
+		}
+		ok = legacyOK
+	}
 	if !ok || u == nil || !u.IsActive || u.IsAdmin {
 		return "", nil, ErrInvalidCredentials
+	}
+	if _, err := s.verifyPasswordCanonicalFirst(ctx, u.ID, rawPassword, u.PasswordHash); err != nil {
+		return "", nil, fmt.Errorf("upgrade password hash: %w", err)
 	}
 
 	sid, err := randomSessionID()
@@ -230,6 +280,8 @@ func (s *AuthService) Logout(ctx context.Context, sessionID string) error {
 // ChangePassword verifies currentPassword then stores a new hash.
 // Returns ErrInvalidCredentials when currentPassword is wrong.
 func (s *AuthService) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error {
+	rawCurrentPassword := currentPassword
+	newPassword = canonicalPassword(newPassword)
 	if len(newPassword) < minPasswordLength {
 		return ErrWeakPassword
 	}
@@ -242,7 +294,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID int64, currentP
 		return ErrUserNotFound
 	}
 
-	ok, err := appcrypto.VerifyPassword(currentPassword, user.PasswordHash)
+	ok, err := s.verifyPasswordCanonicalFirst(ctx, user.ID, rawCurrentPassword, user.PasswordHash)
 	if err != nil {
 		return fmt.Errorf("verify password: %w", err)
 	}
@@ -314,6 +366,7 @@ func (s *AuthService) CreateVisitorKeySession(ctx context.Context, ownerUserID i
 // Once an admin row exists, env vars are not used to alter existing users.
 func (s *AuthService) EnsureAdminUser(ctx context.Context, email, password string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
+	password = canonicalPassword(password)
 	if email == "" || password == "" {
 		return nil
 	}
@@ -356,6 +409,7 @@ func (s *AuthService) EnsureAdminUser(ctx context.Context, email, password strin
 // Returns ErrInvalidCredentials on any mismatch.
 func (s *AuthService) AdminLogin(ctx context.Context, email, password string) (*repository.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
+	rawPassword := password
 	u, err := s.users.FindByEmail(ctx, email)
 	if err != nil {
 		return nil, fmt.Errorf("find user: %w", err)
@@ -364,12 +418,22 @@ func (s *AuthService) AdminLogin(ctx context.Context, email, password string) (*
 	if u != nil {
 		checkHash = u.PasswordHash
 	}
-	ok, verifyErr := appcrypto.VerifyPassword(password, checkHash)
+	ok, verifyErr := appcrypto.VerifyPassword(canonicalPassword(rawPassword), checkHash)
 	if verifyErr != nil {
 		return nil, fmt.Errorf("verify password: %w", verifyErr)
 	}
+	if !ok && rawPassword != canonicalPassword(rawPassword) {
+		legacyOK, legacyErr := appcrypto.VerifyPassword(rawPassword, checkHash)
+		if legacyErr != nil {
+			return nil, fmt.Errorf("verify legacy password: %w", legacyErr)
+		}
+		ok = legacyOK
+	}
 	if !ok || u == nil || !u.IsActive || !u.IsAdmin {
 		return nil, ErrInvalidCredentials
+	}
+	if _, err := s.verifyPasswordCanonicalFirst(ctx, u.ID, rawPassword, u.PasswordHash); err != nil {
+		return nil, fmt.Errorf("upgrade password hash: %w", err)
 	}
 	return u, nil
 }

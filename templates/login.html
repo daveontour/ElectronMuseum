@@ -57,6 +57,13 @@
         .form-group {
             margin-bottom: 20px;
         }
+        .form-row {
+            display: flex;
+            gap: 12px;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
         .form-group label {
             display: block;
             color: #cdd6e8;
@@ -110,6 +117,12 @@
         }
         .panel { display: none; }
         .panel.active { display: block; }
+        @media (max-width: 640px) {
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -130,8 +143,8 @@
         <div class="panel active" id="panel-login">
             <form id="login-form" autocomplete="on">
                 <div class="form-group">
-                    <label for="login-email">Email</label>
-                    <input id="login-email" type="email" name="email" required placeholder="you@example.com" autocomplete="username">
+                    <label for="login-username">Username</label>
+                    <input id="login-username" type="text" name="username" required placeholder="Enter your username" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label for="login-password">Password</label>
@@ -147,24 +160,28 @@
         <div class="panel" id="panel-register">
             <form id="register-form" autocomplete="on">
                 <div class="form-group">
-                    <label for="reg-email">Email</label>
-                    <input id="reg-email" type="email" name="email" required placeholder="you@example.com" autocomplete="username">
+                    <label for="reg-username">Username</label>
+                    <input id="reg-username" type="text" name="username" required placeholder="Choose any username" autocomplete="username">
                 </div>
-                <div class="form-group">
-                    <label for="reg-display-name">First Name</label>
-                    <input id="reg-display-name" type="text" name="display_name" required placeholder="e.g. Jane">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="reg-display-name">First Name</label>
+                        <input id="reg-display-name" type="text" name="display_name" required placeholder="e.g. Jane">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-family-name">Family Name</label>
+                        <input id="reg-family-name" type="text" name="family_name" placeholder="e.g. Smith">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="reg-family-name">Family Name</label>
-                    <input id="reg-family-name" type="text" name="family_name" placeholder="e.g. Smith">
-                </div>
-                <div class="form-group">
-                    <label for="reg-password">Password</label>
-                    <input id="reg-password" type="password" name="password" required placeholder="Choose a password (min 12 characters)" autocomplete="new-password">
-                </div>
-                <div class="form-group">
-                    <label for="reg-password-confirm">Confirm Password</label>
-                    <input id="reg-password-confirm" type="password" required placeholder="Re-enter your password" autocomplete="new-password">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="reg-password">Password</label>
+                        <input id="reg-password" type="password" name="password" required placeholder="Choose a password" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-password-confirm">Confirm Password</label>
+                        <input id="reg-password-confirm" type="password" required placeholder="Re-enter your password" autocomplete="new-password">
+                    </div>
                 </div>
                 <button type="submit" class="submit-btn" id="register-btn">
                     <i class="fas fa-user-plus" style="margin-right:6px;"></i>Register
@@ -175,11 +192,11 @@
         <!-- Visitor panel -->
         <div class="panel" id="panel-visitor">
             <div class="form-group">
-                <label>Access the archive of a registered user by entering their email or full name and the visitor key they gave you. Hints for the key can be provided if you enter their email address or name.</label>
+                <label>Access the archive of a registered user by entering their username, email, or full name and the visitor key they gave you. Hints for the key can be provided if you enter their username, email address, or name.</label>
                 <br/>
-                <label for="visitor-identifier">Subject name or email address</label>
+                <label for="visitor-identifier">Subject name, username, or email address</label>
                 <div style="display:flex; gap:8px;">
-                    <input id="visitor-identifier" type="text" placeholder="e.g. Jane Smith or jane@example.com" style="flex:1;">
+                    <input id="visitor-identifier" type="text" placeholder="e.g. Jane Smith, janesmith, or jane@example.com" style="flex:1;">
                     <button type="button" id="visitor-hints-btn" style="padding:10px 14px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; white-space:nowrap;">
                         Get Hints
                     </button>
@@ -197,6 +214,9 @@
     </div>
 
     <script>
+        const HAS_REGISTERED_USER = {{ has_registered_user }};
+        const HAS_VISITOR_KEYS = {{ has_visitor_keys }};
+
         // Tab switching
         const tabLogin = document.getElementById('tab-login');
         const tabRegister = document.getElementById('tab-register');
@@ -232,6 +252,20 @@
             errorMsg.style.display = 'block';
         }
 
+        if (HAS_REGISTERED_USER) {
+            tabRegister.style.display = 'none';
+            panelRegister.classList.remove('active');
+            showTab('login');
+        } else {
+            tabLogin.style.display = 'none';
+            panelLogin.classList.remove('active');
+            showTab('register');
+        }
+        if (!HAS_VISITOR_KEYS) {
+            tabVisitor.style.display = 'none';
+            panelVisitor.classList.remove('active');
+        }
+
         // Login form
         document.getElementById('login-form').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -245,7 +279,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
                     body: JSON.stringify({
-                        email: document.getElementById('login-email').value.trim(),
+                        username: document.getElementById('login-username').value.trim(),
                         password: document.getElementById('login-password').value
                     })
                 });
@@ -253,7 +287,7 @@
                     window.location.href = '/';
                 } else {
                     const data = await res.json().catch(() => ({}));
-                    showError(data.error || data.detail || 'Invalid email or password.');
+                    showError(data.error || data.detail || 'Invalid username or password.');
                 }
             } catch (err) {
                 showError('Network error. Please try again.');
@@ -284,16 +318,16 @@
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
                     body: JSON.stringify({
-                        email: document.getElementById('reg-email').value.trim(),
+                        username: document.getElementById('reg-username').value.trim(),
                         display_name: document.getElementById('reg-display-name').value.trim(),
                         family_name: document.getElementById('reg-family-name').value.trim(),
                         password: password
                     })
                 });
                 if (res.ok) {
-                    const registeredEmail = document.getElementById('reg-email').value.trim();
+                    const registeredUsername = document.getElementById('reg-username').value.trim();
                     showTab('login');
-                    document.getElementById('login-email').value = registeredEmail;
+                    document.getElementById('login-username').value = registeredUsername;
                     document.getElementById('login-password').focus();
                     showSuccess('Registration successful! Please sign in with your new account.');
                 } else {
@@ -336,7 +370,7 @@
             const key = document.getElementById('visitor-key').value;
             errorMsg.style.display = 'none';
             if (!identifier || !key) {
-                showError('Please enter a subject name or email and your visitor key.');
+                showError('Please enter a subject name, username, or email and your visitor key.');
                 return;
             }
             btn.disabled = true;
@@ -354,7 +388,7 @@
                     const data = await res.json().catch(() => ({}));
                     const status = res.status;
                     if (status === 404) {
-                        showError('Archive not found. Check the subject name or email address.');
+                        showError('Archive not found. Check the subject name, username, or email address.');
                     } else if (status === 401) {
                         showError('Invalid visitor key. Please try again.');
                     } else {

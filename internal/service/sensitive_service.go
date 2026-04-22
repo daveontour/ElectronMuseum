@@ -49,7 +49,7 @@ func (s *SensitiveService) Count(ctx context.Context) (int64, error) {
 }
 
 // KeyCount returns the total number of sensitive_keyring seats for this user.
-// The SQLite single-user build omits the sensitive_keyring table; that is treated as zero seats.
+// If the table is missing (very old DB), the count is treated as zero.
 func (s *SensitiveService) KeyCount(ctx context.Context) (int64, error) {
 	var n int64
 	err := s.pool.QueryRowContext(ctx, `SELECT COUNT(*) FROM sensitive_keyring`).Scan(&n)

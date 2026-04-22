@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -76,29 +79,49 @@ func parseHintID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// requireOwnerMasterSession returns the verified session master password after checking this browser
-// was unlocked with the owner master key and the password still decrypts the master row.
-func (h *DocumentHandler) requireOwnerMasterSession(w http.ResponseWriter, r *http.Request) (pw string, ok bool) {
+// ownerMasterSessionOK returns the verified session master password when this browser was
+// unlocked with the owner master key and the password still decrypts the master row.
+func (h *DocumentHandler) ownerMasterSessionOK(r *http.Request) (pw string, ok bool) {
+	if h.sessionStore == nil {
+		return "", false
+	}
 	unlocked, masterUnlocked := h.sessionStore.SessionStatus(r)
 	if !unlocked || !masterUnlocked {
-		writeError(w, http.StatusForbidden, "owner master key unlock required in this browser session")
 		return "", false
 	}
 	pw, have := h.sessionStore.Get(r)
 	if !have || pw == "" {
-		writeError(w, http.StatusForbidden, "session unlock material missing")
 		return "", false
 	}
 	okMaster, err := h.sensitiveSvc.VerifyMasterPassword(r.Context(), pw)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error verifying master key: %s", err))
-		return "", false
-	}
-	if !okMaster {
-		writeError(w, http.StatusForbidden, "session password does not match owner master key")
+	if err != nil || !okMaster {
 		return "", false
 	}
 	return pw, true
+}
+
+// requireOwnerMasterSession returns the verified session master password after checking this browser
+// was unlocked with the owner master key and the password still decrypts the master row.
+func (h *DocumentHandler) requireOwnerMasterSession(w http.ResponseWriter, r *http.Request) (pw string, ok bool) {
+	pw, ok = h.ownerMasterSessionOK(r)
+	if !ok {
+		writeError(w, http.StatusForbidden, "owner master key unlock required in this browser session")
+		return "", false
+	}
+	return pw, true
+}
+
+// visitorKeyAdminReadOK allows visitor-key admin reads when either the session has a verified
+// owner master unlock, or the caller is the authenticated archive owner (tab can load before unlock).
+func (h *DocumentHandler) visitorKeyAdminReadOK(w http.ResponseWriter, r *http.Request) bool {
+	if _, ok := h.ownerMasterSessionOK(r); ok {
+		return true
+	}
+	if ArchiveOwnerAuthenticated(r, h.authSvc) {
+		return true
+	}
+	writeError(w, http.StatusForbidden, "owner master key unlock required in this browser session")
+	return false
 }
 
 type docJSON struct {
@@ -232,6 +255,78 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
+		return
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type"))), "application/json") {
+		var req struct {
+			FilePath         string `json:"file_path"`
+			Title            string `json:"title"`
+			Description      string `json:"description"`
+			Author           string `json:"author"`
+			Tags             string `json:"tags"`
+			Categories       string `json:"categories"`
+			Notes            string `json:"notes"`
+			AvailableForTask bool   `json:"available_for_task"`
+			IsPrivate        bool   `json:"is_private"`
+			IsSensitive      bool   `json:"is_sensitive"`
+			MasterPassword   string `json:"master_password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		filePath := strings.TrimSpace(req.FilePath)
+		if filePath == "" {
+			writeError(w, http.StatusBadRequest, "file_path is required")
+			return
+		}
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("could not read file path: %s", err))
+			return
+		}
+		if len(data) == 0 {
+			writeError(w, http.StatusBadRequest, "selected file is empty")
+			return
+		}
+		filename := filepath.Base(filePath)
+		if filename == "" || filename == "." || filename == string(filepath.Separator) {
+			writeError(w, http.StatusBadRequest, "invalid file_path")
+			return
+		}
+		ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
+		if ct == "" {
+			ct = http.DetectContentType(data)
+		}
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		opt := func(v string) *string {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				return nil
+			}
+			return &v
+		}
+		d, err := h.svc.Create(r.Context(),
+			filename, ct, int64(len(data)), data,
+			opt(req.Title), opt(req.Description), opt(req.Author),
+			opt(req.Tags), opt(req.Categories), opt(req.Notes),
+			req.AvailableForTask, req.IsPrivate, req.IsSensitive, resolveMasterPassword(req.MasterPassword, r, h.sessionStore),
+		)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("error creating document: %s", err))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, docJSON{
+			ID: d.ID, Filename: d.Filename, Title: d.Title, Description: d.Description,
+			Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
+			Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
+			IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
+			CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
+			UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
+		})
 		return
 	}
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
@@ -478,7 +573,7 @@ func (h *DocumentHandler) DeleteAllVisitorKeys(w http.ResponseWriter, r *http.Re
 
 // ListVisitorKeyHintsAdmin returns visitor hints with keyring IDs plus orphan visitor seat IDs (no hint yet).
 func (h *DocumentHandler) ListVisitorKeyHintsAdmin(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireOwnerMasterSession(w, r); !ok {
+	if !h.visitorKeyAdminReadOK(w, r) {
 		return
 	}
 	hints, err := h.sensitiveSvc.ListVisitorKeyHints(r.Context())
@@ -632,7 +727,7 @@ func (h *DocumentHandler) PatchVisitorKeyHintAccess(w http.ResponseWriter, r *ht
 
 // GetVisitorKeyHintReferenceDocuments lists task-available, non-sensitive reference documents with allowed flags for LLM tools.
 func (h *DocumentHandler) GetVisitorKeyHintReferenceDocuments(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireOwnerMasterSession(w, r); !ok {
+	if !h.visitorKeyAdminReadOK(w, r) {
 		return
 	}
 	id, ok := parseHintID(w, r)
@@ -672,7 +767,7 @@ func (h *DocumentHandler) PutVisitorKeyHintReferenceDocuments(w http.ResponseWri
 
 // GetVisitorKeyHintSensitiveReferenceDocuments lists sensitive reference documents with allowed flags for LLM tools.
 func (h *DocumentHandler) GetVisitorKeyHintSensitiveReferenceDocuments(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireOwnerMasterSession(w, r); !ok {
+	if !h.visitorKeyAdminReadOK(w, r) {
 		return
 	}
 	id, ok := parseHintID(w, r)

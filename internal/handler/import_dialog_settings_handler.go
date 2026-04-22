@@ -19,11 +19,12 @@ const imapImportDialogLegacyPrivateKey = "imap_import_dialog_v1"
 type ImportDialogSettingsHandler struct {
 	privateStore *service.PrivateStoreService
 	sessionStore *keystore.SessionMasterStore
+	authSvc      *service.AuthService
 }
 
 // NewImportDialogSettingsHandler constructs the handler.
-func NewImportDialogSettingsHandler(privateStore *service.PrivateStoreService, sessionStore *keystore.SessionMasterStore) *ImportDialogSettingsHandler {
-	return &ImportDialogSettingsHandler{privateStore: privateStore, sessionStore: sessionStore}
+func NewImportDialogSettingsHandler(privateStore *service.PrivateStoreService, sessionStore *keystore.SessionMasterStore, authSvc *service.AuthService) *ImportDialogSettingsHandler {
+	return &ImportDialogSettingsHandler{privateStore: privateStore, sessionStore: sessionStore, authSvc: authSvc}
 }
 
 // allowedImportDialogKinds maps URL segment -> private_store key suffix (import_dialog_<kind>_v1).
@@ -81,8 +82,22 @@ func (h *ImportDialogSettingsHandler) Get(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusNotFound, "unknown import dialog kind")
 		return
 	}
-	mp, ok := h.masterPasswordOrRespond(w, r, false)
-	if !ok {
+	var mp string
+	if h.sessionStore != nil {
+		if p, have := h.sessionStore.Get(r); have && p != "" {
+			mp = p
+		}
+	}
+	if mp == "" {
+		if ArchiveOwnerAuthenticated(r, h.authSvc) {
+			writeJSON(w, map[string]any{"ok": true, "saved": false})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": false, "reason": "master_key_not_unlocked"})
+		return
+	}
+	if h.privateStore == nil {
+		writeError(w, http.StatusInternalServerError, "private store not configured")
 		return
 	}
 	ctx := r.Context()

@@ -1499,7 +1499,6 @@ const App = (() => {
                 setCell('contacts', d.contacts_count != null ? Number(d.contacts_count) : 0);
                 setCell('reference_import_entries', d.reference_images != null ? Number(d.reference_images) : 0);
                 setCell('image_export_entries', d.total_images != null ? Number(d.total_images) : 0);
-                setCell('thumbnails_async_entries', d.thumbnail_count != null ? Number(d.thumbnail_count) : 0);
             } catch (e) {
                 console.warn('Failed to load data import counts:', e);
             }
@@ -1510,7 +1509,7 @@ const App = (() => {
                 const response = await fetch('/api/import-control-last-run');
                 if (!response.ok) return;
                 const data = await response.json();
-                const importTypes = ['email_processing', 'imap_processing', 'filesystem', 'imported_images', 'filesystem_reference', 'reference_import', 'email_embeddings', 'message_embeddings', 'image_export', 'thumbnails', 'thumbnails_async', 'contacts', 'zip_whatsapp', 'zip_instagram', 'zip_imessage', 'zip_facebook', 'upload_photos', 'upload_zip'];
+                const importTypes = ['email_processing', 'imap_processing', 'filesystem', 'imported_images', 'filesystem_reference', 'reference_import', 'email_embeddings', 'message_embeddings', 'image_export', 'contacts', 'zip_whatsapp', 'zip_instagram', 'zip_imessage', 'zip_facebook', 'upload_photos', 'upload_zip'];
                 for (const importType of importTypes) {
                     const els = document.querySelectorAll(`[data-import-last-run="${importType}"]`);
                     const info = data[importType];
@@ -1523,6 +1522,28 @@ const App = (() => {
                         el.title = title;
                     });
                 }
+                const thumbLR = data.thumbnails;
+                const asyncLR = data.thumbnails_async;
+                let mergedLR = (thumbLR && thumbLR.last_run_at) ? thumbLR : null;
+                if (asyncLR && asyncLR.last_run_at) {
+                    const tAt = mergedLR && mergedLR.last_run_at ? String(mergedLR.last_run_at) : '';
+                    const aAt = String(asyncLR.last_run_at);
+                    if (!mergedLR || !mergedLR.last_run_at || aAt > tAt) {
+                        mergedLR = asyncLR;
+                    }
+                }
+                let thumbText = '';
+                let thumbTitle = '';
+                if (mergedLR && mergedLR.last_run_at) {
+                    const formatted = formatImportLastRunLocal(mergedLR.last_run_at);
+                    const resultLabel = (mergedLR.result) ? ((mergedLR.result === 'success' || mergedLR.result === 'completed') ? 'success' : (mergedLR.result === 'cancelled' ? 'cancelled' : 'error')) : null;
+                    thumbText = formatted ? (resultLabel ? `${formatted} (${resultLabel})` : `${formatted}`) : '';
+                    thumbTitle = mergedLR.result_message ? mergedLR.result_message : '';
+                }
+                document.querySelectorAll('[data-import-last-run="thumbnails"]').forEach(el => {
+                    el.textContent = thumbText;
+                    el.title = thumbTitle;
+                });
             } catch (e) {
                 console.warn('Failed to load import control last run:', e);
             }
@@ -1995,6 +2016,7 @@ const App = (() => {
                 filesystem: 'Filesystem Upload',
                 filesystem_reference: 'Filesystem References',
                 thumbnails: 'Thumbnails',
+                thumbnails_async: 'Thumbnails',
                 reference_import: 'Reference Images',
                 email_embeddings: 'Email Embeddings',
                 message_embeddings: 'Message Embeddings',
@@ -2118,10 +2140,12 @@ const App = (() => {
         }
 
         function registerRunningJob(jobKey, importType, extra, labelText) {
+            const ex = extra || {};
             runningJobs.set(jobKey, {
                 importType,
-                zipArchiveType: extra.zipArchiveType || null,
-                label: labelText || jobTabLabel(importType, extra),
+                zipArchiveType: ex.zipArchiveType || null,
+                runReferenceImportAfterLink: !!ex.runReferenceImportAfterLink,
+                label: labelText || jobTabLabel(importType, ex),
                 lines: [],
                 eventSource: null,
                 cancelPending: false
@@ -2376,6 +2400,11 @@ const App = (() => {
             if (t === 'filesystem_reference' || t === 'upload_photos') {
                 return { jobKey: 'filesystem', importType: 'filesystem' };
             }
+            if (t === 'thumbnails') {
+                if (runningJobs.has('thumbnails_async')) {
+                    return { jobKey: 'thumbnails_async', importType: 'thumbnails_async' };
+                }
+            }
             const importType = t || '';
             return { jobKey: makeJobKey(importType, {}), importType };
         }
@@ -2576,6 +2605,7 @@ const App = (() => {
         function finishImport(jobKey, success, message) {
             const rec = runningJobs.get(jobKey);
             const importType = rec ? rec.importType : null;
+            const runRefAfterLink = !!(rec && rec.runReferenceImportAfterLink);
             const extra = rec && rec.zipArchiveType ? { zipArchiveType: rec.zipArchiveType } : {};
             if (message && !success) {
                 appendJobLine(jobKey, message);
@@ -2601,12 +2631,18 @@ const App = (() => {
             if (typeof loadDataImportModalCounts === 'function') void loadDataImportModalCounts();
 
             void maybeAutoRunContactsExtract(importType || '');
+
+            if (success && importType === 'filesystem' && runRefAfterLink && !runningJobs.has('reference_import')) {
+                void runImport('reference_import', {}).catch((e) => {
+                    console.warn('Import Linked Images to Database after filesystem import failed:', e);
+                });
+            }
         }
 
         const importConfigs = {
             upload_zip: { needsInput: false, title: 'Upload Archive Import', stream: '/import/upload/stream' },
             email_processing: { needsInput: true, title: 'Email Processing (Gmail)', run: async (vals) => { const body = { all_labels: vals.all_folders || false, label_ids: vals.all_folders ? [] : (vals.label_ids || []), new_only: vals.new_only || false, exclude_labels: vals.exclude_labels || [] }; const r = await fetch('/gmail/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }, stream: '/gmail/process/stream' },
-            filesystem: { needsInput: true, title: 'Filesystem Image Import', fields: [{ id: 'root_directory', key: 'filesystem_import_directory', label: 'Root Directory(ies)', placeholder: 'e.g., C:\\Users\\Dave\\Pictures; D:\\Photos', required: true }, { id: 'max_images', key: 'filesystem_import_max_images', label: 'Max Images (Optional)', placeholder: 'Leave empty for all', required: false, type: 'number' }, { id: 'reference_mode', key: 'filesystem_import_reference_mode', label: 'Reference only — leave images on filesystem', required: false, type: 'checkbox' }], run: async (vals) => { const body = { root_directory: vals.root_directory, create_thumb_and_get_exif: false, reference_mode: !!vals.reference_mode }; if (vals.max_images) body.max_images = parseInt(vals.max_images, 10); const r = await fetch('/images/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }, stream: '/images/import/stream' },
+            filesystem: { needsInput: true, title: 'Filesystem Image Import', fields: [{ id: 'root_directory', key: 'filesystem_import_directory', label: 'Folder to scan', placeholder: 'Choose a folder or type a full path', required: true, type: 'folder', folderDialogTitle: 'Select folder to import (reference only)' }, { id: 'max_images', key: 'filesystem_import_max_images', label: 'Max Images (Optional)', placeholder: 'Leave empty for all', required: false, type: 'number' }, { id: 'import_db_after_link', key: 'filesystem_import_db_after_link', label: 'Import to Database After Linking', required: false, type: 'checkbox' }], run: async (vals) => { const body = { root_directory: vals.root_directory, create_thumb_and_get_exif: false, reference_mode: true }; if (vals.max_images) body.max_images = parseInt(vals.max_images, 10); const r = await fetch('/images/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }, stream: '/images/import/stream' },
             filesystem_reference: { needsInput: true, title: 'Reference images on filesystem (local)', fields: [{ id: 'root_directory', key: 'filesystem_reference_import_directory', label: 'Folder(s) on this machine — separate with semicolons. Each folder is scanned recursively; only paths are stored in the archive (images stay on disk).', placeholder: 'e.g., C:\\Photos\\Vacation; D:\\Pictures', required: true }, { id: 'max_images', key: 'filesystem_reference_import_max_images', label: 'Max images (optional)', placeholder: 'Leave empty for all', required: false, type: 'number' }], run: async (vals) => { const body = { root_directory: vals.root_directory, create_thumb_and_get_exif: false, reference_mode: true }; if (vals.max_images) body.max_images = parseInt(vals.max_images, 10); const r = await fetch('/images/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }, stream: '/images/import/stream' },
             reference_import: { needsInput: false, title: 'Import Reference Images to Database', run: async () => { const r = await fetch('/images/import-reference', { method: 'POST' }); return r; }, stream: '/images/import-reference/stream' },
             email_embeddings: { needsInput: false, title: 'Generate missing email embedding vectors', run: async () => { const r = await fetch('/emails/embeddings/backfill', { method: 'POST' }); return r; }, stream: '/emails/embeddings/backfill/stream' },
@@ -2991,6 +3027,9 @@ const App = (() => {
                 if (f.type === 'checkbox') {
                     return `<div class="setting-group" style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;"><input type="checkbox" id="import-modal-${f.id}" style="width: 16px; height: 16px;"><label for="import-modal-${f.id}" style="font-weight: 500; cursor: pointer;">${f.label}</label></div>`;
                 }
+                if (f.type === 'folder') {
+                    return `<div class="setting-group" style="margin-bottom: 15px;"><label for="import-modal-${f.id}" style="display: block; margin-bottom: 5px; font-weight: 500;">${f.label}</label><div style="display: flex; gap: 8px; align-items: stretch;"><input type="text" id="import-modal-${f.id}" placeholder="${f.placeholder || ''}" style="flex: 1; min-width: 0; padding: 8px; border-radius: 4px; border: 1px solid #bfc9da;"><button type="button" class="modal-btn modal-btn-secondary" id="import-modal-${f.id}-browse" style="white-space: nowrap;">Choose folder…</button></div><p style="margin: 8px 0 0; font-size: 12px; color: #666;">Paths only are stored in the archive; image files remain on disk (reference import).</p></div>`;
+                }
                 return `<div class="setting-group" style="margin-bottom: 15px;"><label for="import-modal-${f.id}" style="display: block; margin-bottom: 5px; font-weight: 500;">${f.label}</label><input type="${f.type || 'text'}" id="import-modal-${f.id}" placeholder="${f.placeholder || ''}" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #bfc9da;"></div>`;
             }).join('');
             cfg.fields.forEach(f => {
@@ -3021,6 +3060,33 @@ const App = (() => {
                     });
                 }
             }
+
+            cfg.fields.forEach(f => {
+                if (f.type !== 'folder') return;
+                const input = document.getElementById(`import-modal-${f.id}`);
+                const browse = document.getElementById(`import-modal-${f.id}-browse`);
+                if (!input || !browse) return;
+                browse.addEventListener('click', async () => {
+                    if (!window.electronAPI || typeof window.electronAPI.showOpenDialog !== 'function') {
+                        window.alert('Folder picker is only available in the desktop app. You can type the full path in the box instead.');
+                        input.focus();
+                        return;
+                    }
+                    try {
+                        const picked = await window.electronAPI.showOpenDialog({
+                            title: f.folderDialogTitle || 'Select folder',
+                            properties: ['openDirectory']
+                        });
+                        const p = picked && !picked.canceled && picked.filePaths && picked.filePaths.length ? picked.filePaths[0] : '';
+                        if (p) {
+                            input.value = p;
+                            if (typeof saveControlValue === 'function') saveControlValue(f.key, p);
+                        }
+                    } catch (err) {
+                        console.warn('showOpenDialog failed:', err);
+                    }
+                });
+            });
 
             importInputModal.style.display = 'flex';
             importInputModal.style.alignItems = 'center';
@@ -3094,7 +3160,10 @@ const App = (() => {
             if (!cfg) {
                 return;
             }
-            registerRunningJob(jobKey, serverKind, extra);
+            const jobExtra = Object.assign({}, extra, {
+                runReferenceImportAfterLink: importType === 'filesystem' && !!(values && values.import_db_after_link)
+            });
+            registerRunningJob(jobKey, serverKind, jobExtra);
             setExecuting(serverKind, true, extra);
             appendJobLine(jobKey, 'Starting…');
 
@@ -3121,8 +3190,49 @@ const App = (() => {
             }
         }
 
+        function showThumbnailsRunModeModal() {
+            return new Promise((resolve) => {
+                importInputModalTitle.textContent = 'Thumbnails & location extraction';
+                importInputModalBody.innerHTML = '<p style="margin:0 0 12px; color:#444;">Choose how to run this job:</p>' +
+                    '<ul style="margin:0 0 16px 18px; color:#555; line-height:1.5;">' +
+                    '<li><strong>Continuous updates</strong> — live progress lines in the job log; you can cancel while it runs.</li>' +
+                    '<li><strong>Background</strong> — same work on the server without attaching the live stream (log shows start/finish only).</li>' +
+                    '</ul>' +
+                    '<div style="display:flex; flex-direction:column; gap:10px;">' +
+                    '<button type="button" id="thumbnails-run-mode-stream" class="modal-btn modal-btn-primary" style="width:100%;">Continuous updates</button>' +
+                    '<button type="button" id="thumbnails-run-mode-bg" class="modal-btn modal-btn-secondary" style="width:100%;">Background</button>' +
+                    '</div>';
+                const submitBtn = importInputModalSubmit;
+                const prevSubmitDisplay = submitBtn.style.display;
+                submitBtn.style.display = 'none';
+                importInputModal.style.display = 'flex';
+                importInputModal.style.alignItems = 'center';
+                importInputModal.style.justifyContent = 'center';
+                const streamBtn = document.getElementById('thumbnails-run-mode-stream');
+                const bgBtn = document.getElementById('thumbnails-run-mode-bg');
+                const finish = (value) => {
+                    submitBtn.style.display = prevSubmitDisplay || '';
+                    importInputModal.style.display = 'none';
+                    importInputModalCancel.onclick = null;
+                    importInputModal.onclick = null;
+                    resolve(value);
+                };
+                importInputModalCancel.onclick = () => finish(null);
+                importInputModal.onclick = (e) => { if (e.target === importInputModal) finish(null); };
+                if (streamBtn) streamBtn.onclick = () => finish('stream');
+                if (bgBtn) bgBtn.onclick = () => finish('background');
+            });
+        }
+
         async function triggerImport(importType) {
             if (!(await ensureMasterKeyForDataImport())) return;
+            if (importType === 'thumbnails_prompt') {
+                if (runningJobs.has('thumbnails') || runningJobs.has('thumbnails_async')) return;
+                const mode = await showThumbnailsRunModeModal();
+                if (mode === 'stream') void runImport('thumbnails', {});
+                else if (mode === 'background') void runImport('thumbnails_async', {});
+                return;
+            }
             const jobKey = makeJobKey(importType, {});
             if (runningJobs.has(jobKey)) return;
             if (importType === 'email_processing') {

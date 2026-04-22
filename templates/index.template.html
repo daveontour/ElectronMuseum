@@ -1151,7 +1151,7 @@
                                     <td class="data-import-last-run" data-import-last-run="zip_whatsapp"></td>
                                     <td class="data-import-actions-td">
                                         <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="whatsapp"><i class="fas fa-play"></i> Upload</button>
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="whatsapp"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
                                         </div>
                                     </td>
@@ -1163,7 +1163,7 @@
                                     <td class="data-import-last-run" data-import-last-run="zip_instagram"></td>
                                     <td class="data-import-actions-td">
                                         <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="instagram"><i class="fas fa-play"></i> Upload</button>
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="instagram"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
                                         </div>
                                     </td>
@@ -1175,7 +1175,7 @@
                                     <td class="data-import-last-run" data-import-last-run="zip_imessage"></td>
                                     <td class="data-import-actions-td">
                                         <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="imessage"><i class="fas fa-play"></i> Upload</button>
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="imessage"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
                                         </div>
                                     </td>
@@ -1187,33 +1187,22 @@
                                     <td class="data-import-last-run" data-import-last-run="zip_facebook"></td>
                                     <td class="data-import-actions-td">
                                         <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="facebook"><i class="fas fa-play"></i> Upload</button>
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="facebook"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
                                         </div>
                                     </td>
                                     <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="facebook_all" title="Removes Messenger, albums, posts, and Facebook places for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
                                 </tr>
-                                <tr class="data-import-row" data-import="upload_photos">
-                                    <td><i class="fas fa-cloud-upload-alt"></i> Images stored in the database</td>
-                                    <td class="data-import-count" data-import-count-key="imported_images">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="imported_images"></td>
-                                    <td class="data-import-actions-td">
-                                        <!-- <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-open-modal-btn" data-open-modal="upload-photos-modal"><i class="fas fa-play"></i> Upload</button>
-                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
-                                        </div> -->
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="filesystem_media" title="Removes all filesystem-sourced images (includes folder uploads and scans)"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
+
                                 
                                 <!-- {{ index_filesystem_import_tile }} -->
                                 <tr class="data-import-row data-import-path-row" data-import="filesystem">
-                                    <td><i class="fas fa-link"></i>Create References to Images on Disk</td>
+                                    <td><i class="fas fa-link"></i>Link to Images on Disk</td>
                                     <td class="data-import-count" data-import-count-key="filesystem">—</td>
                                     <td class="data-import-last-run" data-import-last-run="filesystem"></td>
                                     <td class="data-import-actions-td">
                                         <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="filesystem"><i class="fas fa-play"></i> Start</button>
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="filesystem"><i class="fas fa-link"></i> Link</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
                                         </div>
                                     </td>
@@ -1232,25 +1221,23 @@
                                     <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="reference_documents"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
                                 </tr>
                                 <tr class="data-import-section-heading"><td colspan="5">Data Maintenance</td></tr>
+
+                                <tr class="data-import-row" data-import="upload_photos">
+                                    <td><i class="fas fa-cloud-upload-alt"></i> Images stored in the database</td>
+                                    <td class="data-import-count" data-import-count-key="imported_images">—</td>
+                                    <td class="data-import-last-run" data-import-last-run="imported_images"></td>
+                                    <td class="data-import-actions-td">
+
+                                    </td>
+                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="filesystem_media" title="Removes all filesystem-sourced images (includes folder uploads and scans)"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
+                                </tr>
                                 <tr class="data-import-row" data-import="reference_import">
-                                    <td><i class="fas fa-file-import"></i> Import Referenced Images to Database (optional)</td>
+                                    <td><i class="fas fa-file-import"></i> Import Linked Images to Database</td>
                                     <td class="data-import-count" data-import-count-key="reference_import_entries">—</td>
                                     <td class="data-import-last-run" data-import-last-run="reference_import"></td>
                                     <td class="data-import-actions-td">
                                         <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="reference_import"><i class="fas fa-play"></i> Run</button>
-                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
-                                        </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="contacts">
-                                    <td><i class="fas fa-address-book"></i> Reprocess Contacts Data</td>
-                                    <td class="data-import-count" data-import-count-key="contacts">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="contacts"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="contacts"><i class="fas fa-play"></i> Run</button>
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="reference_import"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
                                         </div>
                                     </td>
@@ -1262,36 +1249,38 @@
                                     <td class="data-import-last-run" data-import-last-run="image_export"></td>
                                     <td class="data-import-actions-td">
                                         <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="image_export"><i class="fas fa-play"></i> Run</button>
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="image_export"><i class="fas fa-play"></i> Export</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
                                         </div>
                                     </td>
                                     <td></td>
                                 </tr>
+                                <tr class="data-import-row" data-import="contacts">
+                                    <td><i class="fas fa-address-book"></i> Reprocess Contacts Data</td>
+                                    <td class="data-import-count" data-import-count-key="contacts">—</td>
+                                    <td class="data-import-last-run" data-import-last-run="contacts"></td>
+                                    <td class="data-import-actions-td">
+                                        <div class="data-import-action-group">
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="contacts"><i class="fas fa-play"></i> Reprocess</button>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                </tr>
+
                                 <tr class="data-import-row" data-import="thumbnails">
-                                    <td><i class="fas fa-image"></i> Thumbnails Creation &amp; Location Extraction (monitor progress)</td>
+                                    <td><i class="fas fa-image"></i> Thumbnails Creation &amp; Location Extraction</td>
                                     <td class="data-import-count" data-import-count-key="thumbnails">—</td>
                                     <td class="data-import-last-run" data-import-last-run="thumbnails"></td>
                                     <td class="data-import-actions-td">
                                         <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="thumbnails"><i class="fas fa-play"></i> Run</button>
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="thumbnails_prompt"><i class="fas fa-play"></i> Process</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
                                         </div>
                                     </td>
                                     <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="thumbnails" title="Clears thumbnail bytes from stored blobs (images remain)"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
                                 </tr>
-                                <tr class="data-import-row" data-import="thumbnails_async">
-                                    <td><i class="fas fa-image"></i> Thumbnails Creation &amp; Location Extraction (run in background)</td>
-                                    <td class="data-import-count" data-import-count-key="thumbnails_async_entries">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="thumbnails_async"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="thumbnails_async"><i class="fas fa-play"></i> Run</button>
-                                        </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="email_embeddings">
+                                <!-- <tr class="data-import-row" data-import="email_embeddings">
                                     <td><i class="fas fa-vector-square"></i> Generate Emails Search Vectors</td>
                                     <td class="data-import-count">—</td>
                                     <td class="data-import-last-run" data-import-last-run="email_embeddings"></td>
@@ -1314,7 +1303,7 @@
                                         </div>
                                     </td>
                                     <td></td>
-                                </tr>
+                                </tr> -->
                                 </tbody>
                             </table>
                         </div>
@@ -2797,14 +2786,15 @@
                 </div>
                 <form id="reference-documents-upload-form" class="reference-documents-upload-form">
                     <div class="reference-documents-form-group">
-                        <span class="reference-documents-files-label">Files *</span>
-                        <div id="reference-documents-drop-zone" class="reference-documents-drop-zone">
-                            <input type="file" id="reference-documents-upload-file" name="file" multiple required class="reference-documents-file-input-overlay" aria-label="Choose reference document files or drop files here">
-                            <div class="reference-documents-drop-zone-inner">
-                                <i class="fas fa-cloud-upload-alt reference-documents-drop-icon" aria-hidden="true"></i>
-                                <p class="reference-documents-drop-primary">Drag and drop files here, or click to browse.</p>
-                                <p class="reference-documents-drop-sub">You can add multiple files. Each document's title is set from its file name.</p>
+                        <span class="reference-documents-files-label">File *</span>
+                        <div class="reference-documents-drop-zone" style="padding: 12px;">
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                <button type="button" id="reference-documents-upload-pick" class="modal-btn modal-btn-secondary">
+                                    <i class="fas fa-folder-open"></i> Choose File
+                                </button>
+                                <input type="text" id="reference-documents-upload-path" readonly placeholder="No file selected" style="flex:1; min-width: 280px;">
                             </div>
+                            <p class="reference-documents-drop-sub" style="margin-top: 10px;">Select one file using the native file picker. The full file path is sent to the backend.</p>
                         </div>
                         <ul id="reference-documents-upload-file-list" class="reference-documents-upload-file-list" hidden></ul>
                     </div>
@@ -3299,11 +3289,11 @@
     <script src="/static/js/museum/modals-people.js" defer></script>
     <script src="/static/js/museum/modals-artefacts.js" defer></script>
     <script src="/static/js/museum/modals-sensitive.js" defer></script>
-    <script src="/static/js/museum/modals-settings.js" defer></script>
+    <script src="/static/js/museum/modals-settings.js?v={{ static_modals_settings_js_cache_bust }}" defer></script>
     <script src="/static/js/museum/guide.js" defer></script>
     <script src="/static/js/museum/interviewer.js" defer></script>
     <script src="/static/js/museum/chat-voice-input.js" defer></script>
-    <script src="/static/js/museum/app.js" defer></script>
+    <script src="/static/js/museum/app.js?v={{ static_app_js_cache_bust }}" defer></script>
     <script src="/static/js/museum/chat-message-stars.js" defer></script>
     <script src="/static/js/museum/have-a-chat.js" defer></script>
     <script src="/static/js/museum/pam-bot.js" defer></script>

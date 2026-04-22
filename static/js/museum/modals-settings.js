@@ -19,31 +19,19 @@ Modals.ReferenceDocuments = (() => {
         }
 
         function updateReferenceDocumentsUploadFileList() {
-            const fileInput = document.getElementById('reference-documents-upload-file');
+            const selectedPathInput = document.getElementById('reference-documents-upload-path');
             const listEl = document.getElementById('reference-documents-upload-file-list');
-            if (!fileInput || !listEl) return;
-            const files = Array.from(fileInput.files);
+            if (!selectedPathInput || !listEl) return;
+            const selectedPath = (selectedPathInput.value || '').trim();
             listEl.innerHTML = '';
-            if (files.length === 0) {
+            if (!selectedPath) {
                 listEl.hidden = true;
                 return;
             }
             listEl.hidden = false;
-            files.forEach((f) => {
-                const li = document.createElement('li');
-                li.textContent = f.name + (typeof f.size === 'number' ? ` (${formatFileSize(f.size)})` : '');
-                listEl.appendChild(li);
-            });
-        }
-
-        function mergeDroppedFilesIntoInput(newFiles) {
-            const fileInput = document.getElementById('reference-documents-upload-file');
-            if (!fileInput || !newFiles.length) return;
-            const dt = new DataTransfer();
-            const existing = Array.from(fileInput.files);
-            [...existing, ...newFiles].forEach((f) => dt.items.add(f));
-            fileInput.files = dt.files;
-            updateReferenceDocumentsUploadFileList();
+            const li = document.createElement('li');
+            li.textContent = selectedPath;
+            listEl.appendChild(li);
         }
 
         function formatDateAustralian(dateString) {
@@ -481,51 +469,52 @@ Modals.ReferenceDocuments = (() => {
                 });
             }
 
-            const refDocDropZone = document.getElementById('reference-documents-drop-zone');
-            const refDocFileInput = document.getElementById('reference-documents-upload-file');
-            if (refDocDropZone && refDocFileInput) {
-                let refDocDragCounter = 0;
-                refDocDropZone.addEventListener('dragenter', (ev) => {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    refDocDragCounter++;
-                    refDocDropZone.classList.add('reference-documents-drop-zone--dragover');
-                });
-                refDocDropZone.addEventListener('dragover', (ev) => {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                });
-                refDocDropZone.addEventListener('dragleave', (ev) => {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    refDocDragCounter--;
-                    if (refDocDragCounter <= 0) {
-                        refDocDragCounter = 0;
-                        refDocDropZone.classList.remove('reference-documents-drop-zone--dragover');
+            const refDocPickBtn = document.getElementById('reference-documents-upload-pick');
+            const refDocPathInput = document.getElementById('reference-documents-upload-path');
+            if (refDocPickBtn && refDocPathInput) {
+                const showPickerUnavailable = async () => {
+                    if (window.AppDialogs && typeof AppDialogs.showAppAlert === 'function') {
+                        await AppDialogs.showAppAlert('File picker unavailable', 'Native file selection is only available in the desktop app.');
+                    } else {
+                        console.warn('[ReferenceDocuments] Native picker unavailable');
                     }
-                });
-                refDocDropZone.addEventListener('drop', (ev) => {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    refDocDragCounter = 0;
-                    refDocDropZone.classList.remove('reference-documents-drop-zone--dragover');
-                    const dropped = Array.from(ev.dataTransfer.files || []);
-                    mergeDroppedFilesIntoInput(dropped);
-                });
-                refDocFileInput.addEventListener('change', () => {
-                    updateReferenceDocumentsUploadFileList();
-                });
+                };
+                const handlePickClick = async () => {
+                    if (!window.electronAPI || typeof window.electronAPI.showOpenDialog !== 'function') {
+                        await showPickerUnavailable();
+                        return;
+                    }
+                    try {
+                        const result = await window.electronAPI.showOpenDialog({
+                            properties: ['openFile'],
+                        });
+                        if (!result || result.canceled || !Array.isArray(result.filePaths) || result.filePaths.length === 0) {
+                            return;
+                        }
+                        refDocPathInput.value = result.filePaths[0] || '';
+                        updateReferenceDocumentsUploadFileList();
+                    } catch (err) {
+                        if (window.AppDialogs && typeof AppDialogs.showAppAlert === 'function') {
+                            await AppDialogs.showAppAlert('Error', (err && err.message) ? err.message : 'Could not open file picker.');
+                        } else {
+                            console.error('[ReferenceDocuments] Picker error:', err);
+                        }
+                    }
+                };
+                refDocPickBtn.addEventListener('click', handlePickClick);
+                // Also assign onclick to survive stale/delegated listener edge-cases.
+                refDocPickBtn.onclick = handlePickClick;
             }
             
             if (DOM.referenceDocumentsUploadForm) {
                 DOM.referenceDocumentsUploadForm.addEventListener('submit', async (e) => {
                     e.preventDefault();
                     
-                    const fileInput = document.getElementById('reference-documents-upload-file');
+                    const selectedPathInput = document.getElementById('reference-documents-upload-path');
                     const submitBtn = document.getElementById('reference-documents-upload-submit');
-                    const files = Array.from(fileInput.files).filter((f) => f.size > 0);
-                    if (!files.length) {
-                        await AppDialogs.showAppAlert('Please add at least one non-empty file');
+                    const selectedPath = selectedPathInput ? (selectedPathInput.value || '').trim() : '';
+                    if (!selectedPath) {
+                        await AppDialogs.showAppAlert('Please choose a file');
                         return;
                     }
 
@@ -534,53 +523,37 @@ Modals.ReferenceDocuments = (() => {
                     const categories = document.getElementById('reference-documents-upload-categories').value;
                     const availableForTask = document.getElementById('reference-documents-upload-task').checked;
 
-                    const failures = [];
                     if (submitBtn) submitBtn.disabled = true;
                     try {
-                        for (let i = 0; i < files.length; i++) {
-                            const file = files[i];
-                            const formData = new FormData();
-                            formData.append('file', file);
-                            formData.append('title', file.name);
-                            formData.append('description', description);
-                            formData.append('tags', tags);
-                            formData.append('categories', categories);
-                            formData.append('available_for_task', availableForTask);
+                        const response = await fetch('/reference-documents', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                file_path: selectedPath,
+                                description: description || '',
+                                tags: tags || '',
+                                categories: categories || '',
+                                available_for_task: !!availableForTask
+                            })
+                        });
+                        if (!response.ok) {
+                            let detail = `HTTP ${response.status}`;
                             try {
-                                const response = await fetch('/reference-documents', {
-                                    method: 'POST',
-                                    body: formData
-                                });
-                                if (!response.ok) {
-                                    let detail = `HTTP ${response.status}`;
-                                    try {
-                                        const errBody = await response.json();
-                                        if (errBody.detail) detail = errBody.detail;
-                                    } catch (parseErr) { /* ignore */ }
-                                    failures.push({ name: file.name, detail });
-                                }
-                            } catch (err) {
-                                failures.push({ name: file.name, detail: err.message || String(err) });
-                            }
+                                const errBody = await response.json();
+                                if (errBody.detail) detail = errBody.detail;
+                            } catch (parseErr) { /* ignore */ }
+                            throw new Error(detail);
                         }
-
-                        if (failures.length) {
-                            const lines = failures.map((f) => `${f.name}: ${f.detail}`).join('\n');
-                            await AppDialogs.showAppAlert(
-                                'Upload incomplete',
-                                `${files.length - failures.length} of ${files.length} uploaded.\n\nFailed:\n${lines}`
-                            );
-                            if (failures.length < files.length) {
-                                await loadDocuments();
-                                Modals.ReferenceDocumentsNotification.reset();
-                            }
-                        } else {
-                            Modals._closeModal(DOM.referenceDocumentsUploadModal);
-                            DOM.referenceDocumentsUploadForm.reset();
-                            updateReferenceDocumentsUploadFileList();
-                            await loadDocuments();
-                            Modals.ReferenceDocumentsNotification.reset();
-                        }
+                        Modals._closeModal(DOM.referenceDocumentsUploadModal);
+                        DOM.referenceDocumentsUploadForm.reset();
+                        if (selectedPathInput) selectedPathInput.value = '';
+                        updateReferenceDocumentsUploadFileList();
+                        await loadDocuments();
+                        Modals.ReferenceDocumentsNotification.reset();
+                    } catch (error) {
+                        await AppDialogs.showAppAlert('Error', 'Failed to add reference document: ' + (error.message || String(error)));
                     } finally {
                         if (submitBtn) submitBtn.disabled = false;
                     }

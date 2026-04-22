@@ -3054,10 +3054,6 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 #data-import-modal .data-import-table tbody tr[data-import="image_export"] td:first-child > i {
     color: #7c3aed;
 }
-#data-import-modal .data-import-table tbody tr[data-import="thumbnails_async"] td:first-child > i {
-    color: #ca8a04;
-}
-
 /* Same width for every primary/control button in the Start column */
 #data-import-modal .data-import-table tbody td:nth-child(4) button.modal-btn {
     width: 120px;

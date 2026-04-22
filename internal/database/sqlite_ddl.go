@@ -21,7 +21,7 @@ var (
 )
 
 // sqliteStatements returns DDL strings suitable for SQLite, derived from the
-// PostgreSQL schemaDDL() slice. Tables related to encryption / keyring are omitted.
+// PostgreSQL schemaDDL() slice.
 func sqliteStatements() []string {
 	var out []string
 	for _, s := range schemaDDL() {
@@ -37,15 +37,9 @@ func sqliteStatements() []string {
 	return out
 }
 
-// encryptionSQLiteSkipTables matches tables not created in the SQLite build (no keyring / encryption).
-var encryptionSQLiteSkipTables = []string{
-	"sensitive_keyring",
-	"visitor_key_hints",
-	"visitor_key_hint_reference_documents",
-	"visitor_key_hint_sensitive_reference_documents",
-	"private_store",
-	"master_keys",
-}
+// encryptionSQLiteSkipTables can exclude schemaDDL tables from the SQLite build.
+// Keyring, visitor hints, and private_store are required for the Electron / SQLite app.
+var encryptionSQLiteSkipTables = []string{}
 
 func skipSQLiteTable(s string) bool {
 	m := reSkipTable.FindStringSubmatch(s)
@@ -89,6 +83,8 @@ func pgDDLToSQLite(s string) string {
 
 	// Types
 	s = strings.ReplaceAll(s, "BIGSERIAL", "INTEGER")
+	// schemaDDL uses two spaces between SERIAL and PRIMARY on some tables; handle both.
+	s = strings.ReplaceAll(s, "SERIAL  PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
 	s = strings.ReplaceAll(s, "SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
 	s = strings.ReplaceAll(s, "BOOLEAN NOT NULL", "INTEGER NOT NULL")
 	s = strings.ReplaceAll(s, "BOOLEAN DEFAULT", "INTEGER DEFAULT")
