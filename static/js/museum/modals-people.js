@@ -1071,6 +1071,7 @@ Modals.Relationships = (() => {
 
             setupEvents();
             reLayout();
+            resetView();
             
         }
 

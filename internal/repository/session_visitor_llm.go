@@ -119,7 +119,7 @@ func (r *UserRepo) PatchSessionVisitorLLM(ctx context.Context, sessionID string,
 	}
 	tag, err := r.pool.ExecContext(ctx, `
 		UPDATE sessions
-		SET visitor_llm_overrides = $2::jsonb
+		SET visitor_llm_overrides = $2
 		WHERE id = $1 AND expires_at > CURRENT_TIMESTAMP AND is_visitor = TRUE`,
 		sessionID, string(payload),
 	)

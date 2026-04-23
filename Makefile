@@ -67,6 +67,7 @@ electron-dev: build-exe-electron
 	cd electron && npm install --prefer-offline && npx electron .
 
 # Package the Electron app into a distributable installer.
-# Produces dist/electron/Digital Museum Setup *.exe
+# Produces dist/electron/Digital Museum Setup *.exe (config: electron/electron-builder.yml).
 electron-dist: build-exe-electron
+	@test -f bin/$(BINARY).exe || { echo >&2 "Missing bin/$(BINARY).exe — run from repo root after build-exe-electron."; exit 1; }
 	cd electron && npm install --prefer-offline && npx electron-builder

@@ -32,6 +32,7 @@ import (
 	"github.com/daveontour/aimuseum/internal/keystore"
 	"github.com/daveontour/aimuseum/internal/repository"
 	"github.com/daveontour/aimuseum/internal/service"
+	"github.com/daveontour/aimuseum/internal/sqlutil"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -1978,11 +1979,11 @@ func runEmailEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingServ
 		}
 
 		vectorLiteral := float32SliceToVectorLiteral(vec)
-		if _, err := pool.ExecContext(ctx, `
-			UPDATE emails
-			SET embedding_vector = $1::vector, updated_at = CURRENT_TIMESTAMP
-			WHERE id = $2 AND COALESCE(user_id, 0) = $3
-		`, vectorLiteral, c.id, uid); err != nil {
+		emailEmbedSQL := `UPDATE emails SET embedding_vector = $1::vector, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND COALESCE(user_id, 0) = $3`
+		if sqlutil.IsSQLite(ctx, pool) {
+			emailEmbedSQL = `UPDATE emails SET embedding_vector = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND COALESCE(user_id, 0) = $3`
+		}
+		if _, err := pool.ExecContext(ctx, emailEmbedSQL, vectorLiteral, c.id, uid); err != nil {
 			errorsCount++
 			job.UpdateState(map[string]any{
 				"processed":     i + 1,
@@ -2246,11 +2247,11 @@ func runMessageEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingSe
 		}
 
 		vectorLiteral := float32SliceToVectorLiteral(vec)
-		if _, err := pool.ExecContext(ctx, `
-			UPDATE messages
-			SET embedding_vector = $1::vector, updated_at = CURRENT_TIMESTAMP
-			WHERE id = $2 AND COALESCE(user_id, 0) = $3
-		`, vectorLiteral, c.id, uid); err != nil {
+		msgEmbedSQL := `UPDATE messages SET embedding_vector = $1::vector, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND COALESCE(user_id, 0) = $3`
+		if sqlutil.IsSQLite(ctx, pool) {
+			msgEmbedSQL = `UPDATE messages SET embedding_vector = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND COALESCE(user_id, 0) = $3`
+		}
+		if _, err := pool.ExecContext(ctx, msgEmbedSQL, vectorLiteral, c.id, uid); err != nil {
 			errorsCount++
 			job.UpdateState(map[string]any{
 				"processed":     i + 1,

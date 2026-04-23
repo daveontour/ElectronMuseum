@@ -9,6 +9,7 @@ import (
 	_ "net/http/pprof" // registers /debug/pprof handlers on DefaultServeMux
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -25,10 +26,61 @@ func main() {
 	}
 }
 
+// logSQLitePaths logs configured, absolute, cwd-relative paths and whether each file exists (before open).
+func logSQLitePaths(phase string, mainPath, billingPath string) {
+	wd, err := os.Getwd()
+	if err != nil {
+		wd = "."
+	}
+	execPath := ""
+	if exe, err2 := os.Executable(); err2 == nil {
+		execPath = exe
+	}
+	logOne := func(name, p string) {
+		clean := filepath.Clean(p)
+		abs := clean
+		if a, errA := filepath.Abs(clean); errA == nil {
+			abs = a
+		}
+		relCwd := ""
+		if r, errR := filepath.Rel(wd, abs); errR == nil {
+			relCwd = r
+		} else {
+			relCwd = "(cannot relate to go_cwd: " + errR.Error() + ")"
+		}
+		exists := false
+		var size int64
+		if st, errS := os.Stat(abs); errS == nil {
+			exists = true
+			size = st.Size()
+		}
+		slog.Info("sqlite path trace",
+			"phase", phase,
+			"db", name,
+			"go_cwd", wd,
+			"go_executable", execPath,
+			"path_from_env", p,
+			"path_clean", clean,
+			"path_absolute", abs,
+			"path_relative_to_go_cwd", relCwd,
+			"file_exists_on_disk", exists,
+			"file_size_bytes", size,
+		)
+	}
+	logOne("main", mainPath)
+	logOne("billing", billingPath)
+}
+
 func run() error {
 	// ── Structured logging ─────────────────────────────────────────────────────
+	logLevel := slog.LevelWarn
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		if err := logLevel.UnmarshalText([]byte(v)); err != nil {
+			logLevel = slog.LevelWarn
+		}
+	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: logLevel,
 	})))
 
 	// ── Configuration ──────────────────────────────────────────────────────────
@@ -43,6 +95,8 @@ func run() error {
 
 	billingCfg := cfg.DB.BillingConfig()
 
+	logSQLitePaths("before_open", cfg.DB.SQLitePath, billingCfg.BillingSQLitePath)
+
 	db, err := database.New(ctx, cfg.DB)
 	if err != nil {
 		return fmt.Errorf("connect to database: %w", err)
@@ -54,6 +108,8 @@ func run() error {
 		return fmt.Errorf("connect to billing database: %w", err)
 	}
 	defer billingDB.Close()
+
+	logSQLitePaths("after_open_ping_ok", cfg.DB.SQLitePath, billingCfg.BillingSQLitePath)
 
 	migrateCtx, migrateCancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer migrateCancel()

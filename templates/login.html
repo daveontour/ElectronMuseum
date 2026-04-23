@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="/static/css/museum_of.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        html {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
         body {
             margin: 0;
             display: flex;
@@ -14,6 +17,13 @@
             justify-content: center;
             min-height: 100vh;
             background: #0f1922;
+            font-family: inherit;
+        }
+        .login-card input,
+        .login-card button,
+        .login-card textarea,
+        .login-card select,
+        .login-card label {
             font-family: inherit;
         }
         .login-card {
@@ -138,6 +148,36 @@
 
         <div id="error-msg" class="error-msg"></div>
         <div id="success-msg" style="display:none; color:#4ade80; background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.25); padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:0.9rem;"></div>
+
+        <div id="advanced-trigger" style="text-align:right; margin-bottom:4px;">
+            <button type="button" id="advanced-btn" style="background:none;border:none;color:#8fa4c8;font-size:0.82rem;cursor:pointer;padding:2px 0;">&#9881; Advanced</button>
+        </div>
+
+        <div id="panel-advanced" style="display:none; margin-bottom:16px; padding:14px; background:#0f1922; border:1px solid #2e4068; border-radius:8px;">
+            <div style="color:#cdd6e8; font-size:0.88rem; font-weight:600; margin-bottom:8px;">Database</div>
+            <div id="adv-current-path" style="color:#8fa4c8; font-size:0.82rem; margin-bottom:10px; word-break:break-all;">(loading&hellip;)</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <button type="button" id="adv-browse-btn" style="padding:7px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem;">Browse&hellip;</button>
+                <button type="button" id="adv-new-btn"    style="padding:7px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem;">New Database&hellip;</button>
+                <button type="button" id="adv-apply-btn" disabled style="padding:7px 14px; width:148px; border-radius:6px; border:none; background:#3b82f6; color:#fff; cursor:not-allowed; opacity:0.45; font-size:0.82rem; margin-left:auto; text-align:center;">Use This Database</button>
+            </div>
+
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2e4068; display:flex; align-items:center; gap:10px;">
+                <span style="color:#cdd6e8; font-size:0.88rem; font-weight:600; white-space:nowrap;">Log Level</span>
+                <select id="adv-log-level" style="padding:6px 10px; border-radius:6px; border:1px solid #2e4068; background:#19264d; color:#cdd6e8; font-size:0.85rem; cursor:pointer;">
+                    <option value="debug">Debug</option>
+                    <option value="info">Info</option>
+                    <option value="warn" selected>Warn</option>
+                    <option value="error">Error</option>
+                </select>
+                <button type="button" id="adv-apply-log-btn" disabled style="padding:6px 12px; width:148px; border-radius:6px; border:none; background:#3b82f6; color:#fff; cursor:not-allowed; opacity:0.45; font-size:0.82rem; margin-left:auto; text-align:center;">Apply</button>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-top:20px; padding-top:12px; border-top:1px solid #2e4068;">
+                <button type="button" id="adv-close-btn" style="padding:7px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem; margin-left:auto;">Close</button>
+            </div>
+            <div id="adv-status" style="color:#f87171; font-size:0.82rem; margin-top:8px; display:none;"></div>
+        </div>
 
         <!-- Login panel -->
         <div class="panel active" id="panel-login">
@@ -402,6 +442,112 @@
                 btn.innerHTML = '<i class="fas fa-door-open" style="margin-right:6px;"></i>Access Archive';
             }
         });
+        // Advanced database selector (Electron only)
+        (function () {
+            const trigger = document.getElementById('advanced-trigger');
+            if (!window.electronAPI) { trigger.style.display = 'none'; return; }
+
+            let pendingPath = null;
+            let currentDbPath = null;
+            let originalLogLevel = 'warn';
+
+            const applyDbBtn  = document.getElementById('adv-apply-btn');
+            const applyLogBtn = document.getElementById('adv-apply-log-btn');
+            const logSel      = document.getElementById('adv-log-level');
+            const statusEl    = document.getElementById('adv-status');
+
+            function setDbBtnEnabled(on) {
+                applyDbBtn.disabled = !on;
+                applyDbBtn.style.cursor  = on ? 'pointer' : 'not-allowed';
+                applyDbBtn.style.opacity = on ? '1' : '0.45';
+            }
+            function setLogBtnEnabled(on) {
+                applyLogBtn.disabled = !on;
+                applyLogBtn.style.cursor  = on ? 'pointer' : 'not-allowed';
+                applyLogBtn.style.opacity = on ? '1' : '0.45';
+            }
+
+            async function showAdvanced() {
+                document.getElementById('panel-advanced').style.display = 'block';
+                document.getElementById('adv-current-path').textContent = '(loading…)';
+                statusEl.style.display = 'none';
+                pendingPath = null;
+                setDbBtnEnabled(false);
+                setLogBtnEnabled(false);
+                const [p, lvl] = await Promise.all([
+                    window.electronAPI.getDbPath(),
+                    window.electronAPI.getLogLevel(),
+                ]);
+                currentDbPath = p || '';
+                document.getElementById('adv-current-path').textContent = currentDbPath || '(unknown)';
+                originalLogLevel = (lvl || 'warn').toLowerCase();
+                logSel.value = originalLogLevel;
+                if (!logSel.value) { logSel.value = 'warn'; originalLogLevel = 'warn'; }
+            }
+
+            document.getElementById('advanced-btn').addEventListener('click', showAdvanced);
+            document.getElementById('adv-close-btn').addEventListener('click', () => {
+                document.getElementById('panel-advanced').style.display = 'none';
+            });
+
+            logSel.addEventListener('change', () => {
+                setLogBtnEnabled(logSel.value !== originalLogLevel);
+            });
+
+            document.getElementById('adv-browse-btn').addEventListener('click', async () => {
+                const result = await window.electronAPI.showOpenDialog({
+                    title: 'Select Database',
+                    filters: [{ name: 'SQLite Database', extensions: ['sqlite', 'db'] }],
+                    properties: ['openFile'],
+                });
+                if (!result.canceled && result.filePaths.length > 0) {
+                    pendingPath = result.filePaths[0];
+                    document.getElementById('adv-current-path').textContent = pendingPath;
+                    setDbBtnEnabled(true);
+                }
+            });
+
+            document.getElementById('adv-new-btn').addEventListener('click', async () => {
+                const result = await window.electronAPI.showSaveDialog({
+                    title: 'Create New Database',
+                    defaultPath: 'main.sqlite',
+                    filters: [{ name: 'SQLite Database', extensions: ['sqlite', 'db'] }],
+                });
+                if (!result.canceled && result.filePath) {
+                    pendingPath = result.filePath;
+                    document.getElementById('adv-current-path').textContent = pendingPath + ' (new)';
+                    setDbBtnEnabled(true);
+                }
+            });
+
+            async function applySettings(dbPath, logLevel, btn, resetLabel) {
+                btn.disabled = true;
+                btn.style.cursor = 'not-allowed';
+                btn.style.opacity = '0.45';
+                btn.textContent = 'Restarting…';
+                statusEl.style.display = 'none';
+                const result = await window.electronAPI.selectDatabase({ path: dbPath, logLevel });
+                if (result.ok) {
+                    window.location.reload();
+                } else {
+                    statusEl.textContent = 'Error: ' + (result.error || 'unknown');
+                    statusEl.style.display = 'block';
+                    btn.textContent = resetLabel;
+                    btn.disabled = false;
+                    btn.style.cursor = 'pointer';
+                    btn.style.opacity = '1';
+                }
+            }
+
+            applyDbBtn.addEventListener('click', () => {
+                if (!pendingPath) return;
+                applySettings(pendingPath, logSel.value, applyDbBtn, 'Use This Database');
+            });
+
+            applyLogBtn.addEventListener('click', () => {
+                applySettings(currentDbPath, logSel.value, applyLogBtn, 'Apply');
+            });
+        }());
     </script>
 </body>
 </html>

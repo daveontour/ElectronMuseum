@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/daveontour/aimuseum/internal/model"
 	"github.com/daveontour/aimuseum/internal/repository"
@@ -11,12 +12,33 @@ import (
 
 // ContactService manages contacts and related tables.
 type ContactService struct {
-	repo *repository.ContactRepo
+	repo       *repository.ContactRepo
+	subjectCfg *repository.SubjectConfigRepo
 }
 
 // NewContactService creates a ContactService.
-func NewContactService(repo *repository.ContactRepo) *ContactService {
-	return &ContactService{repo: repo}
+func NewContactService(repo *repository.ContactRepo, subjectCfg *repository.SubjectConfigRepo) *ContactService {
+	return &ContactService{repo: repo, subjectCfg: subjectCfg}
+}
+
+func (s *ContactService) ownerArchiveName(ctx context.Context) string {
+	if s.subjectCfg == nil {
+		return "Subject"
+	}
+	cfg, err := s.subjectCfg.GetFirst(ctx)
+	if err != nil || cfg == nil {
+		return "Subject"
+	}
+	first := strings.TrimSpace(cfg.SubjectName)
+	family := ""
+	if cfg.FamilyName != nil {
+		family = strings.TrimSpace(*cfg.FamilyName)
+	}
+	full := strings.TrimSpace(strings.Join([]string{first, family}, " "))
+	if full != "" {
+		return full
+	}
+	return "Subject"
 }
 
 // ── Contacts ──────────────────────────────────────────────────────────────────
@@ -83,7 +105,7 @@ func (s *ContactService) GetRelationshipGraph(ctx context.Context, types, source
 
 	// Build nodes
 	var nodes []RelGraphNode
-	subjectName := "Subject"
+	subjectName := s.ownerArchiveName(ctx)
 	nodeTotals := map[string]int64{}
 
 	for _, c := range rows {
@@ -95,7 +117,8 @@ func (s *ContactService) GetRelationshipGraph(ctx context.Context, types, source
 				nodeID = fmt.Sprintf("%d", c.ID)
 			}
 		}
-		if c.ID == 0 && c.Name != "" {
+		// Fallback when subject_configuration is incomplete.
+		if c.ID == 0 && c.Name != "" && subjectName == "Subject" {
 			subjectName = c.Name
 		}
 		nodes = append(nodes, RelGraphNode{

@@ -24,9 +24,18 @@ func NewContactRepo(pool *sql.DB) *ContactRepo {
 
 const allowedContactOrderCols = "id name email numemails numsms numwhatsapp numimessages numinstagram numfacebook"
 
-// excludeNameLooksLikePhoneOnly matches the intent of PostgreSQL's `name !~ '^[0-9\s+]+$'`
-// without regexp operators (works on SQLite).
-const excludeNameLooksLikePhoneOnly = `(name IS NULL OR name = '' OR length(trim(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(coalesce(name,''),'0',''),'1',''),'2',''),'3',''),'4',''),'5',''),'6',''),'7',''),'8',''),'9',''),' ',''),'+',''),'(',''),')',''),'-',''))) > 0)`
+// excludeNameLooksLikePhoneOnlySQL matches the intent of PostgreSQL's `name !~ '^[0-9\s+]+$'`
+// without regexp operators: after stripping digits and phone punctuation, the name must still
+// have positive length. Built programmatically so nested replace() parentheses stay balanced.
+func excludeNameLooksLikePhoneOnlySQL() string {
+	const col = "name"
+	chars := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", " ", "+", "(", ")", "-"}
+	expr := "coalesce(" + col + ",'')"
+	for _, ch := range chars {
+		expr = "replace(" + expr + ",'" + ch + "','')"
+	}
+	return "(" + col + " IS NULL OR " + col + " = '' OR length(trim(" + expr + ")) > 0)"
+}
 
 // ContactListParams holds filter/sort/page parameters for listing contacts.
 type ContactListParams struct {
@@ -55,24 +64,24 @@ func (r *ContactRepo) ListShort(ctx context.Context, p ContactListParams) ([]*mo
 
 	if p.Name != "" {
 		args = append(args, "%"+p.Name+"%")
-		conds = append(conds, fmt.Sprintf("name LIKE $%d", len(args)))
+		conds = append(conds, "name LIKE ?")
 	}
 	if p.Email != "" {
 		args = append(args, "%"+p.Email+"%")
-		conds = append(conds, fmt.Sprintf("email LIKE $%d", len(args)))
+		conds = append(conds, "email LIKE ?")
 	}
 	if p.Search != "" {
-		args = append(args, "%"+p.Search+"%")
-		idx := len(args)
-		conds = append(conds, fmt.Sprintf("(name LIKE $%d OR email LIKE $%d)", idx, idx))
+		pat := "%" + p.Search + "%"
+		args = append(args, pat, pat)
+		conds = append(conds, "(name LIKE ? OR email LIKE ?)")
 	}
 	if p.IsSubject != nil {
 		args = append(args, *p.IsSubject)
-		conds = append(conds, fmt.Sprintf("is_subject = $%d", len(args)))
+		conds = append(conds, "is_subject = ?")
 	}
 	if p.IsGroup != nil {
 		args = append(args, *p.IsGroup)
-		conds = append(conds, fmt.Sprintf("is_group = $%d", len(args)))
+		conds = append(conds, "is_group = ?")
 	}
 	if p.HasMessages != nil && *p.HasMessages {
 		conds = append(conds, "(COALESCE(numemails,0)+COALESCE(numfacebook,0)+COALESCE(numwhatsapp,0)+COALESCE(numsms,0)+COALESCE(numimessages,0)+COALESCE(numinstagram,0)) > 0")
@@ -81,12 +90,12 @@ func (r *ContactRepo) ListShort(ctx context.Context, p ContactListParams) ([]*mo
 		conds = append(conds, "email LIKE '%@%'")
 	}
 	if p.ExcludePhoneNums != nil && *p.ExcludePhoneNums {
-		conds = append(conds, excludeNameLooksLikePhoneOnly)
+		conds = append(conds, excludeNameLooksLikePhoneOnlySQL())
 	}
 
 	if uid > 0 {
 		args = append(args, uid)
-		conds = append(conds, fmt.Sprintf("user_id = $%d", len(args)))
+		conds = append(conds, "user_id = ?")
 	}
 
 	where := ""
@@ -94,9 +103,11 @@ func (r *ContactRepo) ListShort(ctx context.Context, p ContactListParams) ([]*mo
 		where = " WHERE " + joinAnd(conds)
 	}
 
+	sql := "SELECT COUNT(*) FROM contacts" + where
+
 	// Count
 	var total int
-	if err := r.pool.QueryRowContext(ctx, "SELECT COUNT(*) FROM contacts"+where, args...).Scan(&total); err != nil {
+	if err := r.pool.QueryRowContext(ctx, sql, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("ContactListCount: %w", err)
 	}
 
@@ -107,16 +118,16 @@ func (r *ContactRepo) ListShort(ctx context.Context, p ContactListParams) ([]*mo
 	}
 	dir := "ASC"
 	if strings.ToLower(p.Order) == "desc" {
-		dir = "DESC NULLS LAST"
+		dir = "DESC"
 	}
 	q := fmt.Sprintf("SELECT %s FROM contacts%s ORDER BY %s %s", cols, where, col, dir)
 	if p.Limit > 0 {
 		args = append(args, p.Limit)
-		q += fmt.Sprintf(" LIMIT $%d", len(args))
+		q += " LIMIT ?"
 	}
 	if p.Offset > 0 {
 		args = append(args, p.Offset)
-		q += fmt.Sprintf(" OFFSET $%d", len(args))
+		q += " OFFSET ?"
 	}
 
 	rows, err := r.pool.QueryContext(ctx, q, args...)
@@ -150,7 +161,7 @@ func (r *ContactRepo) ListNames(ctx context.Context) ([]struct {
 }, error) {
 	uid := uidFromCtx(ctx)
 	q := `SELECT id, name FROM contacts
-	      WHERE (` + excludeNameLooksLikePhoneOnly + `)
+	      WHERE (` + excludeNameLooksLikePhoneOnlySQL() + `)
 	        AND (COALESCE(numemails,0)+COALESCE(numfacebook,0)+COALESCE(numwhatsapp,0)+COALESCE(numsms,0)+COALESCE(numimessages,0)+COALESCE(numinstagram,0)) > 0`
 	args := []any{}
 	q, args = addUIDFilter(q, args, uid)

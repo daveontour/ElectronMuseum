@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/daveontour/aimuseum/internal/model"
+	"github.com/daveontour/aimuseum/internal/sqlutil"
 )
 
 // ConfigRepo accesses the app_configuration table.
@@ -100,10 +101,16 @@ func (r *ConfigRepo) Upsert(ctx context.Context, key string, value *string, isMa
 		description = defDesc
 	}
 
+	// app_configuration uses partial unique indexes (WHERE user_id IS NULL / IS NOT NULL).
+	// SQLite requires the conflict target to include a matching WHERE clause.
+	conflictClause := `ON CONFLICT (key) DO UPDATE SET`
+	if sqlutil.IsSQLite(ctx, r.pool) {
+		conflictClause = `ON CONFLICT (key) WHERE user_id IS NULL DO UPDATE SET`
+	}
 	c, err := scanConfig(r.pool.QueryRowContext(ctx,
 		`INSERT INTO app_configuration (key, value, is_mandatory, description, user_id)
 		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (key) DO UPDATE SET
+		 `+conflictClause+`
 		   value        = EXCLUDED.value,
 		   is_mandatory = COALESCE(EXCLUDED.is_mandatory, app_configuration.is_mandatory),
 		   description  = COALESCE(EXCLUDED.description, app_configuration.description),
@@ -181,10 +188,14 @@ func (r *ConfigRepo) SeedFromEnv(ctx context.Context) (int, error) {
 			value = kk.EnvDefault
 		}
 		desc := kk.Description
+		doNothing := `ON CONFLICT (key) DO NOTHING`
+		if sqlutil.IsSQLite(ctx, r.pool) {
+			doNothing = `ON CONFLICT (key) WHERE user_id IS NULL DO NOTHING`
+		}
 		_, err := r.pool.ExecContext(ctx,
 			`INSERT INTO app_configuration (key, value, is_mandatory, description, user_id)
 			 VALUES ($1, $2, $3, $4, $5)
-			 ON CONFLICT (key) DO NOTHING`,
+			 `+doNothing,
 			kk.Key, value, kk.IsMandatory, desc, uidVal(uid))
 		if err != nil {
 			return inserted, fmt.Errorf("SeedFromEnv %s: %w", kk.Key, err)

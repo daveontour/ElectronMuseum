@@ -15,6 +15,7 @@ let tray = null;
 let goProcess = null;
 let isQuitting = false;
 let appPort = null;
+let activeDotenv = null;
 
 // ---------------------------------------------------------------------------
 // Resource path resolution
@@ -50,6 +51,39 @@ function getPaths() {
       : path.join(__dirname, '.env.defaults'),
     appLogFile:  path.join(userData, 'logs', 'app.log'),
   };
+}
+
+/** Logs SQLite paths as configured, absolute, relative to userData/appRoot/cwd, and file presence. */
+function logSqliteDatabasePaths(paths, mainPath, billingPath, ctxLabel) {
+  const cwd = process.cwd();
+  const abs = (p) => path.resolve(p);
+  const rel = (baseDir, targetPath) => {
+    try {
+      return path.relative(path.resolve(baseDir), path.resolve(targetPath));
+    } catch (e) {
+      return `(relative error: ${e.message})`;
+    }
+  };
+  const fileInfo = (label, p) => {
+    const a = abs(p);
+    let exists = false;
+    let sizeBytes = 0;
+    try {
+      const st = fs.statSync(a);
+      exists = true;
+      sizeBytes = st.size;
+    } catch (_) { /* not found */ }
+    log(`[db:${ctxLabel}] ${label}: configured_path=${p}`);
+    log(`[db:${ctxLabel}] ${label}: absolute=${a}`);
+    log(`[db:${ctxLabel}] ${label}: relative_to_userData=${rel(paths.userData, a)} relative_to_appRoot=${rel(paths.appRoot, a)} relative_to_electron_cwd=${rel(cwd, a)}`);
+    log(`[db:${ctxLabel}] ${label}: exists_on_disk=${exists} size_bytes=${exists ? sizeBytes : 0}${exists ? '' : ' (new or not yet created)'}`);
+  };
+  log(`[db:${ctxLabel}] --- sqlite path resolution ---`);
+  log(`[db:${ctxLabel}] userData=${paths.userData}`);
+  log(`[db:${ctxLabel}] appRoot_go_cwd=${paths.appRoot}`);
+  log(`[db:${ctxLabel}] electron_process.cwd=${cwd}`);
+  fileInfo('main', mainPath);
+  fileInfo('billing', billingPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +213,8 @@ function startGoServer(port, paths, dotenv) {
     SESSION_COOKIE_SECURE: 'false',
   };
 
+  logSqliteDatabasePaths(paths, env.SQLITE_PATH, env.BILLING_SQLITE_PATH, 'electron-spawn-env');
+
   goProcess = spawn(paths.goExe, [], {
     cwd: paths.appRoot,
     env,
@@ -195,6 +231,39 @@ function startGoServer(port, paths, dotenv) {
   goProcess.on('error', (err) => {
     log(`Go server spawn error: ${err.message}`);
   });
+}
+
+async function restartGoServer(newSqlitePath, logLevel) {
+  if (goProcess && !goProcess.killed) {
+    goProcess.kill('SIGTERM');
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        if (goProcess && !goProcess.killed) goProcess.kill('SIGKILL');
+        resolve();
+      }, 5000);
+      goProcess.once('exit', () => { clearTimeout(t); resolve(); });
+    });
+  }
+  const paths = getPaths();
+  let envContent = fs.existsSync(paths.dotEnvPath)
+    ? fs.readFileSync(paths.dotEnvPath, 'utf8') : '';
+
+  function upsertEnvVar(content, key, value) {
+    const re = new RegExp(`^${key}\\s*=.*`, 'm');
+    return re.test(content)
+      ? content.replace(re, `${key}=${value}`)
+      : content.trimEnd() + `\n${key}=${value}\n`;
+  }
+
+  envContent = upsertEnvVar(envContent, 'SQLITE_PATH', newSqlitePath);
+  if (logLevel) {
+    envContent = upsertEnvVar(envContent, 'LOG_LEVEL', logLevel);
+  }
+  fs.writeFileSync(paths.dotEnvPath, envContent, 'utf8');
+  activeDotenv = { ...activeDotenv, SQLITE_PATH: newSqlitePath };
+  if (logLevel) activeDotenv = { ...activeDotenv, LOG_LEVEL: logLevel };
+  startGoServer(appPort, paths, activeDotenv);
+  await waitForHealth(appPort, 30000);
 }
 
 // ---------------------------------------------------------------------------
@@ -386,22 +455,34 @@ app.whenReady().then(async () => {
       ...loadDotEnv(paths.dotEnvPath),
       ...(app.isPackaged ? {} : loadDotEnv(path.join(__dirname, '..', '.env'))),
     };
-    dotenv = {
-      ...dotenv,
-      SQLITE_PATH: dotenv.SQLITE_PATH || paths.sqliteMainPath,
-      BILLING_SQLITE_PATH: dotenv.BILLING_SQLITE_PATH || paths.sqliteBillingPath,
-    };
+    // Packaged app: always use userData/data/*.sqlite so a leftover SQLITE_PATH in
+    // %APPDATA%\.env (e.g. from dev) cannot point the installer at the wrong DB.
+    if (app.isPackaged) {
+      dotenv = {
+        ...dotenv,
+        SQLITE_PATH: paths.sqliteMainPath,
+        BILLING_SQLITE_PATH: paths.sqliteBillingPath,
+      };
+    } else {
+      dotenv = {
+        ...dotenv,
+        SQLITE_PATH: dotenv.SQLITE_PATH || paths.sqliteMainPath,
+        BILLING_SQLITE_PATH: dotenv.BILLING_SQLITE_PATH || paths.sqliteBillingPath,
+      };
+    }
+    logSqliteDatabasePaths(paths, dotenv.SQLITE_PATH, dotenv.BILLING_SQLITE_PATH, 'electron-resolved');
 
     sendStatus('Cleaning up previous processes...');
     await killZombies();
 
     sendStatus('Finding available port...');
-    //appPort = await findFreePort(8080);
-    appPort = 8081;
+    appPort = await findFreePort(8080);
+    //appPort = 8081;
     log(`Using port ${appPort}`);
 
     dotenv.GMAIL_REDIRECT_URL = `http://localhost:${appPort}/gmail/auth/callback`;
 
+    activeDotenv = dotenv;
     startGoServer(appPort, paths, dotenv);
 
     sendStatus('Waiting for server to be ready...');
@@ -427,6 +508,27 @@ app.on('window-all-closed', () => {
 
 // ── File / directory picker (used by import dialogs) ─────────────────────────
 ipcMain.handle('show-open-dialog', (_event, options) => dialog.showOpenDialog(options));
+ipcMain.handle('show-save-dialog', (_event, options) => dialog.showSaveDialog(options));
+
+ipcMain.handle('get-db-path', () => {
+  const paths = getPaths();
+  return (activeDotenv && activeDotenv.SQLITE_PATH) || paths.sqliteMainPath;
+});
+
+ipcMain.handle('get-log-level', () => (activeDotenv && activeDotenv.LOG_LEVEL) || 'warn');
+
+ipcMain.handle('select-db', async (_event, opts) => {
+  // opts: { path: string, logLevel?: string }
+  const newPath = typeof opts === 'string' ? opts : opts.path;
+  const logLevel = typeof opts === 'string' ? undefined : opts.logLevel;
+  try {
+    await restartGoServer(newPath, logLevel);
+    return { ok: true };
+  } catch (err) {
+    log(`select-db error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+});
 
 app.on('before-quit', () => {
   isQuitting = true;

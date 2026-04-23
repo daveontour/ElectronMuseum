@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/daveontour/aimuseum/internal/model"
@@ -411,6 +412,42 @@ func (r *EmailRepo) GetThreadEmails(ctx context.Context, participant string) ([]
 // Folder is stored as comma-joined label names, so this unnests and deduplicates them.
 func (r *EmailRepo) ListFolders(ctx context.Context) ([]string, error) {
 	uid := uidFromCtx(ctx)
+
+	if sqlutil.IsSQLite(ctx, r.pool) {
+		// SQLite has no unnest/string_to_array; fetch raw folder strings and split in Go.
+		q := `SELECT DISTINCT folder FROM emails WHERE user_deleted = FALSE AND folder IS NOT NULL AND folder != ''`
+		args := []any{}
+		q, args = addUIDFilter(q, args, uid)
+		rows, err := r.pool.QueryContext(ctx, q, args...)
+		if err != nil {
+			return nil, fmt.Errorf("ListFolders: %w", err)
+		}
+		defer rows.Close()
+		seen := make(map[string]struct{})
+		var folders []string
+		for rows.Next() {
+			var f string
+			if err := rows.Scan(&f); err != nil {
+				return nil, err
+			}
+			for _, part := range strings.Split(f, ",") {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+				if _, ok := seen[part]; !ok {
+					seen[part] = struct{}{}
+					folders = append(folders, part)
+				}
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		sort.Strings(folders)
+		return folders, nil
+	}
+
 	q := `
 		SELECT DISTINCT unnest(string_to_array(folder, ',')) AS f
 		FROM emails
