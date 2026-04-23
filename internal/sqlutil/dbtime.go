@@ -146,6 +146,8 @@ func ParseSQLiteDatetime(s string) (time.Time, error) {
 	s = trimGoMonotonicSuffix(s)
 	layouts := []string{
 		"2006-01-02 15:04:05.999999999 -0700 MST", // Go time.String (wall clock; no monotonic)
+		"2006-01-02 15:04:05.999999999 -0700 -0700", // Go time.String when tz has no alphabetic name
+		"2006-01-02 15:04:05 -0700 -0700",
 		time.RFC3339Nano,
 		time.RFC3339,
 		"2006-01-02 15:04:05.999999999-07:00",

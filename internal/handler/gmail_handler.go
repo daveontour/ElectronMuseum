@@ -567,7 +567,7 @@ func (h *GmailHandler) storeGmailEmail(ctx context.Context, msg *appgmail.Messag
 		                    user_deleted, is_personal, is_business, is_social, is_promotional,
 		                    is_spam, is_important, use_by_ai, user_id, source)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,$11,'gmail')
-		ON CONFLICT ON CONSTRAINT uq_email_uid_folder_user DO UPDATE SET
+		ON CONFLICT(uid, folder, user_id) DO UPDATE SET
 			subject=EXCLUDED.subject, from_address=EXCLUDED.from_address, to_addresses=EXCLUDED.to_addresses,
 			date=EXCLUDED.date, raw_message=EXCLUDED.raw_message, plain_text=EXCLUDED.plain_text, snippet=EXCLUDED.snippet,
 			has_attachments=EXCLUDED.has_attachments,

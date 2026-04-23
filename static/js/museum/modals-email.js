@@ -636,21 +636,11 @@ Modals.EmailGallery = (() => {
             return new Promise((resolve, reject) => {
                 _setupFilters();
 
-                //month equals the current month
-                // const currentMonth = new Date().getMonth() + 1;
-                // DOM.emailGalleryMonthFilter.value = currentMonth;
                 DOM.emailGalleryMonthFilter.value = 0;
-                const currentMonth = 0;
-                const currentYear = new Date().getFullYear();
-                DOM.emailGalleryYearFilter.value = currentYear;
+                DOM.emailGalleryYearFilter.value = 0;
 
                 try {
                     const params = new URLSearchParams();
-                    params.append('year', currentYear);
-                    // API rejects month=0 ("All months"); omit month to search the whole year.
-                    if (currentMonth >= 1 && currentMonth <= 12) {
-                        params.append('month', String(currentMonth));
-                    }
                     appendEmailSourceSearchParam(params, DOM.emailGallerySourceFilter, 'email-gallery-source-filter');
 
                     fetch('/emails/search?' + params.toString())

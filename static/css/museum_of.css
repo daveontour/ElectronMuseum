@@ -311,13 +311,13 @@ body {
 
 /* --- Layout Components --- */
 .sidebar {
-    width: 280px;
-    min-width: 280px;
+    width: 196px;
+    min-width: 196px;
     flex-shrink: 0;
     background-color: #e0e0e0;
-    padding: 10px;
+    padding: 7px;
     padding-top: 0px;
-    padding-bottom: 10px;
+    padding-bottom: 7px;
     border-right: 1px solid #ccc;
     display: flex;
     flex-direction: column;
@@ -329,8 +329,8 @@ body {
 .sidebar-right {
     border-right: none;
     border-left: 1px solid rgba(255, 255, 255, 0.15);
-    min-width: 280px;
-    width: 280px;
+    min-width: 196px;
+    width: 196px;
     padding-top: 0px;
 }
 
@@ -347,14 +347,14 @@ body {
 
 .sidebar-right .sidebar-spacer {
     flex-grow: 1;
-    min-height: 10px;
+    min-height: 7px;
 }
 
 .sidebar-right .sidebar-bottom-tile {
-    padding-top: 10px;
+    padding-top: 7px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 7px;
 }
 
 .sidebar-right .sidebar-bottom-tile .sidebar-settings-btn {
@@ -363,19 +363,19 @@ body {
 }
 
 .sidebar h2 {
-    margin-top: -15px;
+    margin-top: -11px;
     color: var(--color-text);
 }
 
 .sidebar button {
-    padding: 10px 15px;
+    padding: 7px 11px;
     background-color: #5c8dd4;
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 3px;
     cursor: pointer;
     margin-bottom: 1px;
-    font-size: 1em;
+    font-size: 0.84em;
 }
 
 .sidebar button:hover {
@@ -392,14 +392,14 @@ body {
 
 .sidebar-left .sidebar-spacer {
     flex-grow: 1;
-    min-height: 10px;
+    min-height: 7px;
 }
 
 .sidebar-left .sidebar-bottom-tile {
-    padding-top: 10px;
+    padding-top: 7px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 7px;
 }
 
 .sidebar-left .sidebar-bottom-tile .sidebar-settings-btn {
@@ -420,8 +420,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 5px;
-    padding: 10px 0;
+    margin-bottom: 4px;
+    padding: 7px 0;
 }
 
 .header-container h2 {
@@ -1900,16 +1900,16 @@ body {
 /* More Options Section - occupies remaining vertical space with scroll for overflow */
 .more-options-section {
     margin-top: 0px;
-    padding: 15px;
+    padding: 11px;
     background-color: #f5f5f5;
-    border-radius: 8px;
+    border-radius: 6px;
     flex-grow: 1;
     min-height: 0; /* Required for flex child to allow overflow scrolling */
     overflow-y: auto;
 }
 
 .more-options-section h3 {
-    margin: 0 0 15px 0;
+    margin: 0 0 11px 0;
     font-size: 1em;
     color: var(--color-text);
 }
@@ -1917,36 +1917,36 @@ body {
 .more-options-buttons {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 7px;
 }
 
 .more-options-btn {
-    padding: 14px 12px;
+    padding: 10px 8px;
     background-color: var(--color-blue);
     color: white;
     border: none;
-    border-radius: 10px;
-    font-size: 13px;
+    border-radius: 7px;
+    font-size: 10.8px;
     cursor: pointer;
     transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 4px;
     text-align: center;
     overflow-wrap: break-word;
     word-wrap: break-word;
     min-width: 0;
-    min-height: 64px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    min-height: 45px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .more-options-btn:hover {
     background-color: var(--color-blue-dark);
     color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
 }
 
 .more-options-btn:active {
@@ -1973,30 +1973,35 @@ body {
 }
 
 .more-options-btn i {
-    font-size: 1.2em;
+    font-size: 1em;
     flex-shrink: 0;
+}
+
+/* Sidebar tiles: beat `.sidebar button` font-size so label size applies */
+.sidebar .more-options-btn {
+    font-size: 10.8px;
 }
 
 /* Short viewports: compress sidebar tile buttons (~40% shorter than default min-height/padding/gap) */
 @media (max-height: 859px) {
     .more-options-btn {
-        min-height: calc(64px * 0.6);
-        padding: calc(14px * 0.6) 12px;
-        gap: calc(6px * 0.6);
+        min-height: calc(45px * 0.6);
+        padding: calc(10px * 0.6) 8px;
+        gap: calc(4px * 0.6);
     }
     .more-options-btn i {
-        font-size: 1.05em;
+        font-size: 0.888em;
     }
     .more-options-buttons {
-        gap: calc(10px * 0.6);
+        gap: calc(7px * 0.6);
     }
     .sidebar-left .sidebar-bottom-tile,
     .sidebar-right .sidebar-bottom-tile {
-        gap: calc(10px * 0.6);
+        gap: calc(7px * 0.6);
     }
     .config-tabs-sidebar .config-tab-button {
-        padding-block: calc(12px * 0.6);
-        padding-inline: 16px;
+        padding-block: calc(8px * 0.6);
+        padding-inline: 11px;
     }
 }
 
@@ -2252,12 +2257,12 @@ body {
 .config-tabs-sidebar {
     display: flex;
     flex-direction: column;
-    width: 240px;
-    min-width: 240px;
+    width: 168px;
+    min-width: 168px;
     flex-shrink: 0;
     border-right: 1px solid var(--color-border);
     background: var(--color-bg-alt);
-    padding: 12px 0;
+    padding: 8px 0;
 }
 
 .config-header {
@@ -2275,25 +2280,25 @@ body {
 
 .config-tabs-sidebar .config-tab-label {
     display: block;
-    margin-left: 10px;
-    margin-top: 10px;
+    margin-left: 7px;
+    margin-top: 7px;
     font-weight: bold;
-    font-size: 14px;
+    font-size: 10px;
     color: var(--color-text-muted);
 }
 
 .config-tab-button {
-    padding: 12px 16px;
+    padding: 8px 11px;
     background: none;
     border: none;
-    border-left: 3px solid transparent;
+    border-left: 2px solid transparent;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 10px;
     color: var(--color-text-muted);
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     text-align: left;
     width: 100%;
 }
@@ -10474,14 +10479,14 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 .pam-bot-sidebar-trigger {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
+    gap: 6px;
+    padding: 7px 10px;
     background: linear-gradient(135deg, #2c5282, #4a7fcb);
     color: #fff;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 10px;
     font-weight: 500;
     width: 100%;
     transition: opacity 0.15s;
