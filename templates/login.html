@@ -173,6 +173,24 @@
                 <button type="button" id="adv-apply-log-btn" disabled style="padding:6px 12px; width:148px; border-radius:6px; border:none; background:#3b82f6; color:#fff; cursor:not-allowed; opacity:0.45; font-size:0.82rem; margin-left:auto; text-align:center;">Apply</button>
             </div>
 
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2e4068;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                    <span style="color:#cdd6e8; font-size:0.88rem; font-weight:600; white-space:nowrap;">Local AI</span>
+                    <span style="color:#8fa4c8; font-size:0.82rem;">Ollama / Gemma4</span>
+                    <button type="button" id="adv-start-ollama-btn" style="padding:6px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem; margin-left:auto; white-space:nowrap;">Start Local AI</button>
+                </div>
+                <div id="adv-ollama-msg" style="display:none; font-size:0.82rem; margin-bottom:6px; padding:6px 8px; border-radius:4px; color:#8fa4c8;"></div>
+                <div id="adv-ollama-confirm" style="display:none; gap:8px; margin-bottom:6px;">
+                    <button type="button" id="adv-ollama-yes" style="padding:6px 12px; border-radius:6px; border:none; background:#3b82f6; color:#fff; cursor:pointer; font-size:0.82rem;">Yes, Download</button>
+                    <button type="button" id="adv-ollama-cancel" style="padding:6px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem;">Cancel</button>
+                </div>
+                <div id="adv-ollama-progress" style="display:none; font-size:0.75rem; color:#8fa4c8; max-height:56px; overflow:hidden; background:#0d151e; border:1px solid #1e3050; border-radius:4px; padding:6px 8px; font-family:monospace;"></div>
+                <label style="display:flex; align-items:center; gap:8px; margin-top:10px; color:#cdd6e8; font-size:0.84rem;">
+                    <input type="checkbox" id="adv-auto-start-local-ai" style="accent-color:#3b82f6;">
+                    <span>Auto start Local AI</span>
+                </label>
+            </div>
+
             <div style="display:flex; gap:8px; margin-top:20px; padding-top:12px; border-top:1px solid #2e4068;">
                 <button type="button" id="adv-close-btn" style="padding:7px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem; margin-left:auto;">Close</button>
             </div>
@@ -483,6 +501,8 @@
                 originalLogLevel = (lvl || 'warn').toLowerCase();
                 logSel.value = originalLogLevel;
                 if (!logSel.value) { logSel.value = 'warn'; originalLogLevel = 'warn'; }
+                const autoStartEnabled = await window.electronAPI.getAutoStartLocalAI();
+                autoStartLocalAICheckbox.checked = !!autoStartEnabled;
             }
 
             document.getElementById('advanced-btn').addEventListener('click', showAdvanced);
@@ -546,6 +566,92 @@
 
             applyLogBtn.addEventListener('click', () => {
                 applySettings(currentDbPath, logSel.value, applyLogBtn, 'Apply');
+            });
+
+            // ── Local AI (Ollama) ─────────────────────────────────────────────
+            window.electronAPI.onOllamaPullProgress((line) => {
+                const el = document.getElementById('adv-ollama-progress');
+                el.style.display = 'block';
+                el.textContent = line;
+            });
+
+            const ollamaMsg     = document.getElementById('adv-ollama-msg');
+            const ollamaConfirm = document.getElementById('adv-ollama-confirm');
+            const ollamaProgress= document.getElementById('adv-ollama-progress');
+            const ollamaStartBtn= document.getElementById('adv-start-ollama-btn');
+            const autoStartLocalAICheckbox = document.getElementById('adv-auto-start-local-ai');
+
+            function ollamaSetMsg(text, color) {
+                ollamaMsg.textContent = text;
+                ollamaMsg.style.color = color || '#8fa4c8';
+                ollamaMsg.style.display = 'block';
+            }
+
+            async function doStartOllama() {
+                ollamaSetMsg('Starting Ollama server…');
+                const res = await window.electronAPI.startOllama();
+                if (!res.ok) {
+                    ollamaSetMsg('Failed to start Ollama: ' + (res.error || 'unknown'), '#f87171');
+                    ollamaStartBtn.disabled = false;
+                    return;
+                }
+                ollamaSetMsg('✓ Local AI (Ollama / Gemma4) is running — you may now sign in.', '#4ade80');
+                ollamaStartBtn.textContent = '✓ Running';
+            }
+
+            document.getElementById('adv-ollama-yes').addEventListener('click', async () => {
+                ollamaConfirm.style.display = 'none';
+                ollamaProgress.style.display = 'block';
+                ollamaProgress.textContent = '';
+                ollamaSetMsg('Downloading Gemma4 model — this may take several minutes…');
+                const res = await window.electronAPI.pullOllamaModel();
+                if (!res.ok) {
+                    ollamaSetMsg('Download failed: ' + (res.error || 'unknown'), '#f87171');
+                    ollamaStartBtn.disabled = false;
+                    return;
+                }
+                ollamaProgress.style.display = 'none';
+                await doStartOllama();
+            });
+
+            document.getElementById('adv-ollama-cancel').addEventListener('click', () => {
+                ollamaConfirm.style.display = 'none';
+                ollamaMsg.style.display = 'none';
+                ollamaStartBtn.disabled = false;
+            });
+
+            ollamaStartBtn.addEventListener('click', async () => {
+                ollamaStartBtn.disabled = true;
+                ollamaConfirm.style.display = 'none';
+                ollamaProgress.style.display = 'none';
+                ollamaSetMsg('Checking for Gemma4 model…');
+                const check = await window.electronAPI.checkOllamaModel();
+                if (!check.ok) {
+                    ollamaSetMsg('Error: ' + check.error, '#f87171');
+                    ollamaStartBtn.disabled = false;
+                    return;
+                }
+                if (!check.hasModel) {
+                    ollamaSetMsg('Gemma4 model not found. Download it now? (Several GB — may take a few minutes.)', '#fbbf24');
+                    ollamaConfirm.style.display = 'flex';
+                    return;
+                }
+                await doStartOllama();
+            });
+
+            autoStartLocalAICheckbox.addEventListener('change', async () => {
+                const result = await window.electronAPI.setAutoStartLocalAI(autoStartLocalAICheckbox.checked);
+                if (!result.ok) {
+                    autoStartLocalAICheckbox.checked = !autoStartLocalAICheckbox.checked;
+                    ollamaSetMsg('Failed to save Auto start Local AI: ' + (result.error || 'unknown'), '#f87171');
+                    return;
+                }
+                ollamaSetMsg(
+                    autoStartLocalAICheckbox.checked
+                        ? 'Auto start Local AI enabled. Ollama will start automatically on app launch.'
+                        : 'Auto start Local AI disabled.',
+                    '#8fa4c8'
+                );
             });
         }());
     </script>

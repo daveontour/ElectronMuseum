@@ -1,7 +1,7 @@
 'use strict';
 
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog, globalShortcut } = require('electron');
-const { spawn, spawnSync, execFile } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const net = require('net');
 const path = require('path');
 const fs = require('fs');
@@ -16,6 +16,7 @@ let goProcess = null;
 let isQuitting = false;
 let appPort = null;
 let activeDotenv = null;
+let ollamaProcess = null;
 
 // ---------------------------------------------------------------------------
 // Resource path resolution
@@ -167,6 +168,70 @@ function loadDotEnv(filePath) {
   return env;
 }
 
+function upsertEnvVar(content, key, value) {
+  const re = new RegExp(`^${key}\\s*=.*`, 'm');
+  return re.test(content)
+    ? content.replace(re, `${key}=${value}`)
+    : content.trimEnd() + `\n${key}=${value}\n`;
+}
+
+function parseBoolEnv(v) {
+  const s = String(v || '').trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+}
+
+// ---------------------------------------------------------------------------
+// Ollama local AI helpers
+// ---------------------------------------------------------------------------
+
+function getOllamaExe() {
+  return path.join(getResourcesDir(), 'bin', 'Ollama', 'ollama.exe');
+}
+
+async function waitForOllama(maxMs = 30000) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch('http://127.0.0.1:11434/');
+      if (res.ok || res.status < 500) return;
+    } catch (_) { /* not ready */ }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  throw new Error(`Ollama did not start within ${maxMs / 1000}s`);
+}
+
+async function ensureOllamaRunning() {
+  const ollamaExe = getOllamaExe();
+  if (!fs.existsSync(ollamaExe)) {
+    return { ok: false, error: 'Ollama executable not found' };
+  }
+  try {
+    const r = await fetch('http://127.0.0.1:11434/');
+    if (r.ok || r.status < 500) {
+      log('Ollama already running');
+      return { ok: true };
+    }
+  } catch (_) { /* not running yet */ }
+  const paths = getPaths();
+  let logFd;
+  try { logFd = fs.openSync(paths.appLogFile, 'a'); } catch (_) { /* ignore */ }
+  ollamaProcess = spawn(ollamaExe, ['serve'], {
+    windowsHide: true,
+    stdio: ['ignore', logFd ?? 'ignore', logFd ?? 'ignore'],
+    env: { ...process.env, OLLAMA_NUM_CTX: '32768' },
+  });
+  ollamaProcess.on('exit', (code) => log(`Ollama exited (code=${code})`));
+  ollamaProcess.on('error', (err) => log(`Ollama error: ${err.message}`));
+  try {
+    await waitForOllama(30000);
+    log('Ollama server ready');
+    return { ok: true };
+  } catch (err) {
+    log(`start-ollama: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Status (embedded PostgreSQL removed — app uses SQLite files under userData/data/)
 // ---------------------------------------------------------------------------
@@ -247,13 +312,6 @@ async function restartGoServer(newSqlitePath, logLevel) {
   const paths = getPaths();
   let envContent = fs.existsSync(paths.dotEnvPath)
     ? fs.readFileSync(paths.dotEnvPath, 'utf8') : '';
-
-  function upsertEnvVar(content, key, value) {
-    const re = new RegExp(`^${key}\\s*=.*`, 'm');
-    return re.test(content)
-      ? content.replace(re, `${key}=${value}`)
-      : content.trimEnd() + `\n${key}=${value}\n`;
-  }
 
   envContent = upsertEnvVar(envContent, 'SQLITE_PATH', newSqlitePath);
   if (logLevel) {
@@ -345,15 +403,25 @@ function registerDevToolsShortcut() {
 // System tray
 // ---------------------------------------------------------------------------
 
-function setupTray(port) {
-  const iconPath = path.join(__dirname, 'build', 'icon.ico');
-  let icon;
-  if (fs.existsSync(iconPath)) {
-    icon = nativeImage.createFromPath(iconPath);
-  } else {
-    // Fallback: empty 16×16 icon so tray doesn't crash
-    icon = nativeImage.createEmpty();
+function loadTrayNativeImage() {
+  const icoPath = path.join(__dirname, 'build', 'icon.ico');
+  const pngPath = path.join(__dirname, 'tray-icon.png');
+  if (fs.existsSync(icoPath)) {
+    const img = nativeImage.createFromPath(icoPath);
+    if (!img.isEmpty()) return img;
+    log(`Tray: could not decode ${icoPath}`);
   }
+  if (fs.existsSync(pngPath)) {
+    const img = nativeImage.createFromPath(pngPath);
+    if (!img.isEmpty()) return img;
+    log(`Tray: could not decode ${pngPath}`);
+  }
+  log('Tray: no icon.ico or tray-icon.png — using empty image');
+  return nativeImage.createEmpty();
+}
+
+function setupTray(port) {
+  const icon = loadTrayNativeImage();
 
   tray = new Tray(icon);
   tray.setToolTip('Digital Museum');
@@ -407,6 +475,10 @@ async function shutdown() {
       }, 5000);
       goProcess.once('exit', () => { clearTimeout(t); resolve(); });
     });
+  }
+
+  if (ollamaProcess && !ollamaProcess.killed) {
+    ollamaProcess.kill('SIGTERM');
   }
 
   log('Shutdown complete');
@@ -493,6 +565,12 @@ app.whenReady().then(async () => {
     createMainWindow(appPort);
     setupTray(appPort);
     registerDevToolsShortcut();
+    if (parseBoolEnv(dotenv.AUTO_START_LOCAL_AI)) {
+      log('AUTO_START_LOCAL_AI enabled — starting Local AI');
+      ensureOllamaRunning().then((res) => {
+        if (!res.ok) log(`AUTO_START_LOCAL_AI failed: ${res.error || 'unknown'}`);
+      });
+    }
 
   } catch (err) {
     log(`Startup error: ${err.message}`);
@@ -526,6 +604,71 @@ ipcMain.handle('select-db', async (_event, opts) => {
     return { ok: true };
   } catch (err) {
     log(`select-db error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+});
+
+// ── Ollama local AI ───────────────────────────────────────────────────────────
+
+ipcMain.handle('check-ollama-model', () => {
+  const ollamaExe = getOllamaExe();
+  if (!fs.existsSync(ollamaExe)) {
+    return { ok: false, error: 'Ollama executable not found at ' + ollamaExe };
+  }
+  // Check the manifest directory — avoids spawning the CLI which needs a running daemon.
+  const manifestDir = path.join(
+    require('os').homedir(),
+    '.ollama', 'models', 'manifests',
+    'registry.ollama.ai', 'library', 'gemma4',
+  );
+  const hasModel = fs.existsSync(manifestDir) &&
+    fs.readdirSync(manifestDir).length > 0;
+  return { ok: true, hasModel };
+});
+
+ipcMain.handle('pull-ollama-model', () => {
+  const ollamaExe = getOllamaExe();
+  return new Promise((resolve) => {
+    const proc = spawn(ollamaExe, ['pull', 'gemma4'], { windowsHide: true });
+    const send = (line) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('ollama-pull-progress', line);
+      }
+    };
+    let errOut = '';
+    proc.stdout && proc.stdout.on('data', (d) =>
+      d.toString().split('\n').forEach(l => { if (l.trim()) send(l.trim()); }));
+    proc.stderr && proc.stderr.on('data', (d) => {
+      errOut += d.toString();
+      d.toString().split('\n').forEach(l => { if (l.trim()) send(l.trim()); });
+    });
+    proc.on('close', (code) =>
+      code === 0 ? resolve({ ok: true }) : resolve({ ok: false, error: errOut || `exit ${code}` }));
+    proc.on('error', (err) => resolve({ ok: false, error: err.message }));
+  });
+});
+
+ipcMain.handle('start-ollama', async () => {
+  return ensureOllamaRunning();
+});
+
+ipcMain.handle('get-auto-start-local-ai', () => {
+  const paths = getPaths();
+  const env = activeDotenv || loadDotEnv(paths.dotEnvPath);
+  return parseBoolEnv(env.AUTO_START_LOCAL_AI);
+});
+
+ipcMain.handle('set-auto-start-local-ai', (_event, enabled) => {
+  const paths = getPaths();
+  try {
+    let envContent = fs.existsSync(paths.dotEnvPath)
+      ? fs.readFileSync(paths.dotEnvPath, 'utf8') : '';
+    envContent = upsertEnvVar(envContent, 'AUTO_START_LOCAL_AI', enabled ? 'true' : 'false');
+    fs.writeFileSync(paths.dotEnvPath, envContent, 'utf8');
+    activeDotenv = { ...(activeDotenv || {}), AUTO_START_LOCAL_AI: enabled ? 'true' : 'false' };
+    return { ok: true };
+  } catch (err) {
+    log(`set-auto-start-local-ai error: ${err.message}`);
     return { ok: false, error: err.message };
   }
 });

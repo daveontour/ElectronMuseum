@@ -117,6 +117,7 @@ const DOM = {
     voiceSettingsModal: document.getElementById('voice-settings-modal'),
     voiceSettingsTrigger: document.getElementById('voice-settings-trigger'),
     closeVoiceSettingsBtn: document.getElementById('close-voice-settings'),
+    clearVoiceConversationHistoryBtn: document.getElementById('clear-voice-conversation-history-btn'),
     chatMain: document.querySelector('.chat-main'),
     messageFontSize: document.getElementById('message-font-size'),
     creativityLevel: document.getElementById('creativity-level'),
@@ -126,6 +127,7 @@ const DOM = {
     autoVoiceShortResponses: document.getElementById('auto-voice-short-responses'),
     autoOpenSuggestions: document.getElementById('auto-open-suggestions'),
     companionModeCheckbox: document.getElementById('companion-mode'),
+    allowExplicitContentCheckbox: document.getElementById('allow-explicit-content'),
     llmProviderSelect: document.getElementById('llm-provider-select'),
     voiceRadios: document.querySelectorAll('input[name="voice"]'),
     moodSelector: document.getElementById('mood-selector'),
@@ -700,8 +702,10 @@ const Config = (() => {
         if (settings.showJsonTags !== undefined && DOM.showJsonTags) DOM.showJsonTags.checked = settings.showJsonTags;
         if (settings.autoVoiceShortResponses !== undefined && DOM.autoVoiceShortResponses) DOM.autoVoiceShortResponses.checked = settings.autoVoiceShortResponses;
         if (settings.autoOpenSuggestions !== undefined && DOM.autoOpenSuggestions) DOM.autoOpenSuggestions.checked = settings.autoOpenSuggestions;
+        if (settings.allowExplicitContent !== undefined && DOM.allowExplicitContentCheckbox) {
+            DOM.allowExplicitContentCheckbox.checked = settings.allowExplicitContent;
+        }
 
-        
         applySettings();
     }
 
@@ -714,7 +718,7 @@ const Config = (() => {
             showJsonTags: DOM.showJsonTags ? DOM.showJsonTags.checked : false,
             autoVoiceShortResponses: DOM.autoVoiceShortResponses ? DOM.autoVoiceShortResponses.checked : false,
             autoOpenSuggestions: DOM.autoOpenSuggestions ? DOM.autoOpenSuggestions.checked : true,
-
+            allowExplicitContent: DOM.allowExplicitContentCheckbox ? DOM.allowExplicitContentCheckbox.checked : false,
         };
         localStorage.setItem(CONSTANTS.LOCAL_STORAGE_KEYS.CHAT_SETTINGS, JSON.stringify(settings));
         applySettings();
@@ -722,7 +726,7 @@ const Config = (() => {
 
     function init() {
         loadSettings();
-        [DOM.messageFontSize, DOM.creativityLevel, DOM.showAudioTags, DOM.showImageTags, DOM.showJsonTags, DOM.companionModeCheckbox, DOM.autoVoiceShortResponses, DOM.autoOpenSuggestions].forEach(el => {
+        [DOM.messageFontSize, DOM.creativityLevel, DOM.showAudioTags, DOM.showImageTags, DOM.showJsonTags, DOM.companionModeCheckbox, DOM.allowExplicitContentCheckbox, DOM.autoVoiceShortResponses, DOM.autoOpenSuggestions].forEach(el => {
             if (el && el.type === 'checkbox') {
                 el.addEventListener('change', saveSettings);
             } else if (el) {

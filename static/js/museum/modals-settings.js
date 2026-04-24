@@ -1028,6 +1028,44 @@ Modals.ConversationManager = (() => {
             }
         }
 
+        /** Clears server-side turns for the active chat (Voice Settings). Requires owner master unlock on the API. */
+        async function clearCurrentConversationHistoryWithConfirm() {
+            let id = getCurrentConversationId();
+            if (id == null) {
+                await ensureChatConversationContext();
+                id = getCurrentConversationId();
+            }
+            if (id == null) {
+                await AppDialogs.showAppAlert('No conversation', 'There is no active chat conversation to clear.');
+                return;
+            }
+            const ok = await AppDialogs.showAppConfirm(
+                'Clear conversation history',
+                'Remove all saved messages for this conversation from the server? The on-screen chat will be emptied. This cannot be undone.',
+                { danger: true }
+            );
+            if (!ok) {
+                return;
+            }
+            try {
+                const res = await fetch(`/chat/conversations/${id}/clear-history`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                });
+                if (!res.ok) {
+                    let detail = await res.text();
+                    try {
+                        const j = JSON.parse(detail);
+                        if (j.detail) detail = j.detail;
+                    } catch (_) { /* keep body as detail */ }
+                    throw new Error(detail || `HTTP ${res.status}`);
+                }
+                Chat.clearChat();
+            } catch (error) {
+                await AppDialogs.showAppAlert('Error', error.message || String(error));
+            }
+        }
+
         async function resumeConversation(conversationId) {
             try {
                 // Get conversation details with turns
@@ -1302,6 +1340,7 @@ Modals.ConversationManager = (() => {
             getCurrentConversationId,
             updateConversationIndicator,
             clearCurrentConversation,
+            clearCurrentConversationHistoryWithConfirm,
             ensureChatConversationContext
         };
 })();

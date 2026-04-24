@@ -20,6 +20,16 @@ import (
 // chatHistoryTurnLimit is how many prior user/assistant exchanges to send as context to the LLM.
 const chatHistoryTurnLimit = 10
 
+// explicitContentInstruction is appended to the chat system prompt when the client sends allowExplicitContent.
+const explicitContentInstruction = "\n\n**Content policy (user preference):** The user has opted in to allowing explicit content for this chat. You may include explicit language, sexual themes, or other adult material in your responses when it fits the user's request. Do not refuse or sanitize answers solely for being mature or adult in nature."
+
+func appendExplicitContentPolicy(systemPrompt string, allow bool) string {
+	if !allow {
+		return systemPrompt
+	}
+	return systemPrompt + explicitContentInstruction
+}
+
 func readAuthSessionID(r *http.Request, override string) string {
 	if strings.TrimSpace(override) != "" {
 		return strings.TrimSpace(override)
@@ -430,6 +440,7 @@ func (s *ChatService) GenerateResponse(ctx context.Context, r *http.Request, req
 	if repeatQuestion {
 		systemPrompt += "\n\n**IMPORTANT Repeat Question:** Repeat the question in the same language and tone as the original question at the begining of the response"
 	}
+	systemPrompt = appendExplicitContentPolicy(systemPrompt, req.AllowExplicitContent)
 	// Load conversation history
 	var history []appai.ConvTurn
 	if req.ConversationID != nil {
@@ -577,6 +588,7 @@ func (s *ChatService) GenerateRandomQuestion(ctx context.Context, r *http.Reques
 	systemPrompt := questionCore +
 		"\n\n**Your Personae:**\n" + voiceText +
 		"\n\n**Who is asking:** " + whosAskingText
+	systemPrompt = appendExplicitContentPolicy(systemPrompt, req.AllowExplicitContent)
 
 	// Load conversation history
 	var history []appai.ConvTurn
@@ -739,6 +751,11 @@ func (s *ChatService) UpdateConversation(ctx context.Context, id int64, title, v
 
 func (s *ChatService) DeleteConversation(ctx context.Context, id int64) error {
 	return s.chatRepo.DeleteConversation(ctx, id)
+}
+
+// ClearConversationHistory removes all stored turns for the conversation (LLM context resets).
+func (s *ChatService) ClearConversationHistory(ctx context.Context, id int64) (turnsDeleted int64, err error) {
+	return s.chatRepo.ClearConversationTurns(ctx, id)
 }
 
 func (s *ChatService) GetTurns(ctx context.Context, conversationID int64, limit int) ([]*model.ChatTurn, error) {

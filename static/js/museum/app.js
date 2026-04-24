@@ -177,6 +177,7 @@ const App = (() => {
                     voice: selectedVoice,
                     mood: selectedMood,
                     companionMode: DOM.companionModeCheckbox ? DOM.companionModeCheckbox.checked : false,
+                    allowExplicitContent: DOM.allowExplicitContentCheckbox ? DOM.allowExplicitContentCheckbox.checked : false,
                     supplementary_prompt: supplementary_prompt,
                     temperature: parseFloat(DOM.creativityLevel ? DOM.creativityLevel.value : '0'),
                     conversation_id: conversationId,
@@ -243,6 +244,7 @@ const App = (() => {
                     voice: selectedVoice,
                     mood: selectedMood,
                     companionMode: DOM.companionModeCheckbox ? DOM.companionModeCheckbox.checked : false,
+                    allowExplicitContent: DOM.allowExplicitContentCheckbox ? DOM.allowExplicitContentCheckbox.checked : false,
                     provider,
                     whos_asking: whosAsking,
                 }));
@@ -304,6 +306,7 @@ const App = (() => {
                     voice: selectedVoice,
                     mood: selectedMood,
                     companionMode: DOM.companionModeCheckbox ? DOM.companionModeCheckbox.checked : false,
+                    allowExplicitContent: DOM.allowExplicitContentCheckbox ? DOM.allowExplicitContentCheckbox.checked : false,
                     temperature: parseFloat(DOM.creativityLevel ? DOM.creativityLevel.value : '0'),
                     conversation_id: conversationId,
                     clientId: AppState.clientId,
@@ -532,6 +535,13 @@ const App = (() => {
         if (DOM.voiceSettingsModal) {
             DOM.voiceSettingsModal.addEventListener('click', (e) => {
                 if (e.target === DOM.voiceSettingsModal) DOM.voiceSettingsModal.style.display = 'none';
+            });
+        }
+        if (DOM.clearVoiceConversationHistoryBtn) {
+            DOM.clearVoiceConversationHistoryBtn.addEventListener('click', async () => {
+                if (Modals.ConversationManager && Modals.ConversationManager.clearCurrentConversationHistoryWithConfirm) {
+                    await Modals.ConversationManager.clearCurrentConversationHistoryWithConfirm();
+                }
             });
         }
 

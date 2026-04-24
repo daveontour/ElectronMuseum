@@ -37,6 +37,7 @@ func (h *ChatHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/chat/generate-random-question", h.GenerateRandomQuestion)
 	r.Post("/chat/conversations", h.CreateConversation)
 	r.Get("/chat/conversations", h.ListConversations)
+	r.Post("/chat/conversations/{id}/clear-history", h.ClearConversationHistory)
 	r.Get("/chat/conversations/{id}", h.GetConversation)
 	r.Put("/chat/conversations/{id}", h.UpdateConversation)
 	r.Delete("/chat/conversations/{id}", h.DeleteConversation)
@@ -224,6 +225,36 @@ func (h *ChatHandler) UpdateConversation(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, conversationResponse(conv, 0))
+}
+
+// POST /chat/conversations/{id}/clear-history
+func (h *ChatHandler) ClearConversationHistory(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	conv, err := h.svc.GetConversation(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if conv == nil {
+		writeError(w, http.StatusNotFound, "conversation not found")
+		return
+	}
+	n, err := h.svc.ClearConversationHistory(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{
+		"success":         true,
+		"turns_deleted": n,
+	})
 }
 
 // DELETE /chat/conversations/{id}

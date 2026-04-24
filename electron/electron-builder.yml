@@ -22,12 +22,17 @@ files:
   - preload.js
   - loading.html
   - package.json
+  - tray-icon.png
 
 extraResources:
   - from: ../bin/digitalmuseum.exe
     to: bin/digitalmuseum.exe
   - from: ../bin/ImageMagick
     to: bin/ImageMagick
+    filter:
+      - "**/*"
+  - from: ../bin/Ollama
+    to: bin/Ollama
     filter:
       - "**/*"
   - from: ../templates

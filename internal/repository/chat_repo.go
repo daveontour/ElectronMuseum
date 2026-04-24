@@ -138,6 +138,39 @@ func (r *ChatRepo) UpdateConversation(ctx context.Context, id int64, title, voic
 	return &c, nil
 }
 
+// ClearConversationTurns deletes all turns for a conversation the user owns,
+// then clears last_message_at on the conversation row.
+func (r *ChatRepo) ClearConversationTurns(ctx context.Context, conversationID int64) (int64, error) {
+	tx, err := r.pool.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("ClearConversationTurns begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	uid := uidFromCtx(ctx)
+	delQ := `DELETE FROM chat_turns WHERE conversation_id = $1 AND EXISTS (
+		SELECT 1 FROM chat_conversations c WHERE c.id = $1`
+	args := []any{conversationID}
+	delQ, args = addUIDFilterQualified(delQ, args, uid, "c")
+	delQ += `)`
+	res, err := tx.ExecContext(ctx, delQ, args...)
+	if err != nil {
+		return 0, fmt.Errorf("ClearConversationTurns delete: %w", err)
+	}
+	n, _ := res.RowsAffected()
+
+	updQ := `UPDATE chat_conversations SET last_message_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1`
+	updArgs := []any{conversationID}
+	updQ, updArgs = addUIDFilter(updQ, updArgs, uid)
+	if _, err := tx.ExecContext(ctx, updQ, updArgs...); err != nil {
+		return 0, fmt.Errorf("ClearConversationTurns update conversation: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // DeleteConversation removes a conversation (cascade deletes turns).
 func (r *ChatRepo) DeleteConversation(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)

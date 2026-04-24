@@ -5,7 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
+
+	"github.com/daveontour/aimuseum/internal/sqlutil"
 )
 
 // privateStoreRow is the raw database row — value stays encrypted at this layer.
@@ -13,8 +14,8 @@ type privateStoreRow struct {
 	ID             int64
 	Key            string
 	EncryptedValue []byte
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	CreatedAt      sqlutil.DBTime
+	UpdatedAt      sqlutil.DBTime
 }
 
 // PrivateStoreRepo performs raw CRUD on the private_store table.
