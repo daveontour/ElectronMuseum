@@ -221,7 +221,7 @@ Modals.ReferenceDocuments = (() => {
                 const subEl = document.createElement('div');
                 subEl.className = 'reference-document-sub';
                 subEl.textContent = doc.filename || '';
-                textWrap.appendChild(subEl);
+              //  textWrap.appendChild(subEl);
                 if (doc.description) {
                     const descEl = document.createElement('div');
                     descEl.className = 'reference-document-desc';
@@ -502,8 +502,6 @@ Modals.ReferenceDocuments = (() => {
                     }
                 };
                 refDocPickBtn.addEventListener('click', handlePickClick);
-                // Also assign onclick to survive stale/delegated listener edge-cases.
-                refDocPickBtn.onclick = handlePickClick;
             }
             
             if (DOM.referenceDocumentsUploadForm) {

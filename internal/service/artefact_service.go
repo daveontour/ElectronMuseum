@@ -10,6 +10,8 @@ import (
 	"image/jpeg"
 	_ "image/jpeg"
 	_ "image/png"
+	"mime"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -164,6 +166,34 @@ func (s *ArtefactService) UploadMedia(ctx context.Context, artefactID int64, ima
 		return nil, err
 	}
 	return buildArtefactResponse(a2, items), nil
+}
+
+// ImportMediaFromPath imports a local file by absolute path and links it to an artefact.
+func (s *ArtefactService) ImportMediaFromPath(ctx context.Context, artefactID int64, filePath string) (*model.ArtefactResponse, error) {
+	trimmedPath := strings.TrimSpace(filePath)
+	if trimmedPath == "" {
+		return nil, fmt.Errorf("file_path is required")
+	}
+
+	info, err := os.Stat(trimmedPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid file_path: %w", err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("file_path must point to a file")
+	}
+
+	filename := filepath.Base(trimmedPath)
+	mediaType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename)))
+	content, err := os.ReadFile(trimmedPath)
+	if err != nil {
+		return nil, fmt.Errorf("could not read file_path: %w", err)
+	}
+	if len(content) == 0 {
+		return nil, fmt.Errorf("selected file is empty")
+	}
+
+	return s.UploadMedia(ctx, artefactID, content, filename, mediaType)
 }
 
 // ── Link/unlink existing media ─────────────────────────────────────────────────

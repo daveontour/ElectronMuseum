@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -41,6 +42,7 @@ func (h *ArtefactHandler) RegisterRoutes(r chi.Router) {
 	r.Get("/artefacts/{artefact_id}/thumbnail", h.GetThumbnail)
 
 	r.Post("/artefacts/{artefact_id}/media/upload", h.UploadMedia)
+	r.Post("/artefacts/{artefact_id}/media/import", h.ImportMedia)
 	r.Post("/artefacts/{artefact_id}/media/{media_item_id}", h.LinkMedia)
 	r.Delete("/artefacts/{artefact_id}/media/{media_item_id}", h.UnlinkMedia)
 }
@@ -400,6 +402,48 @@ func (h *ArtefactHandler) UploadMedia(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error uploading media: %s", err))
+		return
+	}
+	if resp == nil {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("artefact %d not found", id))
+		return
+	}
+	writeJSON(w, resp)
+}
+
+// ── ImportMedia ───────────────────────────────────────────────────────────────
+
+func (h *ArtefactHandler) ImportMedia(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
+		return
+	}
+	id, ok := parseArtefactID(w, r)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	req.FilePath = strings.TrimSpace(req.FilePath)
+	if req.FilePath == "" {
+		writeError(w, http.StatusBadRequest, "file_path is required")
+		return
+	}
+
+	cleanPath := filepath.Clean(req.FilePath)
+	resp, err := h.svc.ImportMediaFromPath(r.Context(), id, cleanPath)
+	if err != nil {
+		if errors.Is(err, service.ErrArtefactUnsupportedMedia) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error importing media: %s", err))
 		return
 	}
 	if resp == nil {

@@ -27,7 +27,7 @@
                 <h2 id="top-bar-page-title">{{ page_title }}</h2>
             </div>
             <div class="top-bar-voice voice-selector" style="display: flex; flex-direction: row; gap: 10px; margin-left: 25px;">
-                <label for="voice-select" class="top-bar-label">Answer in the Voice Of:</label>
+                <label for="voice-select" class="top-bar-label">AI Personality:</label>
                 <div class="top-bar-voice-image" id="voice-settings-trigger" title="Voice settings">
                     <img id="selected-voice-image" src="/static/images/expert.png" alt="Selected Voice" class="selected-voice-img">
                     <i class="fas fa-chevron-down voice-settings-arrow"></i>
@@ -47,12 +47,12 @@
             <div id="voice-settings-modal" class="modal voice-settings-modal" style="display: none;">
                 <div class="modal-content voice-settings-modal-content" onclick="event.stopPropagation()">
                     <div class="modal-header">
-                        <h2><i class="fas fa-microphone-alt"></i> Voice Settings</h2>
+                        <h2><i class="fas fa-microphone-alt"></i> Personality Settings</h2>
                         <button id="close-voice-settings" class="modal-close-btn">&times;</button>
                     </div>
                     <div class="modal-body voice-settings-modal-body">
                         <div class="voice-settings-controls">
-                            <label for="voice-select" class="top-bar-label">Answer in the Voice Of:</label>
+                            <label for="voice-select" class="top-bar-label">Choose AI Personality:</label>
                             <!-- Options populated dynamically from /api/voices by VoiceSelector.loadVoices() -->
                             <select id="voice-select" name="voice">
                                 <option value="expert" selected>Expert</option>
@@ -1344,16 +1344,16 @@
                 </div>
                 <div style="padding: 20px; overflow-y: auto; flex: 1;">
                     <section class="config-section" style="display: flex; flex-direction: column; min-height: 0;">
-                        <p style="margin-top: 0;">Reference documents provide context for the AI when generating responses. Upload as PDF, Word, images, text, CSV, or JSON.<br/>
-                        Upload at least one comprehensive biography; add CV, family tree, letters, writing samples, etc. as needed.</p>
+                        <p style="margin-top: 0;">Reference documents provide context for the AI when generating responses. Import as PDF, Word, Text, CSV, or JSON.<br/>
+                        Import at least one comprehensive biography; add CV, family tree, letters, writing samples, etc. as needed.</p>
                         <div class="reference-documents-filters">
                             <div class="reference-documents-search-row">
-                                <input type="text" id="reference-documents-search" placeholder="Search documents..." class="reference-documents-input">
+                                <!-- <input type="text" id="reference-documents-search" placeholder="Search documents..." class="reference-documents-input"> -->
                                 <button type="button" id="reference-documents-upload-btn" class="modal-btn modal-btn-primary">
-                                    <i class="fas fa-upload"></i> Upload Document
+                                    <i class="fas fa-upload"></i> Import Document
                                 </button>
                             </div>
-                            <div class="reference-documents-filter-row">
+                            <!-- <div class="reference-documents-filter-row">
                                 <select id="reference-documents-category-filter" class="reference-documents-select">
                                     <option value="">All Categories</option>
                                 </select>
@@ -1371,7 +1371,7 @@
                                     <input type="checkbox" id="reference-documents-task-filter">
                                     Make available to the AI
                                 </label>
-                            </div>
+                            </div> -->
                         </div>
                         <div class="reference-documents-list" id="reference-documents-list"></div>
                     </section>
@@ -2790,22 +2790,18 @@
         <div id="reference-documents-upload-modal" class="modal" style="z-index: 4200;">
             <div class="modal-content reference-documents-upload-content">
                 <div class="modal-header">
-                    <h2><i class="fas fa-upload"></i> Upload Reference Documents</h2>
+                    <h2><i class="fas fa-upload"></i> Import Reference Documents</h2>
                     <button id="close-reference-documents-upload-modal" class="modal-close-btn">&times;</button>
                 </div>
                 <form id="reference-documents-upload-form" class="reference-documents-upload-form">
                     <div class="reference-documents-form-group">
-                        <span class="reference-documents-files-label">File *</span>
-                        <div class="reference-documents-drop-zone" style="padding: 12px;">
-                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                                <button type="button" id="reference-documents-upload-pick" class="modal-btn modal-btn-secondary">
-                                    <i class="fas fa-folder-open"></i> Choose File
-                                </button>
-                                <input type="text" id="reference-documents-upload-path" readonly placeholder="No file selected" style="flex:1; min-width: 280px;">
-                            </div>
-                            <p class="reference-documents-drop-sub" style="margin-top: 10px;">Select one file using the native file picker. The full file path is sent to the backend.</p>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <button type="button" id="reference-documents-upload-pick" class="modal-btn modal-btn-secondary">
+                                <i class="fas fa-folder-open"></i> Choose File
+                            </button>
+                            <input type="text" id="reference-documents-upload-path" readonly placeholder="No file selected" style="flex:1; min-width: 280px;">
                         </div>
-                        <ul id="reference-documents-upload-file-list" class="reference-documents-upload-file-list" hidden></ul>
+                         <ul id="reference-documents-upload-file-list" class="reference-documents-upload-file-list" hidden></ul>
                     </div>
                     <div class="reference-documents-form-group">
                         <label for="reference-documents-upload-description">Description</label>
@@ -2826,7 +2822,7 @@
                         </label>
                     </div>
                     <div class="reference-documents-form-actions">
-                        <button type="submit" id="reference-documents-upload-submit" class="modal-btn modal-btn-primary">Upload</button>
+                        <button type="submit" id="reference-documents-upload-submit" class="modal-btn modal-btn-primary">Import</button>
                         <button type="button" id="reference-documents-upload-cancel" class="modal-btn modal-btn-secondary">Cancel</button>
                     </div>
                 </form>
@@ -3904,23 +3900,25 @@
             <div class="artefacts-modal-header">
                 <div class="artefacts-header-title-row">
                     <h2 style="margin:0;"><i class="fas fa-box-open"></i> Artefact Gallery</h2>
-                    <div style="display:flex; gap:6px; align-items:center;">
-                        <button id="artefacts-export-btn" class="modal-btn modal-btn-secondary" title="Download all artefacts as JSON">
-                            <i class="fas fa-download"></i> Export
-                        </button>
-                        <button id="artefacts-import-btn" class="modal-btn modal-btn-secondary" title="Upload artefacts from JSON file">
-                            <i class="fas fa-upload"></i> Import
-                        </button>
-                        <input id="artefacts-import-file" type="file" accept=".json,application/json" style="display:none"/>
-                        <button id="artefacts-new-btn" class="modal-btn modal-btn-primary">+ New Artefact</button>
-                    </div>
                     <button class="modal-close-btn" id="close-artefacts-modal">&times;</button>
                 </div>
-                <div class="artefacts-header-search-row">
-                    <input id="artefacts-search" class="new-image-gallery-input" placeholder="Search by name, description, tags or story..." style="flex:1; min-width:140px;"/>
-                    <button id="artefacts-search-btn" class="modal-btn modal-btn-primary">Search</button>
-                    <button id="artefacts-clear-btn" class="modal-btn modal-btn-secondary">Clear</button>
-                </div>
+
+            </div>
+            <div class="artefacts-body-actions" style="margin-bottom: 20px;">
+                <span style="font-size: 1.0rem; color: #555; margin-right: auto; text-align: left;">Artefacts can be a single digital file or a collection of digital files that you can attach a story, recollection  or description to.</span>
+                <button id="artefacts-export-btn" class="modal-btn modal-btn-secondary" title="Download all artefacts as JSON">
+                    <i class="fas fa-upload"></i> Export
+                </button>
+                <button id="artefacts-import-btn" class="modal-btn modal-btn-secondary" title="Upload artefacts from JSON file">
+                    <i class="fas fa-download"></i> Import
+                </button>
+                <input id="artefacts-import-file" type="file" accept=".json,application/json" style="display:none"/>
+                <button id="artefacts-new-btn" class="modal-btn modal-btn-primary">+ New Artefact</button>
+            </div>
+            <div class="artefacts-header-search-row">
+                <input id="artefacts-search" class="new-image-gallery-input" placeholder="Search by name, description, tags or story..." style="flex:1; min-width:140px;"/>
+                <button id="artefacts-search-btn" class="modal-btn modal-btn-primary">Search</button>
+                <button id="artefacts-clear-btn" class="modal-btn modal-btn-secondary">Clear</button>
             </div>
             <div id="artefacts-thumbnail-grid" class="artefacts-thumbnail-grid"></div>
         </div>
@@ -3941,7 +3939,7 @@
                         <div id="artefact-photos-strip" class="artefact-photos-strip"></div>
                         <div class="artefact-photo-actions">
                             <button id="artefact-add-photo-file-btn" class="modal-btn modal-btn-secondary" style="width:100%;">
-                                <i class="fas fa-upload"></i> Upload file
+                                <i class="fas fa-file-import"></i> Import File
                             </button>
                             <input id="artefact-photo-file-input" type="file" accept="image/*,.pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown" style="display:none"/>
                             <button id="artefact-add-photo-gallery-btn" class="modal-btn modal-btn-secondary" style="width:100%;">

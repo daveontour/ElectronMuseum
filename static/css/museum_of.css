@@ -8879,6 +8879,15 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     border-bottom: 1px solid #dde3ec;
 }
 
+.artefacts-body-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px 0;
+    flex-shrink: 0;
+}
+
 .artefacts-thumbnail-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

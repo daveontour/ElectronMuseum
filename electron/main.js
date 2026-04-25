@@ -548,8 +548,8 @@ app.whenReady().then(async () => {
     await killZombies();
 
     sendStatus('Finding available port...');
-    appPort = await findFreePort(8080);
-    //appPort = 8081;
+    //appPort = await findFreePort(8080);
+    appPort = 8081;
     log(`Using port ${appPort}`);
 
     dotenv.GMAIL_REDIRECT_URL = `http://localhost:${appPort}/gmail/auth/callback`;
@@ -629,7 +629,7 @@ ipcMain.handle('check-ollama-model', () => {
 ipcMain.handle('pull-ollama-model', () => {
   const ollamaExe = getOllamaExe();
   return new Promise((resolve) => {
-    const proc = spawn(ollamaExe, ['pull', 'gemma4'], { windowsHide: true });
+    const proc = spawn(ollamaExe, ['pull', 'gemma4-32k'], { windowsHide: true });
     const send = (line) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('ollama-pull-progress', line);

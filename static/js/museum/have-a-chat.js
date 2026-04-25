@@ -54,9 +54,35 @@ const HaveAChat = (() => {
             .catch(() => { /* leave the default option */ });
     }
 
+    async function _getLLMAvailability() {
+        try {
+            const res = await fetch('/chat/availability', { credentials: 'same-origin' });
+            if (!res.ok) return { localai: false };
+            const av = await res.json();
+            return { localai: !!av.localai_available };
+        } catch (_) {
+            return { localai: false };
+        }
+    }
+
+    async function _applyHaveAChatProviderDefaults() {
+        const providerAEl = _el('have-a-chat-provider-a');
+        const providerBEl = _el('have-a-chat-provider-b');
+        if (!providerAEl || !providerBEl) return;
+
+        const av = await _getLLMAvailability();
+        if (!av.localai) return;
+
+        const userSelectedA = providerAEl.dataset.userSelectedProvider === 'true';
+        const userSelectedB = providerBEl.dataset.userSelectedProvider === 'true';
+        if (!userSelectedA) providerAEl.value = 'localai';
+        if (!userSelectedB) providerBEl.value = 'localai';
+    }
+
     // ── Setup modal ──────────────────────────────────────────────────────────
-    function open() {
+    async function open() {
         _populateVoiceSelects();
+        await _applyHaveAChatProviderDefaults();
         const modal = _el('have-a-chat-setup-modal');
         if (modal) modal.style.display = 'flex';
     }
@@ -316,7 +342,8 @@ const HaveAChat = (() => {
 
         const firstVoice = _currentSlot === 'a' ? (_voiceNames[_voiceA] || _voiceA) : (_voiceNames[_voiceB] || _voiceB);
         const firstLLM   = _currentSlot === 'a' ? _providerA : _providerB;
-        _setStatus(`Starting — ${firstVoice} (${firstLLM === 'claude' ? 'Claude' : 'Gemini'}) goes first…`);
+        const firstLLMLabel = firstLLM === 'claude' ? 'Claude' : firstLLM === 'localai' ? 'Local AI' : 'Gemini';
+        _setStatus(`Starting — ${firstVoice} (${firstLLMLabel}) goes first…`);
 
         _loop();
     }
@@ -387,6 +414,19 @@ const HaveAChat = (() => {
 
         const startBtn = _el('have-a-chat-start-btn');
         if (startBtn) startBtn.addEventListener('click', start);
+
+        const providerAEl = _el('have-a-chat-provider-a');
+        const providerBEl = _el('have-a-chat-provider-b');
+        if (providerAEl) {
+            providerAEl.addEventListener('change', () => {
+                providerAEl.dataset.userSelectedProvider = 'true';
+            });
+        }
+        if (providerBEl) {
+            providerBEl.addEventListener('change', () => {
+                providerBEl.dataset.userSelectedProvider = 'true';
+            });
+        }
 
         // Control bar
         const pauseBtn  = _el('have-a-chat-pause-btn');

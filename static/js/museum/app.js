@@ -3865,6 +3865,12 @@ const App = (() => {
                 (current === 'localai' && !localai_available);
             if (currentUnavailable) {
                 select.value = gemini_available ? 'gemini' : (claude_available ? 'claude' : (localai_available ? 'localai' : 'gemini'));
+            } else {
+                // Prefer Local AI as the startup default while still respecting explicit user changes.
+                const userSelected = select.dataset.userSelectedProvider === 'true';
+                if (!userSelected && localai_available) {
+                    select.value = 'localai';
+                }
             }
             if (typeof UI !== 'undefined' && UI.updateChatContextStatusBarFromAvailability) {
                 UI.updateChatContextStatusBarFromAvailability(av);
@@ -4015,6 +4021,11 @@ const App = (() => {
             initEventListeners(); // Attach main app event listeners
         } catch (e) {
             console.error('initEventListeners failed (some UI may be broken):', e);
+        }
+        if (DOM.llmProviderSelect) {
+            DOM.llmProviderSelect.addEventListener('change', () => {
+                DOM.llmProviderSelect.dataset.userSelectedProvider = 'true';
+            });
         }
         void applyVisitorFeatureGatingFromSession();
         refreshDataImportMasterKeyAccessUI();

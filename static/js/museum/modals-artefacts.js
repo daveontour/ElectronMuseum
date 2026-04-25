@@ -468,27 +468,25 @@ Modals.Artefacts = (() => {
     // Photo management
     // -------------------------------------------------------------------------
 
-    async function _handleFileUpload(file) {
+    async function _handleFileImport(filePath) {
         if (!currentArtefact) return;
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('title', file.name || 'photo');
         try {
-            const resp = await fetch(`/artefacts/${currentArtefact.id}/media/upload`, {
+            const resp = await fetch(`/artefacts/${currentArtefact.id}/media/import`, {
                 method: 'POST',
-                body: formData,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: filePath }),
             });
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.detail || 'Upload failed');
+                throw new Error(err.detail || 'Import failed');
             }
             const updated = await resp.json();
             currentArtefact = updated;
             _renderPhotoStrip(updated.media_items || []);
             _loadArtefacts();
         } catch (err) {
-            console.error('Error uploading file:', err);
-            await AppDialogs.showAppAlert('Error', `Error uploading file: ${err.message}`);
+            console.error('Error importing file:', err);
+            await AppDialogs.showAppAlert('Error', `Error importing file: ${err.message}`);
         }
     }
 
@@ -694,16 +692,31 @@ Modals.Artefacts = (() => {
         const deleteBtn = document.getElementById('artefact-delete-btn');
         if (deleteBtn) deleteBtn.addEventListener('click', _handleDelete);
 
-        // Upload photo via file input
-        const fileInput = document.getElementById('artefact-photo-file-input');
+        // Import local file via native picker
         const fileBtn = document.getElementById('artefact-add-photo-file-btn');
-        if (fileBtn && fileInput) {
-            fileBtn.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', e => {
-                const file = e.target.files[0];
-                if (file) {
-                    _handleFileUpload(file);
-                    fileInput.value = ''; // reset so same file can be re-selected
+        if (fileBtn) {
+            fileBtn.addEventListener('click', async () => {
+                if (!window.electronAPI || typeof window.electronAPI.showOpenDialog !== 'function') {
+                    await AppDialogs.showAppAlert('Import unavailable', 'Native file import is only available in the desktop app.');
+                    return;
+                }
+                try {
+                    const result = await window.electronAPI.showOpenDialog({
+                        properties: ['openFile'],
+                        filters: [
+                            { name: 'Supported files', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic', 'heif', 'pdf', 'txt', 'md', 'markdown'] },
+                            { name: 'All files', extensions: ['*'] }
+                        ]
+                    });
+                    if (!result || result.canceled || !Array.isArray(result.filePaths) || result.filePaths.length === 0) {
+                        return;
+                    }
+                    const selectedPath = result.filePaths[0];
+                    if (!selectedPath) return;
+                    await _handleFileImport(selectedPath);
+                } catch (err) {
+                    console.error('Error selecting import file:', err);
+                    await AppDialogs.showAppAlert('Error', `Could not open file picker: ${err.message || String(err)}`);
                 }
             });
         }

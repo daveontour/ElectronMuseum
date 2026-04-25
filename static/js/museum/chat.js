@@ -1042,7 +1042,7 @@ const VoiceSelector = (() => {
         const voiceDesc = CONSTANTS.VOICE_DESCRIPTIONS[newVoice]
             || (voiceMap[newVoice] && voiceMap[newVoice].description)
             || newVoice;
-        Chat.addMessage('assistant', "Voice changed to " + voiceDesc, true, null, null);
+        Chat.addMessage('assistant', "AI Personality changed to " + voiceDesc, true, null, null);
     }
 
     function highlightSelectedVoiceIcon() {
