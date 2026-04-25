@@ -101,8 +101,18 @@ func (r *InterviewRepo) SaveWriteup(ctx context.Context, id int64, writeup strin
 	q := `UPDATE interviews SET writeup = $1, state = 'finished', updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	args := []any{writeup, id}
 	q, args = addUIDFilter(q, args, uid)
-	_, err := r.pool.ExecContext(ctx, q, args...)
-	return err
+	res, err := r.pool.ExecContext(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("SaveWriteup: interview %d not found or not accessible", id)
+	}
+	return nil
 }
 
 // UpdateInterviewState sets the state and updated_at.

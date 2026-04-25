@@ -10,12 +10,38 @@ import (
 	"strings"
 )
 
-// LocalAIProvider calls a llama.cpp server (or any OpenAI-compatible server)
-// via the /v1/chat/completions endpoint with tool-calling support.
+// LocalAIProvider calls an Ollama server via the native /api/chat and /api/embed endpoints.
 type LocalAIProvider struct {
 	baseURL   string
-	apiKey    string
+	apiKey    string // retained for interface compatibility; not required by Ollama
 	modelName string
+}
+
+// ollamaRequest is the body sent to POST /api/chat.
+type ollamaRequest struct {
+	Model    string           `json:"model"`
+	Messages []map[string]any `json:"messages"`
+	Tools    []map[string]any `json:"tools,omitempty"`
+	Stream   bool             `json:"stream"`
+	Options  map[string]any   `json:"options,omitempty"`
+}
+
+// ollamaResponse is returned by POST /api/chat with stream:false.
+type ollamaResponse struct {
+	Message struct {
+		Role      string `json:"role"`
+		Content   string `json:"content"`
+		ToolCalls []struct {
+			Function struct {
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments"`
+			} `json:"function"`
+		} `json:"tool_calls"`
+	} `json:"message"`
+	DoneReason      string `json:"done_reason"`
+	Done            bool   `json:"done"`
+	PromptEvalCount int    `json:"prompt_eval_count"`
+	EvalCount       int    `json:"eval_count"`
 }
 
 // NewLocalAIProvider creates a LocalAIProvider. Returns nil if baseURL is empty.
@@ -35,89 +61,36 @@ func NewLocalAIProvider(baseURL, apiKey, modelName string) *LocalAIProvider {
 
 func (p *LocalAIProvider) IsAvailable() bool { return p != nil }
 
-// SimpleGenerate sends a prompt to the local AI without tools.
-// Used for summarization and other tasks that don't need tool-calling.
+// SimpleGenerate sends a prompt without tools. Used for summarisation tasks.
 func (p *LocalAIProvider) SimpleGenerate(ctx context.Context, prompt string) (string, *LLMUsage, error) {
 	if p == nil || p.baseURL == "" {
 		return "", nil, fmt.Errorf("localai: not configured")
 	}
-	body := map[string]any{
-		"model":       p.modelName,
-		"temperature": 0.2,
-		"messages": []map[string]any{
+	req := ollamaRequest{
+		Model:  p.modelName,
+		Stream: false,
+		Messages: []map[string]any{
 			{"role": "user", "content": prompt},
 		},
+		Options: map[string]any{"temperature": 0.2},
 	}
-	resp, err := localaiPost(ctx, p.baseURL, p.apiKey, body)
+	resp, err := ollamaPost(ctx, p.baseURL, req)
 	if err != nil {
 		return "", nil, err
 	}
-	usage := localaiUsageFromResponse(resp, p.modelName)
-	text := localaiExtractText(resp)
-	return strings.TrimSpace(text), usage, nil
-}
-
-func localaiUsageFromResponse(resp map[string]any, modelName string) *LLMUsage {
-	in, out := 0, 0
-	if u, ok := resp["usage"].(map[string]any); ok {
-		if v, ok := u["prompt_tokens"].(float64); ok {
-			in = int(v)
-		}
-		if v, ok := u["completion_tokens"].(float64); ok {
-			out = int(v)
+	var usage *LLMUsage
+	if resp.PromptEvalCount > 0 || resp.EvalCount > 0 {
+		usage = &LLMUsage{
+			Provider:     "localai",
+			Model:        p.modelName,
+			InputTokens:  resp.PromptEvalCount,
+			OutputTokens: resp.EvalCount,
 		}
 	}
-	if in == 0 && out == 0 {
-		return nil
-	}
-	return &LLMUsage{Provider: "localai", Model: modelName, InputTokens: in, OutputTokens: out}
+	return strings.TrimSpace(resp.Message.Content), usage, nil
 }
 
-// localaiExtractText pulls the assistant content string from the first choice.
-func localaiExtractText(resp map[string]any) string {
-	choices, _ := resp["choices"].([]any)
-	if len(choices) == 0 {
-		return ""
-	}
-	choice, _ := choices[0].(map[string]any)
-	msg, _ := choice["message"].(map[string]any)
-	content, _ := msg["content"].(string)
-	return content
-}
-
-// localaiExtractToolCalls returns tool_calls from the first choice's message, if any.
-func localaiExtractToolCalls(resp map[string]any) []map[string]any {
-	choices, _ := resp["choices"].([]any)
-	if len(choices) == 0 {
-		return nil
-	}
-	choice, _ := choices[0].(map[string]any)
-	msg, _ := choice["message"].(map[string]any)
-	raw, _ := msg["tool_calls"].([]any)
-	if len(raw) == 0 {
-		return nil
-	}
-	out := make([]map[string]any, 0, len(raw))
-	for _, tc := range raw {
-		if m, ok := tc.(map[string]any); ok {
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
-// localaiFinishReason returns the finish_reason string for the first choice.
-func localaiFinishReason(resp map[string]any) string {
-	choices, _ := resp["choices"].([]any)
-	if len(choices) == 0 {
-		return ""
-	}
-	choice, _ := choices[0].(map[string]any)
-	reason, _ := choice["finish_reason"].(string)
-	return reason
-}
-
-// GenerateResponse calls the local AI with a tool-calling loop.
+// GenerateResponse calls the Ollama native API with a tool-calling loop.
 func (p *LocalAIProvider) GenerateResponse(
 	ctx context.Context,
 	req GenerateRequest,
@@ -144,10 +117,10 @@ func (p *LocalAIProvider) GenerateResponse(
 		defs = *toolDecls
 	}
 
-	// Convert tool definitions to OpenAI format.
-	var openAITools []map[string]any
+	// Ollama native tool definitions use the same shape as OpenAI.
+	var tools []map[string]any
 	for _, td := range defs {
-		openAITools = append(openAITools, map[string]any{
+		tools = append(tools, map[string]any{
 			"type": "function",
 			"function": map[string]any{
 				"name":        td["name"],
@@ -163,36 +136,25 @@ func (p *LocalAIProvider) GenerateResponse(
 	outputTokens := 0
 
 	for iter := 0; iter < maxToolCallIterations; iter++ {
-		body := map[string]any{
-			"model":       p.modelName,
-			"temperature": req.Temperature,
-			"messages":    messages,
-		}
-		if len(openAITools) > 0 {
-			body["tools"] = openAITools
-			body["tool_choice"] = "auto"
+		ollamaReq := ollamaRequest{
+			Model:    p.modelName,
+			Messages: messages,
+			Tools:    tools,
+			Stream:   false,
+			Options:  map[string]any{"temperature": req.Temperature},
 		}
 
-		resp, err := localaiPost(ctx, p.baseURL, p.apiKey, body)
+		resp, err := ollamaPost(ctx, p.baseURL, ollamaReq)
 		if err != nil {
 			return GenerateResult{}, fmt.Errorf("localai: %w", err)
 		}
 
-		// Accumulate token usage.
-		if u, ok := resp["usage"].(map[string]any); ok {
-			if v, ok := u["prompt_tokens"].(float64); ok {
-				inputTokens += int(v)
-			}
-			if v, ok := u["completion_tokens"].(float64); ok {
-				outputTokens += int(v)
-			}
-		}
+		inputTokens += resp.PromptEvalCount
+		outputTokens += resp.EvalCount
 
-		finishReason := localaiFinishReason(resp)
-		toolCalls := localaiExtractToolCalls(resp)
-
-		if finishReason != "tool_calls" || len(toolCalls) == 0 {
-			responseText := strings.TrimSpace(localaiExtractText(resp))
+		if len(resp.Message.ToolCalls) == 0 {
+			// Text response — loop complete.
+			responseText := strings.TrimSpace(resp.Message.Content)
 			if responseText == "" {
 				responseText = "I apologize, but I couldn't generate a response."
 			}
@@ -215,35 +177,25 @@ func (p *LocalAIProvider) GenerateResponse(
 				MetadataJSON: string(metaJSON),
 				Voice:        req.Voice,
 				Usage: &LLMUsage{
-					Provider: "localai", Model: p.modelName,
-					InputTokens: inputTokens, OutputTokens: outputTokens,
+					Provider:     "localai",
+					Model:        p.modelName,
+					InputTokens:  inputTokens,
+					OutputTokens: outputTokens,
 				},
 			}, nil
 		}
 
-		// Append the assistant message (with tool_calls) to history.
-		choices, _ := resp["choices"].([]any)
-		var assistantMsg map[string]any
-		if len(choices) > 0 {
-			choice, _ := choices[0].(map[string]any)
-			assistantMsg, _ = choice["message"].(map[string]any)
-		}
-		if assistantMsg == nil {
-			assistantMsg = map[string]any{"role": "assistant", "tool_calls": toolCalls}
-		}
-		messages = append(messages, assistantMsg)
+		// Echo the assistant message (including tool_calls) back into the conversation.
+		messages = append(messages, map[string]any{
+			"role":       "assistant",
+			"content":    resp.Message.Content,
+			"tool_calls": resp.Message.ToolCalls,
+		})
 
-		// Execute each tool call and collect results.
-		for _, tc := range toolCalls {
-			callID, _ := tc["id"].(string)
-			fn, _ := tc["function"].(map[string]any)
-			toolName, _ := fn["name"].(string)
-			argsStr, _ := fn["arguments"].(string)
-
-			var toolInput map[string]any
-			if argsStr != "" {
-				_ = json.Unmarshal([]byte(argsStr), &toolInput)
-			}
+		// Execute each tool call and append the results.
+		for _, tc := range resp.Message.ToolCalls {
+			toolName := tc.Function.Name
+			toolInput := tc.Function.Arguments
 			if toolInput == nil {
 				toolInput = map[string]any{}
 			}
@@ -260,15 +212,37 @@ func (p *LocalAIProvider) GenerateResponse(
 			}
 			resultJSON, _ := json.Marshal(result)
 
+			// Ollama native API does not use tool_call_id.
 			messages = append(messages, map[string]any{
-				"role":         "tool",
-				"tool_call_id": callID,
-				"content":      string(resultJSON),
+				"role":    "tool",
+				"content": string(resultJSON),
 			})
+
+			// Prevent the same tool from being offered in subsequent iterations.
+			tools = removeToolDefinitionByName(tools, toolName)
 		}
 	}
 
 	return GenerateResult{}, fmt.Errorf("localai: exceeded max tool-calling iterations")
+}
+
+// removeToolDefinitionByName removes a tool definition by name from a list of tool definitions.
+// This is used to prevent the same tool from being offered in subsequent iterations.
+// I saw this type of behaviour in the wild with the gemma4 model.
+func removeToolDefinitionByName(tools []map[string]any, name string) []map[string]any {
+	if name == "" || len(tools) == 0 {
+		return tools
+	}
+	filtered := tools[:0]
+	for _, t := range tools {
+		fn, _ := t["function"].(map[string]any)
+		toolName, _ := fn["name"].(string)
+		if toolName == name {
+			continue
+		}
+		filtered = append(filtered, t)
+	}
+	return filtered
 }
 
 func buildLocalAIMessages(req GenerateRequest, history []ConvTurn, systemPrompt string) []map[string]any {
@@ -315,10 +289,7 @@ func buildLocalAIMessages(req GenerateRequest, history []ConvTurn, systemPrompt 
 	return messages
 }
 
-// Embed calls the OpenAI-compatible /v1/embeddings endpoint and returns the
-// embedding vector for the given text. The caller supplies the embedding model
-// name because it is typically different from the chat completion model.
-// Returns a nil slice and an error when the server is unreachable or unconfigured.
+// Embed calls the Ollama native /api/embed endpoint and returns the embedding vector.
 func (p *LocalAIProvider) Embed(ctx context.Context, text, embeddingModel string) ([]float32, error) {
 	if p == nil || p.baseURL == "" {
 		return nil, fmt.Errorf("localai: not configured")
@@ -335,24 +306,23 @@ func (p *LocalAIProvider) Embed(ctx context.Context, text, embeddingModel string
 		"model": model,
 		"input": text,
 	}
-	resp, err := localaiPost(ctx, p.baseURL, p.apiKey, body, "/v1/embeddings")
+	resp, err := ollamaEmbedPost(ctx, p.baseURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("localai embed: %w", err)
 	}
 
-	// Response shape: { "data": [ { "embedding": [float, ...], "index": 0, "object": "embedding" } ], ... }
-	dataRaw, _ := resp["data"].([]any)
-	if len(dataRaw) == 0 {
-		return nil, fmt.Errorf("localai embed: empty data array in response")
+	// Response: {"embeddings": [[float, ...]]}
+	embsRaw, _ := resp["embeddings"].([]any)
+	if len(embsRaw) == 0 {
+		return nil, fmt.Errorf("localai embed: empty embeddings array in response")
 	}
-	first, _ := dataRaw[0].(map[string]any)
-	embRaw, _ := first["embedding"].([]any)
-	if len(embRaw) == 0 {
+	firstRaw, _ := embsRaw[0].([]any)
+	if len(firstRaw) == 0 {
 		return nil, fmt.Errorf("localai embed: no embedding values in response")
 	}
 
-	vec := make([]float32, len(embRaw))
-	for i, v := range embRaw {
+	vec := make([]float32, len(firstRaw))
+	for i, v := range firstRaw {
 		f, ok := v.(float64)
 		if !ok {
 			return nil, fmt.Errorf("localai embed: unexpected value type at index %d", i)
@@ -362,24 +332,19 @@ func (p *LocalAIProvider) Embed(ctx context.Context, text, embeddingModel string
 	return vec, nil
 }
 
-func localaiPost(ctx context.Context, baseURL, apiKey string, body map[string]any, path ...string) (map[string]any, error) {
+// ollamaPost sends a request to POST /api/chat and decodes the response.
+func ollamaPost(ctx context.Context, baseURL string, body ollamaRequest) (*ollamaResponse, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	endpoint := "/v1/chat/completions"
-	if len(path) > 0 && path[0] != "" {
-		endpoint = path[0]
-	}
-	url := baseURL + endpoint
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+	//Write the body to a stdout
+	fmt.Println(string(b))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/chat", bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	}
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		return nil, err
@@ -390,7 +355,37 @@ func localaiPost(ctx context.Context, baseURL, apiKey string, body map[string]an
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("LocalAI API %d: %s", resp.StatusCode, string(data))
+		return nil, fmt.Errorf("Ollama API %d: %s", resp.StatusCode, string(data))
+	}
+	var result ollamaResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ollamaEmbedPost sends a request to POST /api/embed and returns the raw response map.
+func ollamaEmbedPost(ctx context.Context, baseURL string, body map[string]any) (map[string]any, error) {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/embed", bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Ollama embed API %d: %s", resp.StatusCode, string(data))
 	}
 	var result map[string]any
 	if err := json.Unmarshal(data, &result); err != nil {

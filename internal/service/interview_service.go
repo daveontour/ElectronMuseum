@@ -408,6 +408,9 @@ func (s *ChatService) EndInterview(
 	RecordLLMUsage(ctx, s.billing, s.userRepo, result.Usage, nil)
 
 	writeup := strings.TrimSpace(result.PlainText)
+	if writeup == "" {
+		return nil, fmt.Errorf("writeup generation returned empty content")
+	}
 	if err := interviewRepo.SaveWriteup(ctx, interviewID, writeup); err != nil {
 		return nil, fmt.Errorf("save writeup: %w", err)
 	}

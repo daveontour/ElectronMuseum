@@ -7828,7 +7828,7 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 
 /* Interview setup modal */
 .interview-setup-content {
-    max-width: 620px;
+    max-width: 1116px;
     width: 94vw;
 }
 
@@ -7940,20 +7940,25 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 
 /* Interview writeup display */
 .interview-writeup {
+    flex: 0 0 auto;
+    width: calc(100% - 32px);
+    box-sizing: border-box;
     max-width: 760px;
     margin: 28px auto 16px;
     background: linear-gradient(135deg, #fefefe, #f8faf9);
     border: 1px solid #c8d6c8;
     border-radius: 14px;
-    overflow: hidden;
+    /* Let the card grow with content; when taller than max-height, scroll the whole card.
+       (Do not use overflow:hidden + flex:1 body — parent height is indefinite so the body
+       can resolve to 0px in column flex layout.) */
+    overflow-x: hidden;
+    overflow-y: auto;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
     animation: interviewFadeIn 0.5s ease-out;
-    display: flex;
-    flex-direction: column;
+    display: block;
     max-height: min(78vh, 900px);
 }
 .interview-writeup-header {
-    flex: 0 0 auto;
     background: linear-gradient(135deg, #3a7c5f, #4a9a73);
     color: #fff;
     padding: 16px 24px;
@@ -7967,7 +7972,6 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     font-size: 1.1em;
 }
 .interview-writeup-saved-note {
-    flex: 0 0 auto;
     padding: 10px 16px;
     font-size: 0.88em;
     line-height: 1.45;
@@ -7980,10 +7984,10 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     color: #3a7c5f;
 }
 .interview-writeup-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    /* Size to markdown content; outer .interview-writeup scrolls past max-height */
+    display: block;
+    min-height: 1px;
+    overflow-y: visible;
     padding: 24px 28px;
     font-size: 0.95em;
     line-height: 1.75;
@@ -8011,7 +8015,6 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     font-style: italic;
 }
 .interview-writeup-actions {
-    flex: 0 0 auto;
     padding: 12px 24px 16px;
     display: flex;
     gap: 10px;

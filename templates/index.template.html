@@ -532,18 +532,19 @@
                         </div>
                     </div>
 
-                    <div>
-                        <label class="interview-section-label">Focus / Topic <span style="font-weight:normal;color:#777;">(optional)</span></label>
-                        <textarea id="interview-purpose-detail" rows="2" class="interview-detail-input" placeholder="e.g. 'Career in aviation' or 'Childhood memories in Brisbane' — leave blank for a general interview"></textarea>
-                    </div>
-
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <label class="interview-section-label" style="margin:0;">LLM Provider</label>
-                        <select id="interview-provider" class="form-control" style="width:auto;">
-                            <option value="gemini">Gemini</option>
-                            <option value="claude">Claude</option>
-                            <option value="localai">Local AI</option>
-                        </select>
+                    <div style="display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+                        <div style="flex:1 1 520px;">
+                            <label class="interview-section-label">Focus / Topic <span style="font-weight:normal;color:#777;">(optional)</span></label>
+                            <textarea id="interview-purpose-detail" rows="2" class="interview-detail-input" placeholder="e.g. 'Career in aviation' or 'Childhood memories in Brisbane' — leave blank for a general interview"></textarea>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:8px; min-width:180px; flex:0 0 auto;">
+                            <label class="interview-section-label" style="margin:0;">LLM Provider</label>
+                            <select id="interview-provider" class="form-control" style="width:100%;">
+                                <option value="gemini">Gemini</option>
+                                <option value="claude">Claude</option>
+                                <option value="localai">Local AI</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div id="interview-resume-section" style="display:none;">

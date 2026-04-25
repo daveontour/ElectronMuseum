@@ -107,6 +107,7 @@ const InterviewerMode = (() => {
     }
 
     async function _viewFinishedInterview() {
+        debugger;
         const id = _finishedSelect ? parseInt(_finishedSelect.value, 10) : 0;
         if (!id) return;
 
@@ -132,6 +133,8 @@ const InterviewerMode = (() => {
             // Show the writeup if available
             if (iv.writeup) {
                 _displayWriteup(iv.writeup);
+            } else {
+                _displayError('No saved writeup was found for this interview.');
             }
         } catch (err) {
             console.error('View interview error:', err);
@@ -330,6 +333,8 @@ const InterviewerMode = (() => {
             _hideWriteupLoading();
             if (data.writeup) {
                 _displayWriteup(data.writeup);
+            } else {
+                _displayError('Interview ended, but no writeup was returned.');
             }
             _exitInterviewMode();
         } catch (err) {
