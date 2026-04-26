@@ -51,6 +51,12 @@ func (s *ChatService) GenerateHaveAChatTurn(
 			provider = cp
 			providerName = "claude"
 		}
+	} else if speakingProviderKey == "deepseek" {
+		dp := s.effectiveDeepSeekProvider()
+		if dp != nil && dp.IsAvailable() {
+			provider = dp
+			providerName = "deepseek"
+		}
 	} else if speakingProviderKey == "localai" {
 		lp := s.effectiveLocalAIProvider()
 		if lp != nil && lp.IsAvailable() {
@@ -173,6 +179,8 @@ Your goal is to:
 		coreInstructions,
 		sysInstructions,
 	)
+	systemPrompt = appendExplicitContentPolicy(systemPrompt, req.AllowExplicitContent)
+	systemPrompt = s.appendInlinedReferenceDocumentsToSystemPrompt(ctx, r, systemPrompt)
 
 	// ── User prompt: history as narrative ────────────────────────────────────
 	var sb strings.Builder

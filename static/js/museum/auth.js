@@ -71,6 +71,21 @@ const AuthModule = (() => {
             });
         }
 
+        const adminSec = document.getElementById('account-admin-section');
+        if (adminSec) {
+            // Same scope as billing PDFs: signed-in archive owner, not a visitor session.
+            // /admin uses its own cookie + credentials — DB is_admin is not required to open it.
+            adminSec.style.display = (currentUser && !currentUser.is_visitor) ? 'block' : 'none';
+        }
+        const adminBtn = document.getElementById('account-admin-btn');
+        if (adminBtn && !adminBtn.dataset.wired) {
+            adminBtn.dataset.wired = '1';
+            adminBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                window.location.href = '/admin';
+            });
+        }
+
         // Wire logout button
         const logoutBtn = document.getElementById('account-logout-btn');
         if (logoutBtn) {

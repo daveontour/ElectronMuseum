@@ -127,6 +127,27 @@
         }
         .panel { display: none; }
         .panel.active { display: block; }
+        #login-admin-login-btn {
+            position: fixed;
+            top: 14px;
+            right: 14px;
+            z-index: 100;
+            padding: 8px 14px;
+            border-radius: 6px;
+            border: 1px solid #2e4068;
+            background: #19264d;
+            color: #cdd6e8;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        #login-admin-login-btn:hover {
+            background: #243368;
+            border-color: #3b82f6;
+            color: #fff;
+        }
         @media (max-width: 640px) {
             .form-row {
                 flex-direction: column;
@@ -136,6 +157,7 @@
     </style>
 </head>
 <body>
+    <button type="button" id="login-admin-login-btn" style="display:none;">Admin Login</button>
     <div class="login-card">
         <h1 class="login-title"><i class="fas fa-landmark" style="margin-right:10px; color:#3b82f6;"></i>Digital Museum</h1>
         <p class="login-subtitle">Sign in to access the archive.</p>
@@ -150,7 +172,7 @@
         <div id="success-msg" style="display:none; color:#4ade80; background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.25); padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:0.9rem;"></div>
 
         <div id="advanced-trigger" style="text-align:right; margin-bottom:4px;">
-            <button type="button" id="advanced-btn" style="background:none;border:none;color:#8fa4c8;font-size:0.82rem;cursor:pointer;padding:2px 0;">&#9881; Advanced</button>
+            <button type="button" id="advanced-btn" title="Show or hide advanced options" aria-expanded="false" style="background:none;border:none;color:#8fa4c8;font-size:0.82rem;cursor:pointer;padding:2px 0;">&#9881; Advanced</button>
         </div>
 
         <div id="panel-advanced" style="display:none; margin-bottom:16px; padding:14px; background:#0f1922; border:1px solid #2e4068; border-radius:8px;">
@@ -191,10 +213,7 @@
                 </label>
             </div>
 
-            <div style="display:flex; gap:8px; margin-top:20px; padding-top:12px; border-top:1px solid #2e4068;">
-                <button type="button" id="adv-close-btn" style="padding:7px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem; margin-left:auto;">Close</button>
-            </div>
-            <div id="adv-status" style="color:#f87171; font-size:0.82rem; margin-top:8px; display:none;"></div>
+            <div id="adv-status" style="color:#f87171; font-size:0.82rem; margin-top:12px; display:none;"></div>
         </div>
 
         <!-- Login panel -->
@@ -293,6 +312,11 @@
             panelVisitor.classList.toggle('active', tab === 'visitor');
             errorMsg.style.display = 'none';
             document.getElementById('success-msg').style.display = 'none';
+            const adminLoginTop = document.getElementById('login-admin-login-btn');
+            if (adminLoginTop) {
+                const loginTabVisible = tabLogin.style.display !== 'none';
+                adminLoginTop.style.display = (tab === 'login' && loginTabVisible) ? 'block' : 'none';
+            }
         }
 
         function showSuccess(msg) {
@@ -304,6 +328,15 @@
         tabLogin.addEventListener('click', () => showTab('login'));
         tabRegister.addEventListener('click', () => showTab('register'));
         tabVisitor.addEventListener('click', () => showTab('visitor'));
+
+        (function wireAdminLoginTop() {
+            const btn = document.getElementById('login-admin-login-btn');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    window.location.href = '/admin';
+                });
+            }
+        })();
 
         function showError(msg) {
             errorMsg.textContent = msg;
@@ -473,6 +506,7 @@
             const applyLogBtn = document.getElementById('adv-apply-log-btn');
             const logSel      = document.getElementById('adv-log-level');
             const statusEl    = document.getElementById('adv-status');
+            const autoStartLocalAICheckbox = document.getElementById('adv-auto-start-local-ai');
 
             function setDbBtnEnabled(on) {
                 applyDbBtn.disabled = !on;
@@ -485,8 +519,12 @@
                 applyLogBtn.style.opacity = on ? '1' : '0.45';
             }
 
-            async function showAdvanced() {
-                document.getElementById('panel-advanced').style.display = 'block';
+            const panelAdvanced = document.getElementById('panel-advanced');
+            const advancedBtn = document.getElementById('advanced-btn');
+
+            async function openAdvancedPanel() {
+                panelAdvanced.style.display = 'block';
+                advancedBtn.setAttribute('aria-expanded', 'true');
                 document.getElementById('adv-current-path').textContent = '(loading…)';
                 statusEl.style.display = 'none';
                 pendingPath = null;
@@ -505,9 +543,13 @@
                 autoStartLocalAICheckbox.checked = !!autoStartEnabled;
             }
 
-            document.getElementById('advanced-btn').addEventListener('click', showAdvanced);
-            document.getElementById('adv-close-btn').addEventListener('click', () => {
-                document.getElementById('panel-advanced').style.display = 'none';
+            advancedBtn.addEventListener('click', async function () {
+                if (panelAdvanced.style.display === 'block') {
+                    panelAdvanced.style.display = 'none';
+                    advancedBtn.setAttribute('aria-expanded', 'false');
+                    return;
+                }
+                await openAdvancedPanel();
             });
 
             logSel.addEventListener('change', () => {
@@ -579,7 +621,6 @@
             const ollamaConfirm = document.getElementById('adv-ollama-confirm');
             const ollamaProgress= document.getElementById('adv-ollama-progress');
             const ollamaStartBtn= document.getElementById('adv-start-ollama-btn');
-            const autoStartLocalAICheckbox = document.getElementById('adv-auto-start-local-ai');
 
             function ollamaSetMsg(text, color) {
                 ollamaMsg.textContent = text;

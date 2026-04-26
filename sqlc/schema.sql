@@ -402,6 +402,7 @@ CREATE TABLE IF NOT EXISTS reference_documents (
     ai_detailed_summary TEXT,
     ai_quick_summary    TEXT,
     available_for_task  BOOLEAN NOT NULL DEFAULT FALSE,
+    include_in_system_prompt BOOLEAN NOT NULL DEFAULT FALSE,
     is_private          BOOLEAN NOT NULL DEFAULT FALSE,
     is_sensitive        BOOLEAN NOT NULL DEFAULT FALSE,
     is_encrypted        BOOLEAN NOT NULL DEFAULT FALSE,

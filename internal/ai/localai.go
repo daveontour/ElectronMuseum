@@ -338,8 +338,6 @@ func ollamaPost(ctx context.Context, baseURL string, body ollamaRequest) (*ollam
 	if err != nil {
 		return nil, err
 	}
-	//Write the body to a stdout
-	fmt.Println(string(b))
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/chat", bytes.NewReader(b))
 	if err != nil {
 		return nil, err

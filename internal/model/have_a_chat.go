@@ -12,13 +12,16 @@ type HaveAChatRequest struct {
 
 	VoiceA    string `json:"voice_a"`    // voice personality key for slot A
 	VoiceB    string `json:"voice_b"`    // voice personality key for slot B
-	ProviderA string `json:"provider_a"` // "claude" or "gemini" — LLM that powers voice A
-	ProviderB string `json:"provider_b"` // "claude" or "gemini" — LLM that powers voice B
+	ProviderA string `json:"provider_a"` // "claude", "gemini", "deepseek", or "localai" — LLM that powers voice A
+	ProviderB string `json:"provider_b"` // "claude", "gemini", "deepseek", or "localai" — LLM that powers voice B
 
 	Topic       string          `json:"topic"`
 	History     []HaveAChatTurn `json:"history"`
 	Temperature float64         `json:"temperature"`
 	BanterMode  bool            `json:"banter_mode"`
+
+	// AllowExplicitContent mirrors POST /chat/generate: when true, append explicit-content policy to the system prompt.
+	AllowExplicitContent bool `json:"allowExplicitContent"`
 }
 
 // HaveAChatResponse is the JSON response for one LLM turn.

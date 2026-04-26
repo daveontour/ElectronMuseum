@@ -69,17 +69,25 @@ const App = (() => {
     async function getLLMProviderAvailabilityPair() {
         try {
             const res = await fetch('/chat/availability', { credentials: 'same-origin' });
-            if (!res.ok) return { gemini: true, claude: true, localai: false };
+            if (!res.ok) return { gemini: true, claude: true, deepseek: true, localai: false };
             const av = await res.json();
-            return { gemini: !!av.gemini_available, claude: !!av.claude_available, localai: !!av.localai_available };
+            return {
+                gemini: !!av.gemini_available,
+                claude: !!av.claude_available,
+                deepseek: !!av.deepseek_available,
+                localai: !!av.localai_available
+            };
         } catch (e) {
-            return { gemini: true, claude: true, localai: false };
+            return { gemini: true, claude: true, deepseek: true, localai: false };
         }
     }
 
     function otherLLMProvider(p) {
         if (p === 'localai') return 'gemini';
-        return p === 'gemini' ? 'claude' : 'gemini';
+        if (p === 'gemini') return 'claude';
+        if (p === 'claude') return 'gemini';
+        if (p === 'deepseek') return 'gemini';
+        return 'gemini';
     }
 
     async function postJsonChatEndpoint(url, payload) {
@@ -125,7 +133,7 @@ const App = (() => {
             return { ok: false, error: first.error || 'Request failed', data: first.data };
         }
         const av = await getLLMProviderAvailabilityPair();
-        const altAvailable = alt === 'gemini' ? av.gemini : av.claude;
+        const altAvailable = alt === 'gemini' ? av.gemini : alt === 'claude' ? av.claude : alt === 'deepseek' ? av.deepseek : false;
         if (!altAvailable) {
             return { ok: false, error: first.error || 'Request failed', data: first.data };
         }
@@ -243,7 +251,7 @@ const App = (() => {
                     prompt: finalMessage,
                     voice: selectedVoice,
                     mood: selectedMood,
-                    companionMode: DOM.companionModeCheckbox ? DOM.companionModeCheckbox.checked : false,
+                    companionMode: false,
                     allowExplicitContent: DOM.allowExplicitContentCheckbox ? DOM.allowExplicitContentCheckbox.checked : false,
                     provider,
                     whos_asking: whosAsking,
@@ -305,7 +313,7 @@ const App = (() => {
                     prompt: finalMessage,
                     voice: selectedVoice,
                     mood: selectedMood,
-                    companionMode: DOM.companionModeCheckbox ? DOM.companionModeCheckbox.checked : false,
+                    companionMode: false,
                     allowExplicitContent: DOM.allowExplicitContentCheckbox ? DOM.allowExplicitContentCheckbox.checked : false,
                     temperature: parseFloat(DOM.creativityLevel ? DOM.creativityLevel.value : '0'),
                     conversation_id: conversationId,
@@ -1252,6 +1260,7 @@ const App = (() => {
                 }
                 const gOk = !!av.gemini_available;
                 const cOk = !!av.claude_available;
+                const dOk = !!av.deepseek_available;
                 const lOk = !!av.localai_available;
                 const gemVal = gOk
                     ? '<strong style="color:#15803d;">Ready</strong> — Gemini can be selected as AI Provider'
@@ -1259,12 +1268,16 @@ const App = (() => {
                 const claVal = cOk
                     ? '<strong style="color:#15803d;">Ready</strong> — Claude can be selected as AI Provider'
                     : '<strong style="color:#b91c1c;">Not available</strong> — configure an Anthropic API key';
+                const deepVal = dOk
+                    ? '<strong style="color:#15803d;">Ready</strong> — DeepSeek can be selected as AI Provider'
+                    : '<strong style="color:#b91c1c;">Not available</strong> — configure DEEPSEEK_API_KEY in server config';
                 const localVal = lOk
                     ? '<strong style="color:#15803d;">Ready</strong> — Local AI can be selected as AI Provider'
                     : '<strong style="color:#b91c1c;">Not available</strong> — set LOCALAI_BASE_URL in server config';
                 const parts = [];
                 parts.push(row2('<span style="color:#64748b;">Gemini</span>', `<span>${gemVal}</span>`));
                 parts.push(row2('<span style="color:#64748b;">Claude</span>', `<span>${claVal}</span>`));
+                parts.push(row2('<span style="color:#64748b;">DeepSeek</span>', `<span>${deepVal}</span>`));
                 parts.push(row2('<span style="color:#64748b;">Local AI</span>', `<span>${localVal}</span>`));
                 if (me && me.llm_settings) {
                     const ls = me.llm_settings;
@@ -1291,7 +1304,7 @@ const App = (() => {
                 const lbl = document.getElementById('overview-llm-keys-open-btn-label');
                 archiveOverviewMeForKeys = null;
                 if (wrap) {
-                    if (!gOk && !cOk && !lOk && me) {
+                    if (!gOk && !cOk && !dOk && !lOk && me) {
                         wrap.style.display = 'block';
                         archiveOverviewMeForKeys = me;
                         if (lbl) {
@@ -3851,20 +3864,24 @@ const App = (() => {
             const av = await res.json();
             const gemini_available = !!av.gemini_available;
             const claude_available = !!av.claude_available;
+            const deepseek_available = !!av.deepseek_available;
             const localai_available = !!av.localai_available;
             const geminiOpt = select.querySelector('option[value="gemini"]');
             const claudeOpt = select.querySelector('option[value="claude"]');
+            const deepseekOpt = select.querySelector('option[value="deepseek"]');
             const localaiOpt = select.querySelector('option[value="localai"]');
             if (geminiOpt) geminiOpt.disabled = !gemini_available;
             if (claudeOpt) claudeOpt.disabled = !claude_available;
+            if (deepseekOpt) deepseekOpt.disabled = !deepseek_available;
             if (localaiOpt) localaiOpt.disabled = !localai_available;
             const current = select.value;
             const currentUnavailable =
                 (current === 'gemini' && !gemini_available) ||
                 (current === 'claude' && !claude_available) ||
+                (current === 'deepseek' && !deepseek_available) ||
                 (current === 'localai' && !localai_available);
             if (currentUnavailable) {
-                select.value = gemini_available ? 'gemini' : (claude_available ? 'claude' : (localai_available ? 'localai' : 'gemini'));
+                select.value = gemini_available ? 'gemini' : (claude_available ? 'claude' : (deepseek_available ? 'deepseek' : (localai_available ? 'localai' : 'gemini')));
             } else {
                 // Prefer Local AI as the startup default while still respecting explicit user changes.
                 const userSelected = select.dataset.userSelectedProvider === 'true';
@@ -3986,10 +4003,12 @@ const App = (() => {
             }
             const geminiOk = CONSTANTS.LLM_PROVIDERS && CONSTANTS.LLM_PROVIDERS.GEMINI === 'True';
             const claudeOk = CONSTANTS.LLM_PROVIDERS && CONSTANTS.LLM_PROVIDERS.CLAUDE === 'True';
-            if (!geminiOk && !claudeOk && Modals.ConfirmationModal) {
+            const deepseekOk = CONSTANTS.LLM_PROVIDERS && CONSTANTS.LLM_PROVIDERS.DEEPSEEK === 'True';
+            const localaiOk = CONSTANTS.LLM_PROVIDERS && CONSTANTS.LLM_PROVIDERS.LOCALAI === 'True';
+            if (!geminiOk && !claudeOk && !deepseekOk && !localaiOk && Modals.ConfirmationModal) {
                 Modals.ConfirmationModal.open(
                     'No AI Provider Available',
-                    'No LLM provider is available. AI functions will not be available until at least one API key (Gemini or Anthropic) is set in the server environment (for example in the .env file).',
+                    'No LLM provider is available. AI functions will not be available until at least one API key or local endpoint (Gemini, Anthropic, DeepSeek, or Local AI) is set in the server environment (for example in the .env file).',
                     undefined
                 );
             }

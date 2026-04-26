@@ -121,6 +121,7 @@ func (s *ChatService) StartInterview(
 	}
 
 	systemPrompt := s.buildInterviewSystemPrompt(ctx, req.Style, req.Purpose, req.PurposeDetail, subjectName, subjectGender)
+	systemPrompt = s.appendInlinedReferenceDocumentsToSystemPrompt(ctx, r, systemPrompt)
 	userPrompt := s.buildInterviewStartPrompt(subjectName, req.PurposeDetail)
 
 	executor, toolDecls := s.buildChatTools(ctx, r, subjectName)
@@ -200,6 +201,7 @@ func (s *ChatService) GenerateInterviewTurn(
 	}
 
 	systemPrompt := s.buildInterviewSystemPrompt(ctx, iv.Style, iv.Purpose, iv.PurposeDetail, subjectName, subjectGender)
+	systemPrompt = s.appendInlinedReferenceDocumentsToSystemPrompt(ctx, r, systemPrompt)
 
 	history := buildInterviewHistory(turns)
 
@@ -299,6 +301,7 @@ func (s *ChatService) ResumeInterview(
 	}
 
 	systemPrompt := s.buildInterviewSystemPrompt(ctx, iv.Style, iv.Purpose, iv.PurposeDetail, subjectName, subjectGender)
+	systemPrompt = s.appendInlinedReferenceDocumentsToSystemPrompt(ctx, r, systemPrompt)
 	history := buildInterviewHistory(turns)
 
 	userPrompt := "The interview was paused and is now being resumed. Welcome the interviewee back warmly, briefly summarize where you left off, and continue with your next interview question."
@@ -382,6 +385,7 @@ func (s *ChatService) EndInterview(
 			"Organise the material logically with clear sections. The subject's name is %s.",
 		writeupTypeLabel(iv.Purpose), subjectName,
 	)
+	systemPrompt = s.appendInlinedReferenceDocumentsToSystemPrompt(ctx, r, systemPrompt)
 
 	genReq := appai.GenerateRequest{
 		UserInput:     writeupPrompt,
@@ -500,6 +504,12 @@ func (s *ChatService) pickInterviewProvider(ctx context.Context, r *http.Request
 		cp := s.effectiveClaudeProvider(ctx, r, "")
 		if cp != nil && cp.IsAvailable() {
 			return cp, "claude"
+		}
+	}
+	if preferred == "deepseek" {
+		dp := s.effectiveDeepSeekProvider()
+		if dp != nil && dp.IsAvailable() {
+			return dp, "deepseek"
 		}
 	}
 	if preferred == "localai" {

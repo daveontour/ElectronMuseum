@@ -107,6 +107,39 @@ func MigrateSQLite(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
+	if err := addReferenceDocumentsIncludeInSystemPromptColumn(ctx, db); err != nil {
+		return err
+	}
+
 	slog.Info("sqlite database migration complete")
+	return nil
+}
+
+func addReferenceDocumentsIncludeInSystemPromptColumn(ctx context.Context, db *sql.DB) error {
+	var n int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'reference_documents'`,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("sqlite_master reference_documents: %w", err)
+	}
+	if n == 0 {
+		return nil
+	}
+	var has int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('reference_documents') WHERE name = 'include_in_system_prompt'`,
+	).Scan(&has); err != nil {
+		return fmt.Errorf("pragma_table_info reference_documents.include_in_system_prompt: %w", err)
+	}
+	if has > 0 {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE reference_documents ADD COLUMN include_in_system_prompt INTEGER NOT NULL DEFAULT 0`); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "duplicate column") && !strings.Contains(msg, "already exists") {
+			return fmt.Errorf("add reference_documents.include_in_system_prompt: %w", err)
+		}
+	}
+	slog.Info("sqlite migration: added reference_documents.include_in_system_prompt")
 	return nil
 }

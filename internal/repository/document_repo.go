@@ -19,7 +19,7 @@ func NewDocumentRepo(pool *sql.DB) *DocumentRepo {
 }
 
 const documentCols = `id, filename, title, description, author, content_type, size,
-	tags, categories, notes, available_for_task, is_private, is_sensitive, is_encrypted,
+	tags, categories, notes, available_for_task, include_in_system_prompt, is_private, is_sensitive, is_encrypted,
 	created_at, updated_at`
 
 func scanDocument(row interface{ Scan(...any) error }) (*model.ReferenceDocument, error) {
@@ -27,7 +27,7 @@ func scanDocument(row interface{ Scan(...any) error }) (*model.ReferenceDocument
 	err := row.Scan(
 		&d.ID, &d.Filename, &d.Title, &d.Description, &d.Author,
 		&d.ContentType, &d.Size, &d.Tags, &d.Categories, &d.Notes,
-		&d.AvailableForTask, &d.IsPrivate, &d.IsSensitive, &d.IsEncrypted,
+		&d.AvailableForTask, &d.IncludeInSystemPrompt, &d.IsPrivate, &d.IsSensitive, &d.IsEncrypted,
 		&d.CreatedAt, &d.UpdatedAt,
 	)
 	if err != nil {
@@ -93,7 +93,7 @@ func (r *DocumentRepo) List(ctx context.Context, search, category, tag, contentT
 // CountAvailableForAI returns how many reference documents are enabled for the AI task (non-sensitive), user-scoped.
 func (r *DocumentRepo) CountAvailableForAI(ctx context.Context) (int64, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT COUNT(*) FROM reference_documents WHERE available_for_task = TRUE AND is_sensitive = FALSE`
+	q := `SELECT COUNT(*) FROM reference_documents WHERE available_for_task = TRUE AND NOT include_in_system_prompt AND is_sensitive = FALSE`
 	args := []any{}
 	q, args = addUIDFilter(q, args, uid)
 	var n int64
@@ -101,6 +101,31 @@ func (r *DocumentRepo) CountAvailableForAI(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("count reference documents for AI: %w", err)
 	}
 	return n, nil
+}
+
+// ListForSystemPromptInclusion returns rows flagged for system-prompt inlining, with raw data bytes.
+// Caller applies session rules (visitor / sensitive) and decrypts when is_encrypted.
+func (r *DocumentRepo) ListForSystemPromptInclusion(ctx context.Context) ([]model.ReferenceDocumentPromptBlob, error) {
+	uid := uidFromCtx(ctx)
+	q := `SELECT id, title, filename, content_type, data, is_encrypted, is_sensitive
+		FROM reference_documents WHERE include_in_system_prompt = TRUE`
+	args := []any{}
+	q, args = addUIDFilter(q, args, uid)
+	q += ` ORDER BY id ASC`
+	rows, err := r.pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ListForSystemPromptInclusion: %w", err)
+	}
+	defer rows.Close()
+	var out []model.ReferenceDocumentPromptBlob
+	for rows.Next() {
+		var row model.ReferenceDocumentPromptBlob
+		if err := rows.Scan(&row.ID, &row.Title, &row.Filename, &row.ContentType, &row.Data, &row.IsEncrypted, &row.IsSensitive); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 // GetByID returns a document's metadata (no blob data). Returns nil if not found or is_sensitive.
@@ -141,17 +166,17 @@ func (r *DocumentRepo) GetData(ctx context.Context, id int64) ([]byte, bool, err
 func (r *DocumentRepo) Create(ctx context.Context,
 	filename, contentType string, size int64, data []byte,
 	title, description, author, tags, categories, notes *string,
-	availableForTask, isPrivate, isSensitive, isEncrypted bool,
+	availableForTask, includeInSystemPrompt, isPrivate, isSensitive, isEncrypted bool,
 ) (*model.ReferenceDocument, error) {
 	uid := uidFromCtx(ctx)
 	d, err := scanDocument(r.pool.QueryRowContext(ctx,
 		`INSERT INTO reference_documents
 		 (filename, title, description, author, content_type, size, data,
-		  tags, categories, notes, available_for_task, is_private, is_sensitive, is_encrypted, user_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		  tags, categories, notes, available_for_task, include_in_system_prompt, is_private, is_sensitive, is_encrypted, user_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		 RETURNING `+documentCols,
 		filename, title, description, author, contentType, size, data,
-		tags, categories, notes, availableForTask, isPrivate, isSensitive, isEncrypted, uidVal(uid),
+		tags, categories, notes, availableForTask, includeInSystemPrompt, isPrivate, isSensitive, isEncrypted, uidVal(uid),
 	))
 	if err != nil {
 		return nil, fmt.Errorf("CreateDocument: %w", err)
@@ -163,6 +188,7 @@ func (r *DocumentRepo) Create(ctx context.Context,
 func (r *DocumentRepo) Update(ctx context.Context, id int64,
 	title, description, author, tags, categories, notes *string,
 	availableForTask *bool,
+	includeInSystemPrompt *bool,
 ) (*model.ReferenceDocument, error) {
 	uid := uidFromCtx(ctx)
 	q := `UPDATE reference_documents SET
@@ -173,9 +199,10 @@ func (r *DocumentRepo) Update(ctx context.Context, id int64,
 	      categories       = COALESCE($5, categories),
 	      notes            = COALESCE($6, notes),
 	      available_for_task = COALESCE($7, available_for_task),
+	      include_in_system_prompt = COALESCE($8, include_in_system_prompt),
 	      updated_at       = CURRENT_TIMESTAMP
-	      WHERE id = $8`
-	args := []any{title, description, author, tags, categories, notes, availableForTask, id}
+	      WHERE id = $9`
+	args := []any{title, description, author, tags, categories, notes, availableForTask, includeInSystemPrompt, id}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` RETURNING ` + documentCols
 	d, err := scanDocument(r.pool.QueryRowContext(ctx, q, args...))

@@ -57,9 +57,10 @@ type ServerConfig struct {
 	// SessionCookieSecure sets the Secure flag on session cookies.
 	// Enable when serving over HTTPS (SESSION_COOKIE_SECURE=true).
 	SessionCookieSecure bool
-	// AdminEmail and AdminPassword seed the initial admin user on first startup.
-	// Set via ADMIN_EMAIL and ADMIN_PASSWORD env vars. Once the admin user exists
-	// in the database these vars are no longer consulted and can be removed.
+	// AdminEmail and AdminPassword create the initial admin when the DB has none
+	// (see cmd/server startup: EnsureAdminUser then AdminExists check).
+	// Set via ADMIN_EMAIL and ADMIN_PASSWORD. After an admin row exists, startup
+	// succeeds without these vars; they are only used while no admin is present.
 	AdminEmail    string
 	AdminPassword string
 }
@@ -122,6 +123,9 @@ type AIConfig struct {
 
 	AnthropicAPIKey string
 	ClaudeModelName string
+
+	DeepSeekAPIKey    string
+	DeepSeekModelName string
 
 	TavilyAPIKey string
 
@@ -287,6 +291,9 @@ func loadAIConfig() AIConfig {
 
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		ClaudeModelName: getenv("CLAUDE_MODEL_NAME", "claude-sonnet-4-6"),
+
+		DeepSeekAPIKey:    os.Getenv("DEEPSEEK_API_KEY"),
+		DeepSeekModelName: getenv("DEEPSEEK_MODEL_NAME", "deepseek-chat"),
 
 		TavilyAPIKey: os.Getenv("TAVILY_API_KEY"),
 

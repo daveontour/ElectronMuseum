@@ -136,6 +136,7 @@ type docJSON struct {
 	Categories       *string `json:"categories"`
 	Notes            *string `json:"notes"`
 	AvailableForTask bool    `json:"available_for_task"`
+	IncludeInSystemPrompt bool `json:"include_in_system_prompt"`
 	IsPrivate        bool    `json:"is_private"`
 	IsSensitive      bool    `json:"is_sensitive"`
 	IsEncrypted      bool    `json:"is_encrypted"`
@@ -173,6 +174,7 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 			ID: d.ID, Filename: d.Filename, Title: d.Title, Description: d.Description,
 			Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 			Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
+			IncludeInSystemPrompt: d.IncludeInSystemPrompt,
 			IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 			CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 			UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
@@ -201,6 +203,7 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		ID: d.ID, Filename: d.Filename, Title: d.Title, Description: d.Description,
 		Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 		Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
+		IncludeInSystemPrompt: d.IncludeInSystemPrompt,
 		IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 		CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 		UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
@@ -259,17 +262,18 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type"))), "application/json") {
 		var req struct {
-			FilePath         string `json:"file_path"`
-			Title            string `json:"title"`
-			Description      string `json:"description"`
-			Author           string `json:"author"`
-			Tags             string `json:"tags"`
-			Categories       string `json:"categories"`
-			Notes            string `json:"notes"`
-			AvailableForTask bool   `json:"available_for_task"`
-			IsPrivate        bool   `json:"is_private"`
-			IsSensitive      bool   `json:"is_sensitive"`
-			MasterPassword   string `json:"master_password"`
+			FilePath              string `json:"file_path"`
+			Title                 string `json:"title"`
+			Description           string `json:"description"`
+			Author                string `json:"author"`
+			Tags                  string `json:"tags"`
+			Categories            string `json:"categories"`
+			Notes                 string `json:"notes"`
+			AvailableForTask      bool   `json:"available_for_task"`
+			IncludeInSystemPrompt bool   `json:"include_in_system_prompt"`
+			IsPrivate             bool   `json:"is_private"`
+			IsSensitive           bool   `json:"is_sensitive"`
+			MasterPassword        string `json:"master_password"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -312,7 +316,7 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 			filename, ct, int64(len(data)), data,
 			opt(req.Title), opt(req.Description), opt(req.Author),
 			opt(req.Tags), opt(req.Categories), opt(req.Notes),
-			req.AvailableForTask, req.IsPrivate, req.IsSensitive, resolveMasterPassword(req.MasterPassword, r, h.sessionStore),
+			req.AvailableForTask, req.IncludeInSystemPrompt, req.IsPrivate, req.IsSensitive, resolveMasterPassword(req.MasterPassword, r, h.sessionStore),
 		)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("error creating document: %s", err))
@@ -323,6 +327,7 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 			ID: d.ID, Filename: d.Filename, Title: d.Title, Description: d.Description,
 			Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 			Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
+			IncludeInSystemPrompt: d.IncludeInSystemPrompt,
 			IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 			CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 			UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
@@ -367,6 +372,10 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if v := r.FormValue("is_sensitive"); v != "" {
 		isSensitive, _ = strconv.ParseBool(v)
 	}
+	includeInSystemPrompt := false
+	if v := r.FormValue("include_in_system_prompt"); v != "" {
+		includeInSystemPrompt, _ = strconv.ParseBool(v)
+	}
 	masterPassword := resolveMasterPassword(r.FormValue("master_password"), r, h.sessionStore)
 
 	optForm := func(key string) *string {
@@ -380,7 +389,7 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		fh.Filename, ct, int64(len(data)), data,
 		optForm("title"), optForm("description"), optForm("author"),
 		optForm("tags"), optForm("categories"), optForm("notes"),
-		availableForTask, isPrivate, isSensitive, masterPassword,
+		availableForTask, includeInSystemPrompt, isPrivate, isSensitive, masterPassword,
 	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error creating document: %s", err))
@@ -391,6 +400,7 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ID: d.ID, Filename: d.Filename, Title: d.Title, Description: d.Description,
 		Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 		Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
+		IncludeInSystemPrompt: d.IncludeInSystemPrompt,
 		IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 		CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 		UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
@@ -408,13 +418,14 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Title            *string `json:"title"`
-		Description      *string `json:"description"`
-		Author           *string `json:"author"`
-		Tags             *string `json:"tags"`
-		Categories       *string `json:"categories"`
-		Notes            *string `json:"notes"`
-		AvailableForTask *bool   `json:"available_for_task"`
+		Title                 *string `json:"title"`
+		Description           *string `json:"description"`
+		Author                *string `json:"author"`
+		Tags                  *string `json:"tags"`
+		Categories            *string `json:"categories"`
+		Notes                 *string `json:"notes"`
+		AvailableForTask      *bool   `json:"available_for_task"`
+		IncludeInSystemPrompt *bool   `json:"include_in_system_prompt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -422,7 +433,7 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	d, err := h.svc.Update(r.Context(), id,
-		req.Title, req.Description, req.Author, req.Tags, req.Categories, req.Notes, req.AvailableForTask)
+		req.Title, req.Description, req.Author, req.Tags, req.Categories, req.Notes, req.AvailableForTask, req.IncludeInSystemPrompt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error updating document: %s", err))
 		return
@@ -435,6 +446,7 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		ID: d.ID, Filename: d.Filename, Title: d.Title, Description: d.Description,
 		Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 		Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
+		IncludeInSystemPrompt: d.IncludeInSystemPrompt,
 		IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 		CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 		UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),

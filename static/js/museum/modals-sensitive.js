@@ -271,8 +271,10 @@ Modals.SensitiveData = (() => {
 
             const privateEl   = document.getElementById('sd-detail-is-private');
             const sensitiveEl = document.getElementById('sd-detail-is-sensitive');
+            const includeSysEl = document.getElementById('sd-detail-include-system-prompt');
             if (privateEl)   privateEl.checked   = !!data.is_private;
             if (sensitiveEl) sensitiveEl.checked = !!data.is_sensitive;
+            if (includeSysEl) includeSysEl.checked = !!data.include_in_system_prompt;
 
             _switchTab('preview');
         } catch (err) {
@@ -297,8 +299,10 @@ Modals.SensitiveData = (() => {
 
         const privateEl   = document.getElementById('sd-detail-is-private');
         const sensitiveEl = document.getElementById('sd-detail-is-sensitive');
+        const includeSysEl = document.getElementById('sd-detail-include-system-prompt');
         if (privateEl)   privateEl.checked   = true;
         if (sensitiveEl) sensitiveEl.checked = true;
+        if (includeSysEl) includeSysEl.checked = false;
 
         const deleteBtn = document.getElementById('sd-detail-delete-btn');
         if (deleteBtn) deleteBtn.style.display = 'none';
@@ -337,11 +341,14 @@ Modals.SensitiveData = (() => {
             return;
         }
 
+        const includeInSystemPrompt = document.getElementById('sd-detail-include-system-prompt')?.checked || false;
+
         const body = {
             description,
             details,
             is_private,
             is_sensitive,
+            include_in_system_prompt: includeInSystemPrompt,
             password: _password || '',
         };
 

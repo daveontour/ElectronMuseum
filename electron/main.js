@@ -350,8 +350,8 @@ function createLoadingWindow() {
 
 function createMainWindow(port) {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: 1680,
+    height: 1080,
     show: false,
     title: 'Digital Museum',
     webPreferences: {
@@ -548,8 +548,8 @@ app.whenReady().then(async () => {
     await killZombies();
 
     sendStatus('Finding available port...');
-    //appPort = await findFreePort(8080);
-    appPort = 8081;
+    appPort = await findFreePort(8080);
+    //appPort = 8081;
     log(`Using port ${appPort}`);
 
     dotenv.GMAIL_REDIRECT_URL = `http://localhost:${appPort}/gmail/auth/callback`;

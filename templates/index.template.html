@@ -38,6 +38,7 @@
                     <select id="llm-provider-select">
                         <option value="gemini" selected>Gemini</option>
                         <option value="claude">Claude</option>
+                        <option value="deepseek">DeepSeek</option>
                         <option value="localai">Local AI</option>
                     </select>
                 </div>
@@ -130,6 +131,11 @@
                             </button>
                             <button type="button" id="account-billing-previous-btn" class="account-dropdown-item" style="width:100%; text-align:left; padding:8px 16px; background:none; border:none; color:#fff; cursor:pointer; font-size:0.9em;">
                                 <i class="fas fa-file-pdf" style="margin-right:6px;"></i>Previous Month Usage
+                            </button>
+                        </div>
+                        <div id="account-admin-section" style="display:none; border-bottom:1px solid #2a3a6b; padding-bottom:4px; margin-bottom:4px;">
+                            <button type="button" id="account-admin-btn" class="account-dropdown-item" style="width:100%; text-align:left; padding:8px 16px; background:none; border:none; color:#fff; cursor:pointer; font-size:0.9em;">
+                                <i class="fas fa-user-shield" style="margin-right:6px;"></i>Admin
                             </button>
                         </div>
                         <button id="account-logout-btn" class="account-dropdown-item" type="button" style="width:100%; text-align:left; padding:8px 16px; background:none; border:none; color:#fff; cursor:pointer; font-size:0.9em;">
@@ -244,7 +250,7 @@
             <form id="chat-form" style="background-color: #19264d;padding-left: 0px;">
                 <div class="chat-form-main-row" style="margin-bottom: 8px;">
                     <div class="chat-input-wrap">
-                        <textarea id="user-input" placeholder="Enter your question or comment..." rows="3"></textarea>
+                        <textarea id="user-input" placeholder="Enter your question or comment..." rows="2"></textarea>
                         <button type="button" id="chat-voice-input-btn" class="chat-voice-input-btn" aria-label="Voice input" aria-pressed="false" title="Speak your question or answer (click again to stop)">
                             <svg class="chat-voice-input-svg" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
                                 <path fill="currentColor" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
@@ -363,7 +369,7 @@
                     <button class="modal-close-btn" id="close-have-a-chat-setup-modal">&times;</button>
                 </div>
                 <div class="modal-body" style="padding:20px; display:flex; flex-direction:column; gap:16px;">
-                    <p class="have-a-chat-setup-intro">Two archive <strong>voices</strong> reply in turn, each backed by either <strong>Claude</strong> or <strong>Gemini</strong> (you pick below). Add an optional topic to steer the thread, or leave it open so they explore freely. After you start, use the bar above the chat to <strong>pause</strong>, <strong>inject</strong> your own comment or question, or <strong>stop</strong> the run.</p>
+                    <p class="have-a-chat-setup-intro">Two archive <strong>voices</strong> reply in turn, each backed by <strong>Gemini</strong>, <strong>Claude</strong>, <strong>DeepSeek</strong>, or <strong>Local AI</strong> (you pick below). Add an optional topic to steer the thread, or leave it open so they explore freely. After you start, use the bar above the chat to <strong>pause</strong>, <strong>inject</strong> your own comment or question, or <strong>stop</strong> the run.</p>
                     <div>
                         <label style="display:block; font-weight:bold; margin-bottom:4px;">Topic / Starter Prompt <span style="font-weight:normal;color:#777;">(optional)</span></label>
                         <textarea id="have-a-chat-topic" rows="3" style="width:100%; box-sizing:border-box; border-radius:6px; border:1px solid #bfc9da; padding:8px; font-size:1em;" placeholder="e.g. 'What do the messages reveal about relationships?' — or leave blank to let the AIs explore freely."></textarea>
@@ -378,6 +384,7 @@
                             <select id="have-a-chat-provider-a" class="form-control">
                                 <option value="claude">Claude</option>
                                 <option value="gemini">Gemini</option>
+                                <option value="deepseek">DeepSeek</option>
                                 <option value="localai">Local AI</option>
                             </select>
                         </div>
@@ -390,6 +397,7 @@
                             <select id="have-a-chat-provider-b" class="form-control">
                                 <option value="claude">Claude</option>
                                 <option value="gemini" selected>Gemini</option>
+                                <option value="deepseek">DeepSeek</option>
                                 <option value="localai">Local AI</option>
                             </select>
                         </div>
@@ -398,6 +406,11 @@
                         <input type="checkbox" id="have-a-chat-banter-mode" style="width:16px; height:16px; cursor:pointer; accent-color:var(--color-blue);">
                         <label for="have-a-chat-banter-mode" style="cursor:pointer; margin:0; font-weight:bold;"><i class="fas fa-bolt" style="color:#f59e0b;"></i> Banter Mode</label>
                         <span style="color:var(--color-text-muted); font-size:0.85em;">— shorter, sharper, more combative responses</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--color-bg-alt); border-radius:var(--radius-md); border:1px solid var(--color-border);">
+                        <input type="checkbox" id="have-a-chat-allow-explicit" style="width:16px; height:16px; cursor:pointer; accent-color:var(--color-blue);">
+                        <label for="have-a-chat-allow-explicit" style="cursor:pointer; margin:0; font-weight:bold;">Allow explicit content</label>
+                        <span style="color:var(--color-text-muted); font-size:0.85em;"></span>
                     </div>
                     <div>
                         <label style="display:block; font-weight:bold; margin-bottom:4px;">Temperature: <span id="have-a-chat-temperature-display">0.7</span></label>
@@ -542,6 +555,7 @@
                             <select id="interview-provider" class="form-control" style="width:100%;">
                                 <option value="gemini">Gemini</option>
                                 <option value="claude">Claude</option>
+                                <option value="deepseek">DeepSeek</option>
                                 <option value="localai">Local AI</option>
                             </select>
                         </div>
@@ -2822,6 +2836,13 @@
                             Make availaable to the AI
                         </label>
                     </div>
+                    <div class="reference-documents-form-group">
+                        <label class="reference-documents-checkbox-label">
+                            <input type="checkbox" id="reference-documents-upload-system-prompt" name="include_in_system_prompt">
+                            Include in system prompt
+                        </label>
+                        <div class="reference-documents-field-hint" style="margin-top:0.35rem;font-size:0.88em;color:#64748b;">When enabled, the document text is sent with every chat-style request and is hidden from the “list available reference documents” tools.</div>
+                    </div>
                     <div class="reference-documents-form-actions">
                         <button type="submit" id="reference-documents-upload-submit" class="modal-btn modal-btn-primary">Import</button>
                         <button type="button" id="reference-documents-upload-cancel" class="modal-btn modal-btn-secondary">Cancel</button>
@@ -2860,6 +2881,13 @@
                             <input type="checkbox" id="reference-documents-edit-task" name="available_for_task">
                             Make availaable to the AI
                         </label>
+                    </div>
+                    <div class="reference-documents-form-group">
+                        <label class="reference-documents-checkbox-label">
+                            <input type="checkbox" id="reference-documents-edit-system-prompt" name="include_in_system_prompt">
+                            Include in system prompt
+                        </label>
+                        <div class="reference-documents-field-hint" style="margin-top:0.35rem;font-size:0.88em;color:#64748b;">When enabled, the document text is sent with every chat-style request and is hidden from the “list available reference documents” tools.</div>
                     </div>
                     <div class="reference-documents-form-actions">
                         <button type="submit" class="modal-btn modal-btn-primary">Save Changes</button>
@@ -3879,12 +3907,15 @@
                 </div>
                 <textarea id="sd-detail-details" class="artefact-story-textarea" placeholder="Sensitive data..."></textarea>
                 <div id="sd-detail-preview" class="sd-detail-markdown-preview rendered-content" style="display:none;"></div>
-                <div style="display:flex; gap:16px; margin-top:8px;">
+                <div style="display:flex; flex-wrap:wrap; gap:16px; margin-top:8px;">
                     <label class="work-mode-label">
                         <input type="checkbox" id="sd-detail-is-private" checked> Private
                     </label>
                     <label class="work-mode-label">
                         <input type="checkbox" id="sd-detail-is-sensitive" checked> Sensitive
+                    </label>
+                    <label class="work-mode-label" title="Text is prepended to the model system prompt on each request and omitted from list-reference-document tools.">
+                        <input type="checkbox" id="sd-detail-include-system-prompt"> Include in system prompt
                     </label>
                 </div>
                 <div class="artefact-detail-actions" style="margin-top:16px;">

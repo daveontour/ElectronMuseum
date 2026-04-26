@@ -1,4 +1,4 @@
-// Package ai provides chat provider implementations for Gemini and Claude.
+// Package ai provides chat provider implementations for Gemini, Claude, DeepSeek, and LocalAI.
 package ai
 
 import (
@@ -53,7 +53,7 @@ type GenerateResult struct {
 // ToolExecutor executes a named AI tool and returns a JSON-serialisable result.
 type ToolExecutor func(ctx context.Context, name string, args map[string]any) (map[string]any, error)
 
-// ChatProvider is the interface implemented by both Gemini and Claude.
+// ChatProvider is the interface implemented by Gemini, Claude, DeepSeek (Anthropic-compatible), and LocalAI.
 type ChatProvider interface {
 	IsAvailable() bool
 	// GenerateResponse runs a tool loop. toolDecls nil means expose all built-in tools (legacy).
@@ -260,7 +260,7 @@ func toolDefinitions() []map[string]any {
 		},
 		{
 			"name":        "get_available_reference_documents",
-			"description": "Get the title, description, id and tags of all reference documents that are available for task.",
+			"description": "Get the title, description, id and tags of reference documents that are available for task and not marked 'include in system prompt' (those are injected automatically and omitted here).",
 			"parameters":  map[string]any{"type": "object", "properties": map[string]any{}, "required": []string{}},
 		},
 		{
@@ -280,7 +280,7 @@ func toolDefinitions() []map[string]any {
 		},
 		{
 			"name":        "get_available_sensitive_reference_documents",
-			"description": "List sensitive/private reference documents (id, title, description, tags) the current session may use with get_sensitive_reference_document. The archive owner gets the full set; visitor keys need sensitive/private access and only see allowlisted documents.",
+			"description": "List sensitive/private reference documents (id, title, description, tags) the current session may use with get_sensitive_reference_document, excluding rows marked 'include in system prompt' (those are injected automatically). The archive owner gets the full set; visitor keys need sensitive/private access and only see allowlisted documents.",
 			"parameters":  map[string]any{"type": "object", "properties": map[string]any{}, "required": []string{}},
 		},
 		{

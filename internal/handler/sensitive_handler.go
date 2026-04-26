@@ -247,11 +247,12 @@ func (h *SensitiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Description string `json:"description"`
-		Details     string `json:"details"`
-		IsPrivate   bool   `json:"is_private"`
-		IsSensitive bool   `json:"is_sensitive"`
-		Password    string `json:"password"`
+		Description           string `json:"description"`
+		Details               string `json:"details"`
+		IsPrivate             bool   `json:"is_private"`
+		IsSensitive           bool   `json:"is_sensitive"`
+		IncludeInSystemPrompt bool   `json:"include_in_system_prompt"`
+		Password              string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -262,7 +263,7 @@ func (h *SensitiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "a password is required to create records")
 		return
 	}
-	if err := h.svc.Create(r.Context(), pw, req.Description, req.Details, req.IsPrivate, req.IsSensitive); err != nil {
+	if err := h.svc.Create(r.Context(), pw, req.Description, req.Details, req.IsPrivate, req.IsSensitive, req.IncludeInSystemPrompt); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error creating record: %s", err))
 		return
 	}
@@ -282,11 +283,12 @@ func (h *SensitiveHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Description string `json:"description"`
-		Details     string `json:"details"`
-		IsPrivate   bool   `json:"is_private"`
-		IsSensitive bool   `json:"is_sensitive"`
-		Password    string `json:"password"`
+		Description           string `json:"description"`
+		Details               string `json:"details"`
+		IsPrivate             bool   `json:"is_private"`
+		IsSensitive           bool   `json:"is_sensitive"`
+		IncludeInSystemPrompt bool   `json:"include_in_system_prompt"`
+		Password              string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -297,7 +299,7 @@ func (h *SensitiveHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "a password is required to update records")
 		return
 	}
-	if err := h.svc.Update(r.Context(), id, pw, req.Description, req.Details, req.IsPrivate, req.IsSensitive); err != nil {
+	if err := h.svc.Update(r.Context(), id, pw, req.Description, req.Details, req.IsPrivate, req.IsSensitive, req.IncludeInSystemPrompt); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error updating record: %s", err))
 		return
 	}

@@ -441,9 +441,11 @@ func (r *BillingRepo) TimeseriesByUser5Min(ctx context.Context, userID int64, fr
 	var out []TimeseriesBucket
 	for rows.Next() {
 		var b TimeseriesBucket
-		if err := rows.Scan(&b.BucketStart, &b.InputTokens, &b.OutputTokens); err != nil {
+		var bucketStart sqlutil.DBTime
+		if err := rows.Scan(&bucketStart, &b.InputTokens, &b.OutputTokens); err != nil {
 			return nil, err
 		}
+		b.BucketStart = bucketStart.Time
 		out = append(out, b)
 	}
 	return out, rows.Err()

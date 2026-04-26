@@ -155,6 +155,40 @@ Modals.ReferenceDocuments = (() => {
             }
         }
 
+        async function setIncludeInSystemPromptOnServer(docId, checked, checkboxEl) {
+            checkboxEl.disabled = true;
+            try {
+                const response = await fetch(`/reference-documents/${docId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ include_in_system_prompt: checked })
+                });
+                if (!response.ok) {
+                    const errText = await response.text().catch(() => '');
+                    let msg = errText || `HTTP ${response.status}`;
+                    try {
+                        const j = JSON.parse(errText);
+                        if (j.detail) msg = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+                    } catch (_) { /* plain text */ }
+                    throw new Error(msg);
+                }
+                const updated = await response.json();
+                const v = updated.include_in_system_prompt === true;
+                documents.forEach((d) => {
+                    if (d.id === docId) d.include_in_system_prompt = v;
+                });
+                checkboxEl.checked = v;
+                Modals.ReferenceDocumentsNotification.reset();
+            } catch (error) {
+                console.error('Failed to update include_in_system_prompt:', error);
+                checkboxEl.checked = !checked;
+                await AppDialogs.showAppAlert('Error', 'Could not update system prompt inclusion: ' + (error.message || 'Unknown error'));
+            } finally {
+                checkboxEl.disabled = false;
+            }
+        }
+
         function renderDocuments() {
             if (!DOM.referenceDocumentsList) return;
 
@@ -180,6 +214,12 @@ Modals.ReferenceDocuments = (() => {
                     scope: 'col',
                     className: 'reference-documents-col-ai',
                     title: 'When enabled, AI tools may read this document where your settings allow'
+                },
+                {
+                    text: 'System prompt',
+                    scope: 'col',
+                    className: 'reference-documents-col-ai',
+                    title: 'Include full text in every chat system prompt; excluded from list-reference-document tools'
                 },
                 { text: 'Actions', scope: 'col', className: 'reference-documents-col-actions' }
             ].forEach((col) => {
@@ -263,6 +303,26 @@ Modals.ReferenceDocuments = (() => {
                 aiWrap.appendChild(cb);
                 tdAi.appendChild(aiWrap);
                 tr.appendChild(tdAi);
+
+                const tdSys = document.createElement('td');
+                tdSys.className = 'reference-documents-col-ai';
+                const sysWrap = document.createElement('div');
+                sysWrap.className = 'reference-documents-ai-cell';
+                const cbSys = document.createElement('input');
+                cbSys.type = 'checkbox';
+                cbSys.className = 'reference-documents-row-ai-checkbox';
+                cbSys.checked = !!doc.include_in_system_prompt;
+                cbSys.title = 'Include in system prompt';
+                cbSys.setAttribute('aria-label', 'Include in system prompt for ' + (doc.title || doc.filename || 'document'));
+                cbSys.addEventListener('click', (e) => e.stopPropagation());
+                cbSys.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const want = cbSys.checked;
+                    void setIncludeInSystemPromptOnServer(doc.id, want, cbSys);
+                });
+                sysWrap.appendChild(cbSys);
+                tdSys.appendChild(sysWrap);
+                tr.appendChild(tdSys);
 
                 const tdAct = document.createElement('td');
                 tdAct.className = 'reference-documents-col-actions';
@@ -381,7 +441,9 @@ Modals.ReferenceDocuments = (() => {
             document.getElementById('reference-documents-edit-tags').value = doc.tags || '';
             document.getElementById('reference-documents-edit-categories').value = doc.categories || '';
             document.getElementById('reference-documents-edit-task').checked = doc.available_for_task || false;
-            
+            const sysEl = document.getElementById('reference-documents-edit-system-prompt');
+            if (sysEl) sysEl.checked = !!doc.include_in_system_prompt;
+
             Modals._openModal(DOM.referenceDocumentsEditModal);
         }
 
@@ -520,6 +582,7 @@ Modals.ReferenceDocuments = (() => {
                     const tags = document.getElementById('reference-documents-upload-tags').value;
                     const categories = document.getElementById('reference-documents-upload-categories').value;
                     const availableForTask = document.getElementById('reference-documents-upload-task').checked;
+                    const includeInSystemPrompt = document.getElementById('reference-documents-upload-system-prompt')?.checked || false;
 
                     if (submitBtn) submitBtn.disabled = true;
                     try {
@@ -533,7 +596,8 @@ Modals.ReferenceDocuments = (() => {
                                 description: description || '',
                                 tags: tags || '',
                                 categories: categories || '',
-                                available_for_task: !!availableForTask
+                                available_for_task: !!availableForTask,
+                                include_in_system_prompt: !!includeInSystemPrompt
                             })
                         });
                         if (!response.ok) {
@@ -580,7 +644,8 @@ Modals.ReferenceDocuments = (() => {
                         description: document.getElementById('reference-documents-edit-description').value || null,
                         tags: document.getElementById('reference-documents-edit-tags').value || null,
                         categories: document.getElementById('reference-documents-edit-categories').value || null,
-                        available_for_task: document.getElementById('reference-documents-edit-task').checked
+                        available_for_task: document.getElementById('reference-documents-edit-task').checked,
+                        include_in_system_prompt: document.getElementById('reference-documents-edit-system-prompt')?.checked || false
                     };
                     
                     try {
@@ -635,9 +700,8 @@ Modals.ReferenceDocumentsNotification = (() => {
         }
 
         function getDocumentsHash(documents) {
-            // Create a hash of all document IDs and their available_for_task status
             const allDocs = documents
-                .map(doc => `${doc.id}:${doc.available_for_task}`)
+                .map(doc => `${doc.id}:${doc.available_for_task}:${doc.include_in_system_prompt ? 1 : 0}`)
                 .sort()
                 .join(',');
             return allDocs;

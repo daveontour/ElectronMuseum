@@ -53,8 +53,8 @@ func NewUserRepo(pool *sql.DB) *UserRepo {
 func (r *UserRepo) Create(ctx context.Context, email, passwordHash, displayName, firstName, familyName string) (*User, error) {
 	var u User
 	err := r.pool.QueryRowContext(ctx,
-		`INSERT INTO users (email, password_hash, display_name, first_name, family_name)
-		 VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''))
+		`INSERT INTO users (email, password_hash, display_name, first_name, family_name, is_admin)
+		 VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), FALSE)
 		 RETURNING id, email, password_hash,
 		           COALESCE(display_name, ''), COALESCE(first_name, ''), COALESCE(family_name, ''),
 		           is_active, is_admin, created_at`,

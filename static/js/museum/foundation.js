@@ -87,6 +87,7 @@ const CONSTANTS = {
     LLM_PROVIDERS: {
         GEMINI: "{{gemini_configured}}",
         CLAUDE: "{{claude_configured}}",
+        DEEPSEEK: "{{deepseek_configured}}",
         LOCALAI: "{{localai_configured}}"
     },
     /** True when DEPLOYMENT_NATURE=local — path-based import tiles are shown; otherwise they are hidden. */
@@ -557,7 +558,12 @@ const UI = (() => {
         const wrap = document.getElementById('chat-context-failover-wrap');
         const el = document.getElementById('chat-context-failover-msg');
         if (!el || !wrap) return;
-        const providerLabel = (p) => p === 'claude' ? 'Claude' : p === 'localai' ? 'Local AI' : 'Gemini';
+        const providerLabel = (p) => {
+            if (p === 'claude') return 'Claude';
+            if (p === 'deepseek') return 'DeepSeek';
+            if (p === 'localai') return 'Local AI';
+            return 'Gemini';
+        };
         const fromN = providerLabel(fromProvider);
         const toN = providerLabel(toProvider);
         el.textContent = `Switched to ${toN} after ${fromN} returned an error.`;

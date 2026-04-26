@@ -100,7 +100,7 @@ func (s *SensitiveService) GetByID(ctx context.Context, id int64, password strin
 }
 
 // Create encrypts details with the keyring DEK and stores it as a sensitive reference_document.
-func (s *SensitiveService) Create(ctx context.Context, masterPassword, description, details string, isPrivate, isSensitive bool) error {
+func (s *SensitiveService) Create(ctx context.Context, masterPassword, description, details string, isPrivate, isSensitive, includeInSystemPrompt bool) error {
 	data := []byte(details)
 	enc, err := appcrypto.EncryptDocumentData(ctx, s.pool, masterPassword, data, s.pepper)
 	if err != nil {
@@ -110,20 +110,21 @@ func (s *SensitiveService) Create(ctx context.Context, masterPassword, descripti
 	_, err = s.docRepo.Create(ctx,
 		description, "text/plain", int64(len(data)), enc,
 		&title, nil, nil, nil, nil, nil,
-		false, isPrivate, isSensitive, true,
+		false, includeInSystemPrompt, isPrivate, isSensitive, true,
 	)
 	return err
 }
 
 // Update re-encrypts details and updates the record.
-func (s *SensitiveService) Update(ctx context.Context, id int64, masterPassword, description, details string, isPrivate, isSensitive bool) error {
+func (s *SensitiveService) Update(ctx context.Context, id int64, masterPassword, description, details string, isPrivate, isSensitive, includeInSystemPrompt bool) error {
 	data := []byte(details)
 	enc, err := appcrypto.EncryptDocumentData(ctx, s.pool, masterPassword, data, s.pepper)
 	if err != nil {
 		return fmt.Errorf("encrypt record: %w", err)
 	}
 	title := description
-	if _, err := s.docRepo.Update(ctx, id, &title, nil, nil, nil, nil, nil, nil); err != nil {
+	inc := includeInSystemPrompt
+	if _, err := s.docRepo.Update(ctx, id, &title, nil, nil, nil, nil, nil, nil, &inc); err != nil {
 		return err
 	}
 	return s.docRepo.UpdateData(ctx, id, enc, true)
@@ -317,7 +318,7 @@ func (s *SensitiveService) ListVisitorKeyReferenceDocPermissions(ctx context.Con
 					SELECT 1 FROM visitor_key_hint_reference_documents j
 					WHERE j.visitor_key_hint_id = $1 AND j.reference_document_id = d.id)
 			FROM reference_documents d
-			WHERE d.available_for_task = TRUE AND d.is_sensitive = FALSE AND d.user_id = $2
+			WHERE d.available_for_task = TRUE AND NOT d.include_in_system_prompt AND d.is_sensitive = FALSE AND d.user_id = $2
 			ORDER BY COALESCE(NULLIF(TRIM(d.title), ''), d.filename) ASC`
 		args = []any{hintID, uid}
 	} else {
@@ -328,7 +329,7 @@ func (s *SensitiveService) ListVisitorKeyReferenceDocPermissions(ctx context.Con
 					SELECT 1 FROM visitor_key_hint_reference_documents j
 					WHERE j.visitor_key_hint_id = $1 AND j.reference_document_id = d.id)
 			FROM reference_documents d
-			WHERE d.available_for_task = TRUE AND d.is_sensitive = FALSE AND d.user_id IS NULL
+			WHERE d.available_for_task = TRUE AND NOT d.include_in_system_prompt AND d.is_sensitive = FALSE AND d.user_id IS NULL
 			ORDER BY COALESCE(NULLIF(TRIM(d.title), ''), d.filename) ASC`
 		args = []any{hintID}
 	}
@@ -386,14 +387,14 @@ func (s *SensitiveService) ReplaceVisitorKeyHintReferenceDocuments(ctx context.C
 				INSERT INTO visitor_key_hint_reference_documents (visitor_key_hint_id, reference_document_id, user_id)
 				SELECT $1, d.id, $3
 				FROM reference_documents d
-				WHERE d.id = $2 AND d.available_for_task = TRUE AND d.is_sensitive = FALSE AND d.user_id = $3
+				WHERE d.id = $2 AND d.available_for_task = TRUE AND NOT d.include_in_system_prompt AND d.is_sensitive = FALSE AND d.user_id = $3
 				RETURNING reference_document_id`, hintID, docID, uid).Scan(&inserted)
 		} else {
 			err = tx.QueryRowContext(ctx, `
 				INSERT INTO visitor_key_hint_reference_documents (visitor_key_hint_id, reference_document_id, user_id)
 				SELECT $1, d.id, NULL
 				FROM reference_documents d
-				WHERE d.id = $2 AND d.available_for_task = TRUE AND d.is_sensitive = FALSE AND d.user_id IS NULL
+				WHERE d.id = $2 AND d.available_for_task = TRUE AND NOT d.include_in_system_prompt AND d.is_sensitive = FALSE AND d.user_id IS NULL
 				RETURNING reference_document_id`, hintID, docID).Scan(&inserted)
 		}
 		if err == sql.ErrNoRows {
@@ -427,7 +428,7 @@ func (s *SensitiveService) ListVisitorKeySensitiveReferenceDocPermissions(ctx co
 					SELECT 1 FROM visitor_key_hint_sensitive_reference_documents j
 					WHERE j.visitor_key_hint_id = $1 AND j.reference_document_id = d.id)
 			FROM reference_documents d
-			WHERE d.is_sensitive = TRUE AND d.user_id = $2
+			WHERE d.is_sensitive = TRUE AND NOT d.include_in_system_prompt AND d.user_id = $2
 			ORDER BY COALESCE(NULLIF(TRIM(d.title), ''), d.filename) ASC`
 		args = []any{hintID, uid}
 	} else {
@@ -438,7 +439,7 @@ func (s *SensitiveService) ListVisitorKeySensitiveReferenceDocPermissions(ctx co
 					SELECT 1 FROM visitor_key_hint_sensitive_reference_documents j
 					WHERE j.visitor_key_hint_id = $1 AND j.reference_document_id = d.id)
 			FROM reference_documents d
-			WHERE d.is_sensitive = TRUE AND d.user_id IS NULL
+			WHERE d.is_sensitive = TRUE AND NOT d.include_in_system_prompt AND d.user_id IS NULL
 			ORDER BY COALESCE(NULLIF(TRIM(d.title), ''), d.filename) ASC`
 		args = []any{hintID}
 	}
@@ -496,14 +497,14 @@ func (s *SensitiveService) ReplaceVisitorKeyHintSensitiveReferenceDocuments(ctx 
 				INSERT INTO visitor_key_hint_sensitive_reference_documents (visitor_key_hint_id, reference_document_id, user_id)
 				SELECT $1, d.id, $3
 				FROM reference_documents d
-				WHERE d.id = $2 AND d.is_sensitive = TRUE AND d.user_id = $3
+				WHERE d.id = $2 AND d.is_sensitive = TRUE AND NOT d.include_in_system_prompt AND d.user_id = $3
 				RETURNING reference_document_id`, hintID, docID, uid).Scan(&inserted)
 		} else {
 			err = tx.QueryRowContext(ctx, `
 				INSERT INTO visitor_key_hint_sensitive_reference_documents (visitor_key_hint_id, reference_document_id, user_id)
 				SELECT $1, d.id, NULL
 				FROM reference_documents d
-				WHERE d.id = $2 AND d.is_sensitive = TRUE AND d.user_id IS NULL
+				WHERE d.id = $2 AND d.is_sensitive = TRUE AND NOT d.include_in_system_prompt AND d.user_id IS NULL
 				RETURNING reference_document_id`, hintID, docID).Scan(&inserted)
 		}
 		if err == sql.ErrNoRows {
@@ -665,13 +666,14 @@ func (s *SensitiveService) toResponses(ctx context.Context, docs []*model.Refere
 			description = redacted
 		}
 		out[i] = model.SensitiveDataResponse{
-			ID:          doc.ID,
-			Description: description,
-			Details:     details,
-			IsPrivate:   doc.IsPrivate,
-			IsSensitive: doc.IsSensitive,
-			CreatedAt:   doc.CreatedAt.Format(time.RFC3339),
-			UpdatedAt:   doc.UpdatedAt.Format(time.RFC3339),
+			ID:                    doc.ID,
+			Description:           description,
+			Details:               details,
+			IsPrivate:             doc.IsPrivate,
+			IsSensitive:           doc.IsSensitive,
+			IncludeInSystemPrompt: doc.IncludeInSystemPrompt,
+			CreatedAt:             doc.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:             doc.UpdatedAt.Format(time.RFC3339),
 		}
 	}
 	return out

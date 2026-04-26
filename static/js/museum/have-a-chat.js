@@ -16,6 +16,7 @@ const HaveAChat = (() => {
     let _providerA      = 'claude';
     let _providerB      = 'gemini';
     let _banterMode     = false;
+    let _allowExplicit  = false;
     let _topic          = '';
     let _temperature    = 0.7;
     let _pendingInjection = null;
@@ -24,6 +25,13 @@ const HaveAChat = (() => {
 
     // ── DOM helpers ──────────────────────────────────────────────────────────
     const _el = (id) => document.getElementById(id);
+
+    function _llmDisplayName(provider) {
+        if (provider === 'claude') return 'Claude';
+        if (provider === 'deepseek') return 'DeepSeek';
+        if (provider === 'localai') return 'Local AI';
+        return 'Gemini';
+    }
 
     function _populateVoiceSelects() {
         ApiService.fetchVoices()
@@ -83,6 +91,11 @@ const HaveAChat = (() => {
     async function open() {
         _populateVoiceSelects();
         await _applyHaveAChatProviderDefaults();
+        const haveAChatExplicit = _el('have-a-chat-allow-explicit');
+        const globalExplicit = _el('allow-explicit-content');
+        if (haveAChatExplicit && globalExplicit) {
+            haveAChatExplicit.checked = !!globalExplicit.checked;
+        }
         const modal = _el('have-a-chat-setup-modal');
         if (modal) modal.style.display = 'flex';
     }
@@ -98,7 +111,7 @@ const HaveAChat = (() => {
     }
 
     // ── Message rendering ────────────────────────────────────────────────────
-    // slot: 'a' or 'b'; provider: 'claude' or 'gemini' (actual LLM used);
+    // slot: 'a' or 'b'; provider: which LLM actually responded;
     // voiceKey: voice personality key; text: markdown string
     function _addHaveAChatMessage(slot, provider, voiceKey, text) {
         const msgEl = document.createElement('div');
@@ -125,7 +138,7 @@ const HaveAChat = (() => {
         // LLM badge (secondary — shows which model is speaking)
         const llmBadge = document.createElement('span');
         llmBadge.className = 'have-a-chat-llm-badge have-a-chat-llm-' + provider;
-        llmBadge.textContent = provider === 'claude' ? 'Claude' : provider === 'localai' ? 'Local AI' : 'Gemini';
+        llmBadge.textContent = _llmDisplayName(provider);
 
         header.appendChild(img);
         header.appendChild(nameLabel);
@@ -240,6 +253,7 @@ const HaveAChat = (() => {
                 history:       _chatHistory,
                 temperature:   _temperature,
                 banter_mode:   _banterMode,
+                allowExplicitContent: _allowExplicit,
             })
         });
 
@@ -274,7 +288,7 @@ const HaveAChat = (() => {
             const voiceKey  = _currentSlot === 'a' ? _voiceA : _voiceB;
             const provider  = _currentSlot === 'a' ? _providerA : _providerB;
             const voiceName = _voiceNames[voiceKey] || voiceKey;
-            const llmLabel  = provider === 'claude' ? 'Claude' : provider === 'localai' ? 'Local AI' : 'Gemini';
+            const llmLabel  = _llmDisplayName(provider);
             _setStatus(`${voiceName} (${llmLabel}) is thinking…`);
 
             try {
@@ -323,6 +337,7 @@ const HaveAChat = (() => {
         _providerA   = (_el('have-a-chat-provider-a')?.value)  || 'claude';
         _providerB   = (_el('have-a-chat-provider-b')?.value)  || 'gemini';
         _banterMode  = (_el('have-a-chat-banter-mode')?.checked) || false;
+        _allowExplicit = (_el('have-a-chat-allow-explicit')?.checked) || false;
         _topic       = (_el('have-a-chat-topic')?.value?.trim()) || '';
         _temperature = parseFloat(_el('have-a-chat-temperature')?.value || '0.7');
         _chatHistory   = [];
@@ -342,7 +357,7 @@ const HaveAChat = (() => {
 
         const firstVoice = _currentSlot === 'a' ? (_voiceNames[_voiceA] || _voiceA) : (_voiceNames[_voiceB] || _voiceB);
         const firstLLM   = _currentSlot === 'a' ? _providerA : _providerB;
-        const firstLLMLabel = firstLLM === 'claude' ? 'Claude' : firstLLM === 'localai' ? 'Local AI' : 'Gemini';
+        const firstLLMLabel = _llmDisplayName(firstLLM);
         _setStatus(`Starting — ${firstVoice} (${firstLLMLabel}) goes first…`);
 
         _loop();

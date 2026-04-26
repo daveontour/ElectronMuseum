@@ -36,6 +36,8 @@ var knownKeys = func() []KnownKey {
 		{"GEMINI_MODEL_NAME", str("gemini-2.5-flash"), false, "Gemini model name"},
 		{"ANTHROPIC_API_KEY", nil, false, "Anthropic Claude API key"},
 		{"CLAUDE_MODEL_NAME", str("claude-sonnet-4-6"), false, "Claude model name"},
+		{"DEEPSEEK_API_KEY", nil, false, "DeepSeek API key (Anthropic-compatible Messages API)"},
+		{"DEEPSEEK_MODEL_NAME", str("deepseek-chat"), false, "DeepSeek model name"},
 		{"TAVILY_API_KEY", nil, false, "Tavily web search API key"},
 		{"PAGE_TITLE", str("Digital Museum of SUBJECT_NAME"), false, "Browser page title"},
 		{"ATTACHMENT_ALLOWED_TYPES", str(""), false, "Comma-separated allowed attachment MIME/ext types"},

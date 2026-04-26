@@ -223,6 +223,8 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"first_name":   user.FirstName,
 		"family_name":  user.FamilyName,
 		"is_visitor":   isVisitor,
+		// Only for signed-in archive owners — never expose owner admin flag to visitor sessions.
+		"is_admin": !isVisitor && user.IsAdmin,
 	}
 	if isVisitor {
 		a := auth.Access

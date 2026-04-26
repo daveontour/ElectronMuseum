@@ -375,7 +375,7 @@ body {
     border-radius: 3px;
     cursor: pointer;
     margin-bottom: 1px;
-    font-size: 0.84em;
+    font-size: 1.26em; /* was 0.84em; +50% */
 }
 
 .sidebar button:hover {
@@ -1310,14 +1310,14 @@ body {
 
 .chat-input-wrap #user-input {
     flex: 1 1 auto;
-    min-height: 135px;
+    min-height: 90px; /* was 135px; −33% */
 }
 
 .chat-form-main-row #send-button {
     flex-shrink: 0;
     margin-left: 0;
     align-self: stretch;
-    min-height: 135px;
+    min-height: 90px; /* match #user-input */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1345,7 +1345,7 @@ body {
     font-size: 18px;
     font-family: inherit;
     resize: vertical;
-    min-height: 135px;
+    min-height: 90px; /* was 135px; −33% */
     box-sizing: border-box;
     background-color: #fff;
     color: var(--color-text);
@@ -1979,7 +1979,7 @@ body {
 
 /* Sidebar tiles: beat `.sidebar button` font-size so label size applies */
 .sidebar .more-options-btn {
-    font-size: 10.8px;
+    font-size: 16.2px; /* was 10.8px; +50% */
 }
 
 /* Short viewports: compress sidebar tile buttons (~40% shorter than default min-height/padding/gap) */
@@ -9939,6 +9939,12 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     background: #ede9fe;
     color: #6d28d9;
     border: 1px solid #c4b5fd;
+}
+
+.have-a-chat-llm-deepseek {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #6ee7b7;
 }
 
 .have-a-chat-content {

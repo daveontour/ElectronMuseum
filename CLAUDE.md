@@ -2,50 +2,60 @@
 
 ## Project Overview
 
-Digital Museum is a multi-tenant AI-powered digital archive platform. Each registered user
-owns one archive containing their entire digital life (emails, messages, photos, Facebook,
-iMessage, WhatsApp, documents), imported into a PostgreSQL database and queryable through
-an AI chat interface. Both Claude and Gemini can access the data via a tool-calling layer
+Digital Museum is a multi-tenant AI-powered digital archive platform packaged as an
+**Electron desktop app**. Each registered user owns one archive containing their entire
+digital life (emails, messages, photos, Facebook, iMessage, WhatsApp, documents),
+imported into a SQLite database and queryable through an AI chat interface. Claude,
+Gemini, and a local Ollama/Gemma4 model can access the data via a tool-calling layer
 and answer questions, adopt personas, and explore the archive conversationally.
 
-Multiple users can be hosted on a single deployment. Every piece of archive data is scoped
-to its owning user via a `user_id` foreign key, enforced at the repository layer and backed
-by PostgreSQL Row-Level Security.
+Multiple users can be hosted on a single deployment. Every piece of archive data is
+scoped to its owning user via a `user_id` foreign key enforced at the repository layer.
 
 ## Tech Stack
 
-- **Backend:** Go 1.25, Chi v5 router, pgx v5 PostgreSQL driver
+- **Desktop shell:** Electron (Node.js) — `electron/main.js` manages the Go server process, Ollama, system tray, and IPC
+- **Backend:** Go 1.25, Chi v5 router, `database/sql` with `modernc.org/sqlite v1.38.2`
 - **Frontend:** Vanilla JavaScript (no framework), marked.js, highlight.js, Font Awesome
-- **Database:** PostgreSQL 14+ with `pg_trgm` and `pgcrypto`
-- **AI Providers:** Anthropic Claude (claude-sonnet-4-6) and Google Gemini (gemini-2.5-flash)
+- **Database:** SQLite (two files — main app DB and billing DB)
+- **AI Providers:** Anthropic Claude (`claude-sonnet-4-6`), Google Gemini (`gemini-2.5-flash`), DeepSeek (`deepseek-chat`) via Anthropic-compatible API, and local Ollama (`gemma4`) via native Ollama API
 - **Module:** `github.com/daveontour/aimuseum`
 
 ## Project Layout
 
 ```
+electron/
+  main.js           ← Electron main process: spawns Go server + Ollama, IPC handlers, tray
+  preload.js        ← IPC bridge (contextBridge) exposed to renderer pages
+  loading.html      ← Splash screen shown while Go server starts
+bin/
+  digitalmuseum.exe ← Compiled Go server
+  Ollama/           ← Bundled Ollama executable
+  ImageMagick/      ← Bundled ImageMagick for thumbnail generation
 cmd/
-  server/         ← HTTP server entry point (main.go)
-  launcher/       ← Windows GUI launcher
+  server/           ← HTTP server entry point (main.go)
+  launcher/         ← Windows GUI launcher (legacy)
 internal/
-  ai/             ← Claude & Gemini providers, tool definitions & executor
-  api/router/     ← Route wiring (router.go)
-  appctx/         ← Shared context key (ContextKeyUserID / UserIDFromCtx)
-  config/         ← Env-var config loading
-  crypto/         ← Encryption / key derivation (keyring scoped by user_id)
-  database/       ← Connection pool, migrations (including multitenancy DDL)
-  handler/        ← HTTP request handlers (~35 files)
-  keystore/       ← RAM master key (unlocks encrypted data per session)
-  middleware/      ← Logger, Recoverer, AuthMiddleware
-  model/          ← Shared data types / DTOs
-  repository/     ← Database access via pgx (~17 repos, all user-scoped)
-  service/        ← Business logic (~20 services)
+  ai/               ← Claude, Gemini, DeepSeek & LocalAI (Ollama) providers, tool definitions & executor
+  api/router/       ← Route wiring (router.go)
+  appctx/           ← Shared context key (ContextKeyUserID / UserIDFromCtx)
+  config/           ← Env-var config loading
+  crypto/           ← Encryption / key derivation (keyring scoped by user_id)
+  database/         ← Connection pool, migrations
+  handler/          ← HTTP request handlers (~35 files)
+  keystore/         ← RAM master key (unlocks encrypted data per session)
+  middleware/        ← Logger, Recoverer, AuthMiddleware
+  model/            ← Shared data types / DTOs
+  repository/       ← Database access via database/sql (~17 repos, all user-scoped)
+  service/          ← Business logic (~20 services)
+  sqlutil/          ← SQLite dialect helpers: IsSQLite(), ParseSQLiteDatetime(), InClause()
 static/
-  css/            ← museum_of.css (all styles, ~8000 lines)
-  data/           ← voice_instructions.json, seed JSON files
-  images/         ← Voice persona images
-  js/museum/      ← Frontend modules (foundation.js, app.js, chat.js, auth.js, …)
-templates/        ← index.template.html (SPA), login.html, share.html
-sqlc/             ← schema.sql (full DB schema), sqlc.yaml
+  css/              ← museum_of.css (all styles, ~8000 lines)
+  data/             ← voice_instructions.json, seed JSON files
+  images/           ← Voice persona images
+  js/museum/        ← Frontend modules (foundation.js, app.js, chat.js, auth.js, …)
+templates/          ← index.template.html (SPA), login.html, share.html
+sqlc/               ← schema.sql (full DB schema reference), sqlc.yaml
 ```
 
 ## Build & Run
@@ -56,124 +66,210 @@ make run                          # go run ./cmd/server
 
 # Build binaries
 make build-exe                    # bin/digitalmuseum.exe
-make build-launcher               # launcher.exe (Windows GUI)
 
 # Tests / lint
 make test
 make lint                         # requires golangci-lint
 make tidy                         # go mod tidy
-
-# Regenerate DB queries (after schema changes)
-make generate                     # requires sqlc
 ```
+
+To run the full Electron app in dev mode, open a terminal in `electron/` and run
+`npx electron .` (requires Node.js). The Go server is spawned automatically.
 
 ## Configuration (`.env`)
 
-The server searches for `.env` upward from the working directory.
+The server reads `.env` from the working directory (set by Electron to the project root
+in dev mode, or the install root in packaged mode). User-editable settings live in
+`%APPDATA%\Digital Museum\.env` and are layered on top.
 
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SQLITE_PATH` | Yes | Absolute path to the main SQLite database file |
+| `BILLING_SQLITE_PATH` | Yes | Absolute path to the billing SQLite database file |
+| `HOST_PORT` | No | HTTP listen port (default: 8000; Electron overrides to 8081) |
+| `ANTHROPIC_API_KEY` | At least one AI key | Claude API |
+| `CLAUDE_MODEL_NAME` | No | Default: `claude-sonnet-4-6` |
+| `DEEPSEEK_API_KEY` | No | DeepSeek API key (Anthropic-compatible Messages API at `api.deepseek.com/anthropic`) |
+| `DEEPSEEK_MODEL_NAME` | No | Default: `deepseek-chat` |
+| `GEMINI_API_KEY` | At least one AI key | Gemini API |
+| `GEMINI_MODEL_NAME` | No | Default: `gemini-2.5-flash` |
+| `LOCALAI_BASE_URL` | No | Ollama base URL, e.g. `http://localhost:11434` |
+| `LOCALAI_MODEL_NAME` | No | Default: `local-model` (use `gemma4` for Ollama) |
+| `LOCALAI_API_KEY` | No | Not required by Ollama; kept for compatibility |
+| `LOCALAI_EMBEDDING_MODEL` | No | Falls back to `LOCALAI_MODEL_NAME` if empty |
+| `TAVILY_API_KEY` | No | Enables `search_tavily` web-search tool |
+| `GMAIL_CLIENT_ID` | No | Google OAuth 2.0 Desktop App client ID |
+| `GMAIL_CLIENT_SECRET` | No | Google OAuth 2.0 client secret |
+| `GMAIL_REDIRECT_URL` | No | Set automatically by Electron at startup |
+| `KEYRING_PEPPER` | No | Secret for encryption key derivation (optional in current build) |
+| `LOG_LEVEL` | No | Go server log level: `debug`, `info`, `warn` (default), `error` |
+| `SESSION_COOKIE_SECURE` | No | Set `true` for HTTPS deployments |
+| `DEPLOYMENT_NATURE` | No | `local` (Electron default) or `web` |
+| `TEMPLATES_DIR` | No | Override templates directory path |
+| `ASSET_STATIC_DIR` | No | Override static assets directory path |
+| `ENABLE_PPROF` | No | Set `true` to expose `/debug/pprof` on `:6060` |
+| `ADMIN_EMAIL` | No | Email for initial admin user (created if no admin exists) |
+| `ADMIN_PASSWORD` | No | Password for initial admin user |
+| `TLS_CERT_FILE` | No | Path to TLS certificate file (both `TLS_CERT_FILE` and `TLS_KEY_FILE` required for HTTPS) |
+| `TLS_KEY_FILE` | No | Path to TLS private key file |
+| `TUS_CHUNK_SIZE_MB` | No | Chunk size (MB) for resumable tus uploads (default: 10) |
+| `TUS_MAX_UPLOAD_GB` | No | Maximum ZIP/tus upload size in GiB (default: 32, max: 512) |
+| `TUS_UPLOAD_DIR` | No | Directory for in-progress tus upload chunks (default: OS temp on Windows) |
+| `ATTACHMENT_ALLOWED_TYPES` | No | Comma-separated MIME types to import (empty = all) |
+| `ATTACHMENT_MIN_SIZE` | No | Minimum attachment size in bytes (default: 0) |
+| `FILESYSTEM_IMPORT_EXCLUDE_PATTERNS` | No | Comma-separated glob patterns to skip during filesystem import |
 
-| Variable                                                      | Required                   | Description                                    |
-| ------------------------------------------------------------- | -------------------------- | ---------------------------------------------- |
-| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | Yes                        | PostgreSQL connection                          |
-| `ANTHROPIC_API_KEY`                                           | At least one AI key needed | Claude API                                     |
-| `CLAUDE_MODEL_NAME`                                           | No                         | Default: `claude-sonnet-4-6`                   |
-| `GEMINI_API_KEY`                                              | At least one AI key needed | Gemini API                                     |
-| `GEMINI_MODEL_NAME`                                           | No                         | Default: `gemini-2.5-flash`                    |
-| `TAVILY_API_KEY`                                              | No                         | Enables `search_tavily` web-search tool        |
-| `KEYRING_PEPPER`                                              | Yes                        | Secret for encryption key derivation           |
-| `PORT`                                                        | No                         | HTTP port (default 8080)                       |
-| `SESSION_COOKIE_SECURE`                                       | No                         | Set `true` for HTTPS deployments               |
-| `ENABLE_PPROF`                                                | No                         | Set `true` to expose `/debug/pprof` on `:6060` |
+## Electron Desktop Shell
 
+`electron/main.js` is the Node.js main process. It:
+
+1. Finds a free port (currently hard-coded to 8081) and spawns `bin/digitalmuseum.exe`
+2. Injects `SQLITE_PATH`, `BILLING_SQLITE_PATH`, `TEMPLATES_DIR`, `ASSET_STATIC_DIR`,
+   `GMAIL_REDIRECT_URL` (dynamic), and `LOG_LEVEL` into the Go server's environment
+3. Waits for `GET /health` to return 200 before showing the main `BrowserWindow`
+4. Manages the system tray, developer tools shortcut, and single-instance lock
+5. Manages the Ollama process (`ollama serve`) including health checks and shutdown
+
+**IPC channels** (renderer ↔ main via `electron/preload.js`):
+
+| Channel | Direction | Purpose |
+|---------|-----------|---------|
+| `show-open-dialog` | renderer→main | Native file-open dialog |
+| `show-save-dialog` | renderer→main | Native file-save dialog |
+| `get-db-path` | renderer→main | Current SQLITE_PATH |
+| `get-log-level` | renderer→main | Current LOG_LEVEL |
+| `select-db` | renderer→main | Switch database + log level, restart Go server |
+| `check-ollama-model` | renderer→main | Check if gemma4 is in `~/.ollama/models/` |
+| `pull-ollama-model` | renderer→main | Run `ollama pull gemma4`, streams progress |
+| `start-ollama` | renderer→main | Start `ollama serve`, wait for health |
+| `ollama-pull-progress` | main→renderer | Live pull progress lines |
+| `status-update` | main→renderer | Loading screen status messages |
+
+**Advanced login panel** (`templates/login.html`) allows users to:
+- Switch or create a SQLite database before signing in
+- Change the Go server log level
+- Start the local Ollama AI (with auto-download of gemma4 if not present)
+
+Selecting a new database writes `SQLITE_PATH` to `%APPDATA%\Digital Museum\.env` and
+restarts the Go server via `restartGoServer()` in `electron/main.js`.
+
+## Local AI — Ollama / Gemma4
+
+`internal/ai/localai.go` implements `ChatProvider` using the **native Ollama API**:
+
+- Chat: `POST {LOCALAI_BASE_URL}/api/chat` with `stream: false`
+- Embeddings: `POST {LOCALAI_BASE_URL}/api/embed`
+- Tool arguments arrive as `map[string]any` (not a JSON string — unlike OpenAI compat)
+- Token counts read from `prompt_eval_count` / `eval_count` (not `usage.prompt_tokens`)
+- No `Authorization` header required
+- Model options (temperature, num_ctx) sent under `"options"` key
+
+Ollama is started with `OLLAMA_NUM_CTX=8192` env var (configured in `start-ollama` IPC
+handler in `electron/main.js`).
+
+## DeepSeek Provider
+
+`internal/ai/deepseek.go` implements `ChatProvider` using DeepSeek's **Anthropic-compatible Messages API**:
+
+- Endpoint: `POST https://api.deepseek.com/anthropic/v1/messages`
+- Authentication: `x-api-key` header (same field name as Anthropic)
+- Protocol: identical to Claude's Messages API — same tool-calling format, same `stop_reason: "tool_use"` loop
+- Uses `anthropic-version: 2023-06-01` header required by DeepSeek's endpoint
+- Token counts read from standard `usage.input_tokens` / `usage.output_tokens`
+- Returns `nil` from constructor when `DEEPSEEK_API_KEY` is empty
+
+Select via `"provider": "deepseek"` in `POST /chat/generate` and `Have-a-Chat` requests.
+
+## Admin User Management
+
+`internal/handler/admin_user_handler.go` provides a web-based admin panel at `/admin`:
+
+- **Separate session:** `dm_admin_sid` cookie, 2-hour TTL, RAM-only (not DB-backed)
+- **Authentication:** must have `is_admin = true` in the `users` table; initial admin is seeded at server startup from `ADMIN_EMAIL` / `ADMIN_PASSWORD` env vars (only while no admin row exists)
+- **Routes:**
+  - `GET /admin` — admin SPA page
+  - `POST /admin/login` / `POST /admin/logout`
+  - `GET/POST /admin/users` — list / create users
+  - `PATCH/DELETE /admin/users/{id}` — update / delete user
+  - `GET /admin/users/{id}/dashboard` — user archive dashboard
+  - `GET /admin/llm-usage/users/{id}/summary|events|timeseries|bill.pdf`
+  - `GET /admin/llm-usage/error-events`
+  - `GET/PUT /admin/system-instructions` — app-wide LLM system prompts
+  - `GET/PUT /admin/pambot-instructions` — Pam Bot companion persona
+
+The admin panel is intentionally **exempt from** `AuthMiddleware` — it uses its own session guard (`requireAdmin`).
 
 ## Authentication & Authorisation
 
 ### Overview
 
-The system uses two independent security concepts that work in tandem:
-
 1. **Authentication** — who is the user? Handled by `AuthService` + `AuthMiddleware` using a DB-backed session cookie (`dm_session`).
-2. **Data authorisation** — which rows can they see? Handled by the repository layer adding `AND user_id = $N` to every query, backed by PostgreSQL Row-Level Security.
+2. **Data authorisation** — which rows can they see? Handled by the repository layer adding `AND user_id = $N` to every query.
 
 ### Authentication Flow
 
 1. User registers via `POST /auth/register` or logs in via `POST /auth/login`.
-2. Passwords are hashed with **argon2id** (minimum 12 characters); `internal/crypto/` provides `HashPassword` / `VerifyPassword`.
-3. On successful login, a 32-byte random session ID is created and stored in the `sessions` table with a 24-hour TTL.
+2. Passwords are hashed with **argon2id**; `internal/crypto/` provides `HashPassword` / `VerifyPassword`.
+3. On successful login, a 32-byte random session ID is stored in `sessions` with a 24-hour TTL.
 4. The session ID is set as an `HttpOnly; SameSite=Strict` cookie named `dm_session`.
-5. On every subsequent request, `AuthMiddleware` reads the cookie, looks up the session in the DB, slides the TTL, and injects `user_id` into the request context via `appctx.ContextKeyUserID`.
+5. On every subsequent request, `AuthMiddleware` reads the cookie, looks up the session, and injects `user_id` into the request context via `appctx.ContextKeyUserID`.
 
 ### Auth Middleware (`internal/middleware/auth.go`)
 
-Applied globally in the router. Unauthenticated requests to non-exempt paths receive a `302` redirect to `/login` (for browser navigation) or a `401 JSON` error (for API/XHR calls, detected via `Accept` header).
+Unauthenticated requests to non-exempt paths receive a `302` redirect to `/login`
+(browser) or a `401 JSON` error (XHR/API calls detected via `Accept` header).
 
-**Exempt routes** (never require authentication):
-
+**Exempt routes:**
 ```
 GET  /health
 GET  /static/*
 GET  /login
 POST /auth/login
 POST /auth/register
-GET  /share/*        (share token info)
-POST /share/*        (share token join)
-GET  /s/*            (share visitor HTML page)
+GET  /share/*
+POST /share/*
+GET  /s/*
 ```
-
-### Auth Endpoints (`internal/handler/auth_handler.go`)
-
-```
-POST /auth/register        { email, password, display_name }  → 201
-POST /auth/login           { email, password }                 → 200 + Set-Cookie
-POST /auth/logout                                              → 204
-GET  /auth/me                                                  → 200 { id, email, display_name }
-POST /auth/change-password { current_password, new_password }  → 204
-```
-
-Rate limiting: 10 requests/minute per IP on `/auth/login` and `/auth/register` (in-process token bucket, no external dependency).
 
 ### Context Key (`internal/appctx/appctx.go`)
-
-All layers that need the current user read from context via the shared package:
 
 ```go
 uid := appctx.UserIDFromCtx(ctx)  // returns 0 if unauthenticated
 ```
 
-This package imports nothing internal, preventing import cycles between middleware, services, repositories, and crypto.
-
 ### Data Scoping — Repository Layer
 
-Every repository method calls `uidFromCtx(ctx)` and appends `AND user_id = $N` to SELECT/UPDATE/DELETE queries, and includes `user_id = uidVal(uid)` in INSERT statements.
+Every repository method calls `uidFromCtx(ctx)` and appends `AND user_id = $N` to
+SELECT/UPDATE/DELETE queries, and includes `user_id = uidVal(uid)` on INSERT.
 
-`uidVal(uid)` returns `nil` (SQL NULL) when `uid == 0`, preserving backward compatibility for unauthenticated/single-tenant use.
+`uidVal(uid)` returns `nil` (SQL NULL) when `uid == 0`.
 
 The helper `userscope.go` exists in both `internal/repository/` and `internal/importstorage/`.
 
-### Data Scoping — PostgreSQL RLS
-
-Row-Level Security is enabled on all data tables as a second line of defence. When the application sets `app.current_user_id` in the session, PostgreSQL enforces the policy independently of application code. RLS is `ENABLE` (not `FORCE`), so the DB owner role bypasses it — full enforcement requires a non-owner application DB role (Layer 10).
-
 ### Share Token System (`internal/service/archive_share_service.go`)
 
-An archive owner can create share tokens that grant visitors read access to their archive:
-
-1. Owner creates a token via `POST /api/shares` (optional password, optional expiry, optional tool access policy). Token stored in `archive_shares` table.
-2. Visitor visits `/s/{token}` — the share visitor HTML page.
-3. Page fetches `GET /share/{token}` for metadata (label, has_password, expiry, owner name).
-4. Visitor submits password (if required) via `POST /share/{token}`.
-5. Server validates token + password, then calls `authSvc.CreateShareSession(ctx, ownerUserID)` to create a normal `dm_session` scoped to the **owner's** `user_id`.
-6. Visitor's browser is set the `dm_session` cookie and redirected to `/`.
-7. The visitor now sees the owner's archive through the normal repository filter — no special code paths needed.
+Visitors access an archive via a share token: `GET /s/{token}` → password check via
+`POST /share/{token}` → `authSvc.CreateShareSession()` issues a `dm_session` scoped to
+the **owner's** `user_id`. The visitor sees the owner's data through normal repository
+filters with no special code paths.
 
 ### Keyring (Encryption Layer)
 
-Two separate security concepts:
+- `dm_session` — authentication (DB-backed sessions table)
+- `dm_keyring_sid` — keyring unlock password (RAM store, `SessionMasterStore`)
 
-- `**dm_session` cookie** — identifies who the user is (DB-backed sessions table).
-- `**dm_keyring_sid` cookie** — carries the keyring unlock password in a RAM store (`SessionMasterStore`). Unlocking is separate from authentication; users must unlock their keyring to access encrypted reference documents and private store.
+`internal/crypto/keys.go` scopes all keyring operations by `user_id`.
 
-`internal/crypto/keys.go` scopes all keyring operations by user_id from context, using `AND user_id IS NULL` for uid==0 (legacy single-tenant rows).
+## SQLite Dialect Notes
+
+The codebase targets SQLite exclusively (via `modernc.org/sqlite`). Key rules:
+
+- **`internal/sqlutil/dialect.go`** — `IsSQLite(ctx, db *sql.DB) bool` detects the driver. Always returns `true` currently, but keep dialect branches for forward compatibility.
+- **`internal/sqlutil/dbtime.go`** — `ParseSQLiteDatetime()` handles multiple timestamp formats SQLite may store, including the non-standard `"2006-01-02 15:04:05 -0700 -0700"` format that Go's `time.String()` produces for timezones without an alphabetic name.
+- **Partial unique indexes**: SQLite requires the `WHERE` clause in upsert conflict targets to match the index's `WHERE` clause. Use `ON CONFLICT (key) WHERE user_id IS NULL DO UPDATE SET …` not just `ON CONFLICT (key) DO UPDATE SET …`.
+- **No `::type` casts**: SQLite does not support `$1::jsonb` or `$1::vector`; omit the cast.
+- **No `unnest(string_to_array(…))`**: Use a Go-side split + deduplication loop instead.
+- **`ON CONFLICT ON CONSTRAINT name`**: PostgreSQL-only syntax. Use `ON CONFLICT(col1, col2)` instead.
 
 ## Architecture Patterns
 
@@ -182,8 +278,8 @@ Two separate security concepts:
 1. Add the handler method in `internal/handler/<domain>_handler.go`
 2. Register the route in `internal/api/router/router.go`
 3. Add the service method in `internal/service/<domain>_service.go`
-4. Add the repository method in `internal/repository/<domain>_repo.go` (raw pgx, not sqlc)
-5. **For data tables:** repository methods must use `addUIDFilter(q, args, uidFromCtx(ctx))` on SELECT/UPDATE/DELETE, and `uidVal(uidFromCtx(ctx))` on INSERT.
+4. Add the repository method in `internal/repository/<domain>_repo.go` (raw `database/sql`)
+5. **For data tables:** use `addUIDFilter(q, args, uidFromCtx(ctx))` on SELECT/UPDATE/DELETE, and `uidVal(uidFromCtx(ctx))` on INSERT.
 
 ### Adding a New AI Tool
 
@@ -194,31 +290,46 @@ Two separate security concepts:
 
 ### Database Migrations
 
-- Migration logic lives in `internal/database/` Go files (not `.sql` files)
+- Migration logic lives in `internal/database/` Go files
 - Applied automatically at server startup via `database.Migrate()`
-- `migrate_multitenancy.go` contains the multi-tenancy DDL (users, sessions, archive_shares, user_id columns, RLS)
 - **Never modify existing migration logic** — always add a new migration function
 
-### Billing database (LLM usage)
+### Billing Database (LLM Usage)
 
-The server opens a **second** PostgreSQL database alongside the main app DB: database name is `{DB_NAME}_billing` (same host, port, user, and password as `config.DatabaseConfig`; see `BillingConfig()` in `internal/config/config.go`). At startup, `EnsureDatabase` creates it if missing (when the role has permission), then `database.MigrateBilling` applies DDL to that pool only.
+A **second SQLite file** (`BILLING_SQLITE_PATH`) holds `llm_usage_events` — one row per
+completed LLM interaction with provider, model, token counts, user snapshot fields, and
+whether the server API key was used. Billing inserts are best-effort. Admin JSON/UI
+lives under `/admin/llm-usage/…`. Users can download their own PDF bill via
+`GET /api/llm-usage/me/bill.pdf?period=current|previous`.
 
-That database holds `llm_usage_events` (one row per completed LLM interaction with provider, token counts, optional model name, optional snapshot fields `user_email`, `user_first_name`, and `user_family_name` from the main `users` table at insert time, optional `used_server_llm_key` when known (true = server/env API key, false = user or visitor session override), and `user_id` nullable for legacy/unauthenticated calls). Billing inserts are best-effort and never fail the user-facing request. Admin-only JSON and UI live under `/admin/llm-usage/…` (same session as other `/admin` routes). Admins can download a **PDF usage statement** per user via `GET /admin/llm-usage/users/{id}/bill.pdf` (optional `from` / `to` query params, RFC3339) or the **Download PDF bill** button on the admin page; PDFs are generated server-side (`internal/billingpdf`) with summary, full event listing (up to a row cap), and 5-minute bucket tables. The **archive owner** (not visitor sessions) can download their own PDF for the **current or previous UTC calendar month** via `GET /api/llm-usage/me/bill.pdf?period=current|previous` or from the account dropdown in the main UI (`internal/handler/billing_export_handler.go`).
+### Chat System
+
+- **Backend:** `POST /chat/generate` → `ChatHandler` → `ChatService.GenerateResponse()`
+- System prompt = subject config + voice instructions with `{SUBJECT_NAME}`, `{he}`, `{him}`, `{his}` substituted at runtime
+- **Reference doc inlining:** `internal/service/reference_prompt_inline.go` appends any `reference_documents` rows with `include_in_system_prompt = true` directly into the system prompt (decrypts if needed; skips for restricted visitor sessions)
+- History: last 30 turns from `chat_turns` table
+- Tool loop: up to `maxToolCallIterations` per request in all providers
+- **Provider selection:** `"claude"`, `"gemini"`, `"deepseek"`, or `"localai"` in request body
+- All AI tool SQL is scoped by `user_id` via `toolsUIDFilter(ctx, q, args)` in `internal/ai/tools.go`
 
 ### Import Pipeline
 
-Four tiers for getting data into the system:
+| Tier | Mechanism | Endpoint |
+|------|-----------|----------|
+| A | IMAP credentials | `POST /imap/process` |
+| B | ZIP file upload (Facebook, Instagram, WhatsApp, iMessage) | `POST /import/upload` |
+| C1 | Browser folder picker (photos) | `POST /import/photo-batch` |
+| D | Server-triggered (contacts, thumbnails, reference import) | various |
 
+All import handlers capture `uid` before launching background goroutines and pass it via
+`context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)`.
 
-| Tier | Mechanism                                                         | Endpoint                   |
-| ---- | ----------------------------------------------------------------- | -------------------------- |
-| A    | IMAP credentials (no upload)                                      | `POST /imap/process`       |
-| B    | ZIP file upload (Facebook, Instagram, WhatsApp, iMessage exports) | `POST /import/upload`      |
-| C1   | Browser folder picker (photos)                                    | `POST /import/photo-batch` |
-| D    | Server-triggered (contacts, thumbnails, reference import)         | existing endpoints         |
+### Gmail Import
 
-
-All import handlers capture `uid := appctx.UserIDFromCtx(r.Context())` before launching background goroutines, then pass it as `context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)` so that `importstorage` INSERT statements pick up the correct `user_id`.
+Gmail OAuth uses a Desktop App client configured in Google Cloud Console:
+- Register `http://localhost:8081/gmail/auth/callback` (and ports 8080–8085 for safety) as authorized redirect URIs
+- `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET` in `.env`
+- `GMAIL_REDIRECT_URL` is set dynamically by Electron to match the actual running port
 
 ### Frontend Module Pattern
 
@@ -226,109 +337,74 @@ All frontend JS uses a revealing-module pattern (IIFE returning a public API):
 
 ```javascript
 const MyModule = (() => {
-    // private state
     function init() { /* wire DOM event listeners */ }
-    function open() { }
-    return { init, open };
+    return { init };
 })();
 ```
 
 - Constants and DOM element cache: `foundation.js`
 - Event listener wiring: `app.js` (calls `ModuleName.init()` from `Modals.initAll()`)
-- **Script load order matters with `defer`:** modules loaded after `app.js` must
-self-initialize at the bottom of their file (`MyModule.init();`) because
-`Modals.initAll()` will have already run by the time the later script executes.
+- Modules loaded after `app.js` must self-initialize at the bottom of their file
 - All dates displayed should be in local format
-- `auth.js` — `AuthModule` — fetches `GET /auth/me` on load, shows account dropdown, handles logout, redirects to `/login` on 401
-
-### Adding a New Frontend Feature
-
-1. Create `static/js/museum/<feature>.js` with the module pattern
-2. Add `<script src="/static/js/museum/<feature>.js" defer></script>` in
-  `templates/index.template.html` **after** `app.js`
-3. Add `<feature>.init();` at the bottom of the new JS file (self-init)
-4. Add the trigger button / HTML to `templates/index.template.html`
-5. Add CSS to `static/css/museum_of.css`
-
-### Chat System
-
-- **Backend:** `POST /chat/generate` → `ChatHandler` → `ChatService.GenerateResponse()`
-- System prompt = subject config + voice instructions (`static/data/voice_instructions.json`)
-with `{SUBJECT_NAME}`, `{he}`, `{him}`, `{his}` substituted at runtime
-- History: last 30 turns from `chat_turns` table are sent with every request
-- Tool loop: max 5 iterations per request in both providers
-- **Provider selection:** passed as `provider` field in request (`"claude"` or `"gemini"`)
-- All AI tool SQL queries are scoped by user_id via `toolsUIDFilter(ctx, q, args)` in `internal/ai/tools.go`
-
-### Voice System
-
-- Built-in voices defined in `static/data/voice_instructions.json`
-- Custom voices stored in `custom_voices` DB table, served via `GET /api/voices`
-- Each voice message gets a CSS class `voice-<name>` for styling
-- Voice images: `static/images/<voice>.png` and `<voice>_sm.png`
 
 ## Key Files Quick Reference
 
-
-| What                               | Where                                              |
-| ---------------------------------- | -------------------------------------------------- |
-| Route wiring                       | `internal/api/router/router.go`                    |
-| Auth middleware                    | `internal/middleware/auth.go`                      |
-| Auth service                       | `internal/service/auth_service.go`                 |
-| Auth handler                       | `internal/handler/auth_handler.go`                 |
-| Share token service                | `internal/service/archive_share_service.go`        |
-| Share token handler                | `internal/handler/share_handler.go`                |
-| Context key (user_id)              | `internal/appctx/appctx.go`                        |
-| Repository user scoping            | `internal/repository/userscope.go`                 |
-| Import storage user scoping        | `internal/importstorage/userscope.go`              |
-| Multi-tenancy DB migration         | `internal/database/migrate_multitenancy.go`        |
-| Billing DB (LLM usage) migration   | `internal/database/migrate_billing.go`             |
-| LLM usage repository (billing DB)  | `internal/repository/billing_repo.go`              |
-| LLM usage PDF export (admin bills) | `internal/billingpdf/bill.go`                      |
-| Upload import handler              | `internal/handler/upload_import_handler.go`        |
-| AI provider interface              | `internal/ai/provider.go`                          |
-| Tool definitions                   | `internal/ai/provider.go` → `GetToolDefinitions()` |
-| Tool execution                     | `internal/ai/tools.go` → `NewToolExecutor()`       |
-| Chat orchestration                 | `internal/service/chat_service.go`                 |
-| Chat HTTP handler                  | `internal/handler/chat_handler.go`                 |
-| DB schema                          | `sqlc/schema.sql`                                  |
-| Frontend main                      | `static/js/museum/app.js`                          |
-| Frontend auth                      | `static/js/museum/auth.js`                         |
-| Frontend chat renderer             | `static/js/museum/chat.js`                         |
-| Constants / DOM cache              | `static/js/museum/foundation.js`                   |
-| All styles                         | `static/css/museum_of.css`                         |
-| Main SPA template                  | `templates/index.template.html`                    |
-| Login / register page              | `templates/login.html`                             |
-| Share visitor page                 | `templates/share.html`                             |
-
-
-## Data Import
-
-**Web-based (multi-tenant):**
-
-- `POST /import/upload` — upload a platform export ZIP (facebook/instagram/whatsapp/imessage); extracted to `tmp/imports/{user_id}/{job_id}/` and run with user_id in context
-- `POST /import/photo-batch` — batch upload images from a browser folder picker
-- `GET /import/jobs` — aggregated status of all import jobs
+| What | Where |
+|------|-------|
+| Electron main process | `electron/main.js` |
+| Electron IPC bridge | `electron/preload.js` |
+| Route wiring | `internal/api/router/router.go` |
+| Auth middleware | `internal/middleware/auth.go` |
+| Auth service | `internal/service/auth_service.go` |
+| Auth handler | `internal/handler/auth_handler.go` |
+| Share token service | `internal/service/archive_share_service.go` |
+| Context key (user_id) | `internal/appctx/appctx.go` |
+| Repository user scoping | `internal/repository/userscope.go` |
+| Import storage user scoping | `internal/importstorage/userscope.go` |
+| SQLite dialect detection | `internal/sqlutil/dialect.go` |
+| SQLite datetime parsing | `internal/sqlutil/dbtime.go` |
+| DB migrations (main) | `internal/database/migrate.go` |
+| DB migrations (billing) | `internal/database/migrate_billing.go` |
+| LLM usage repository | `internal/repository/billing_repo.go` |
+| LLM usage PDF export | `internal/billingpdf/bill.go` |
+| AI provider interface | `internal/ai/provider.go` |
+| Claude provider | `internal/ai/claude.go` |
+| DeepSeek (Anthropic-compatible API) | `internal/ai/deepseek.go` |
+| Gemini provider | `internal/ai/gemini.go` |
+| Local AI / Ollama provider | `internal/ai/localai.go` |
+| Tool definitions | `internal/ai/provider.go` → `GetToolDefinitions()` |
+| Tool execution | `internal/ai/tools.go` → `NewToolExecutor()` |
+| Chat orchestration | `internal/service/chat_service.go` |
+| Chat HTTP handler | `internal/handler/chat_handler.go` |
+| Reference doc system-prompt inlining | `internal/service/reference_prompt_inline.go` |
+| Admin user management handler | `internal/handler/admin_user_handler.go` |
+| Config loading | `internal/config/config.go` |
+| DB schema reference | `sqlc/schema.sql` |
+| Frontend main | `static/js/museum/app.js` |
+| Frontend auth | `static/js/museum/auth.js` |
+| Frontend chat renderer | `static/js/museum/chat.js` |
+| Constants / DOM cache | `static/js/museum/foundation.js` |
+| All styles | `static/css/museum_of.css` |
+| Main SPA template | `templates/index.template.html` |
+| Login / register page | `templates/login.html` |
+| Share visitor page | `templates/share.html` |
 
 ## Security Notes
 
-- `.env` contains API keys and the DB password — **never commit it**
-- `KEYRING_PEPPER` is used to derive encryption keys for sensitive data and encrypted
-reference documents — rotating it requires re-encrypting all affected records
-- The RAM master key unlocks `private_store` and encrypted documents per session;
-it is never persisted to disk
+- `.env` contains API keys — **never commit it**
+- `KEYRING_PEPPER` is used to derive encryption keys — rotating it requires re-encrypting all affected records
+- The RAM master key unlocks `private_store` and encrypted documents per session; it is never persisted to disk
 - Tool access is tiered: Visitor / Master — controlled via `PUT /api/settings/llm-tools-access`
-- All archive data tables have `user_id` (nullable FK to `users`) — NULL means legacy/unauthenticated single-tenant data
-- RLS policies are defined but use `ENABLE` not `FORCE`; the DB owner role bypasses them
-- Share visitor sessions are full `dm_session` cookies scoped to the owner's `user_id` — visitors see exactly the owner's data through normal repository filters
+- All archive data tables have `user_id` (nullable) — NULL means legacy/single-tenant data
+- Share visitor sessions are `dm_session` cookies scoped to the **owner's** `user_id`
 
 ## What NOT to Do
 
-- Don't use `sqlc generate` output directly; repository methods are hand-written with pgx
-- Don't add Node.js / npm tooling — the frontend is intentional vanilla JS
-- Don't modify existing migration logic — always add a new migration function
+- Don't use PostgreSQL-specific SQL: no `::type` casts, no `ON CONFLICT ON CONSTRAINT name`, no `unnest(string_to_array(…))`, no partial-index conflict targets without the matching `WHERE` clause
+- Don't add Node.js / npm tooling to the Go backend — the frontend is intentional vanilla JS
+- Don't modify existing migration functions — always add a new one
 - Don't commit `.env` or stray binary files
-- Don't add `user_id` filtering to the `users`, `sessions`, or `archive_shares` tables — these are identity/auth tables, not per-user data tables
-- Don't use `context.Background()` in import background goroutines — always thread the user_id via `context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)` where `uid` is captured from the HTTP request context before the goroutine starts
+- Don't add `user_id` filtering to the `users`, `sessions`, or `archive_shares` tables — these are identity/auth tables
+- Don't use `context.Background()` in import background goroutines — always thread the `user_id` via `context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)`
 - Don't return nil slices from list handlers — always substitute an empty slice so JSON encodes as `[]` not `null`
-
+- Don't write raw SQL with `pgx` — the codebase now uses `database/sql` with `modernc.org/sqlite`

@@ -17,11 +17,23 @@ type ReferenceDocument struct {
 	Categories       *string
 	Notes            *string
 	AvailableForTask bool
+	IncludeInSystemPrompt bool
 	IsPrivate        bool
 	IsSensitive      bool
 	IsEncrypted      bool
 	CreatedAt        sqlutil.DBTime
 	UpdatedAt        sqlutil.DBTime
+}
+
+// ReferenceDocumentPromptBlob is a reference_documents row (with data blob) for system-prompt inlining.
+type ReferenceDocumentPromptBlob struct {
+	ID          int64
+	Title       *string
+	Filename    string
+	ContentType string
+	Data        []byte
+	IsEncrypted bool
+	IsSensitive bool
 }
 
 // ── Custom Voices ──────────────────────────────────────────────────────────────

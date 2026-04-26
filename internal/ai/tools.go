@@ -273,7 +273,7 @@ func getAvailableReferenceDocuments(ctx context.Context, pool *sql.DB) (map[stri
 		// Visitor key hint junction tables are not present in the SQLite build.
 		return map[string]any{"documents": []map[string]any{}}, nil
 	}
-	q, args := toolsUIDFilter(ctx, `SELECT id, title, description, tags FROM reference_documents WHERE available_for_task = TRUE AND is_sensitive = FALSE`, nil)
+	q, args := toolsUIDFilter(ctx, `SELECT id, title, description, tags FROM reference_documents WHERE available_for_task = TRUE AND NOT include_in_system_prompt AND is_sensitive = FALSE`, nil)
 	rows, err := pool.QueryContext(ctx, q, args...)
 	if err != nil {
 		return map[string]any{"error": err.Error(), "documents": []any{}}, nil
@@ -978,7 +978,7 @@ func getAvailableSensitiveReferenceDocuments(ctx context.Context, pool *sql.DB) 
 		// Visitor key hint junction tables are not present in the SQLite build.
 		return map[string]any{"documents": []map[string]any{}}, nil
 	}
-	q, args := toolsUIDFilter(ctx, `SELECT id, title, description, tags FROM reference_documents WHERE is_sensitive = TRUE`, nil)
+	q, args := toolsUIDFilter(ctx, `SELECT id, title, description, tags FROM reference_documents WHERE is_sensitive = TRUE AND NOT include_in_system_prompt`, nil)
 	rows, err := pool.QueryContext(ctx, q, args...)
 	if err != nil {
 		return map[string]any{"error": err.Error(), "documents": []any{}}, nil

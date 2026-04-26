@@ -57,7 +57,7 @@ func (s *DocumentService) GetData(ctx context.Context, id int64, userPassword st
 func (s *DocumentService) Create(ctx context.Context,
 	filename, contentType string, size int64, data []byte,
 	title, description, author, tags, categories, notes *string,
-	availableForTask, isPrivate, isSensitive bool, masterPassword string,
+	availableForTask, includeInSystemPrompt, isPrivate, isSensitive bool, masterPassword string,
 ) (*model.ReferenceDocument, error) {
 	isEncrypted := false
 	if masterPassword != "" {
@@ -70,14 +70,15 @@ func (s *DocumentService) Create(ctx context.Context,
 	}
 	return s.repo.Create(ctx, filename, contentType, size, data,
 		title, description, author, tags, categories, notes,
-		availableForTask, isPrivate, isSensitive, isEncrypted)
+		availableForTask, includeInSystemPrompt, isPrivate, isSensitive, isEncrypted)
 }
 
 func (s *DocumentService) Update(ctx context.Context, id int64,
 	title, description, author, tags, categories, notes *string,
 	availableForTask *bool,
+	includeInSystemPrompt *bool,
 ) (*model.ReferenceDocument, error) {
-	return s.repo.Update(ctx, id, title, description, author, tags, categories, notes, availableForTask)
+	return s.repo.Update(ctx, id, title, description, author, tags, categories, notes, availableForTask, includeInSystemPrompt)
 }
 
 func (s *DocumentService) Delete(ctx context.Context, id int64) error {

@@ -53,26 +53,28 @@ type voiceEntry struct {
 
 // ChatService orchestrates AI generation, tool calling, and conversation persistence.
 type ChatService struct {
-	chatRepo            *repository.ChatRepo
-	subjectRepo         *repository.SubjectConfigRepo
-	appInstrRepo        *repository.AppSystemInstructionsRepo
-	cpRepo              *repository.CompleteProfileRepo
-	docRepo             *repository.DocumentRepo
-	pool                *sql.DB
-	userRepo            *repository.UserRepo
-	defaultGeminiKey    string
-	defaultGeminiModel  string
-	defaultAnthropicKey string
-	defaultClaudeModel  string
-	defaultTavilyKey    string
-	defaultLocalAIURL   string
-	defaultLocalAIKey   string
-	defaultLocalAIModel string
-	pythonStaticDir     string
-	pepper              string
-	sessionStore        *keystore.SessionMasterStore
-	privateStore        *PrivateStoreService
-	billing             *repository.BillingRepo
+	chatRepo             *repository.ChatRepo
+	subjectRepo          *repository.SubjectConfigRepo
+	appInstrRepo         *repository.AppSystemInstructionsRepo
+	cpRepo               *repository.CompleteProfileRepo
+	docRepo              *repository.DocumentRepo
+	pool                 *sql.DB
+	userRepo             *repository.UserRepo
+	defaultGeminiKey     string
+	defaultGeminiModel   string
+	defaultAnthropicKey  string
+	defaultClaudeModel   string
+	defaultDeepSeekKey   string
+	defaultDeepSeekModel string
+	defaultTavilyKey     string
+	defaultLocalAIURL    string
+	defaultLocalAIKey    string
+	defaultLocalAIModel  string
+	pythonStaticDir      string
+	pepper               string
+	sessionStore         *keystore.SessionMasterStore
+	privateStore         *PrivateStoreService
+	billing              *repository.BillingRepo
 }
 
 // NewChatService creates a ChatService. Server defaults come from cfg/env; authenticated
@@ -85,7 +87,8 @@ func NewChatService(
 	docRepo *repository.DocumentRepo,
 	pool *sql.DB,
 	userRepo *repository.UserRepo,
-	defaultGeminiKey, defaultGeminiModel, defaultAnthropicKey, defaultClaudeModel, defaultTavilyKey string,
+	defaultGeminiKey, defaultGeminiModel, defaultAnthropicKey, defaultClaudeModel string,
+	defaultDeepSeekKey, defaultDeepSeekModel, defaultTavilyKey string,
 	defaultLocalAIURL, defaultLocalAIKey, defaultLocalAIModel string,
 	pythonStaticDir string,
 	pepper string,
@@ -94,26 +97,28 @@ func NewChatService(
 	billing *repository.BillingRepo,
 ) *ChatService {
 	return &ChatService{
-		chatRepo:            chatRepo,
-		subjectRepo:         subjectRepo,
-		appInstrRepo:        appInstrRepo,
-		cpRepo:              cpRepo,
-		docRepo:             docRepo,
-		pool:                pool,
-		userRepo:            userRepo,
-		defaultGeminiKey:    defaultGeminiKey,
-		defaultGeminiModel:  defaultGeminiModel,
-		defaultAnthropicKey: defaultAnthropicKey,
-		defaultClaudeModel:  defaultClaudeModel,
-		defaultTavilyKey:    defaultTavilyKey,
-		defaultLocalAIURL:   defaultLocalAIURL,
-		defaultLocalAIKey:   defaultLocalAIKey,
-		defaultLocalAIModel: defaultLocalAIModel,
-		pythonStaticDir:     pythonStaticDir,
-		pepper:              pepper,
-		sessionStore:        sessionStore,
-		privateStore:        privateStore,
-		billing:             billing,
+		chatRepo:             chatRepo,
+		subjectRepo:          subjectRepo,
+		appInstrRepo:         appInstrRepo,
+		cpRepo:               cpRepo,
+		docRepo:              docRepo,
+		pool:                 pool,
+		userRepo:             userRepo,
+		defaultGeminiKey:     defaultGeminiKey,
+		defaultGeminiModel:   defaultGeminiModel,
+		defaultAnthropicKey:  defaultAnthropicKey,
+		defaultClaudeModel:   defaultClaudeModel,
+		defaultDeepSeekKey:   defaultDeepSeekKey,
+		defaultDeepSeekModel: defaultDeepSeekModel,
+		defaultTavilyKey:     defaultTavilyKey,
+		defaultLocalAIURL:    defaultLocalAIURL,
+		defaultLocalAIKey:    defaultLocalAIKey,
+		defaultLocalAIModel:  defaultLocalAIModel,
+		pythonStaticDir:      pythonStaticDir,
+		pepper:               pepper,
+		sessionStore:         sessionStore,
+		privateStore:         privateStore,
+		billing:              billing,
 	}
 }
 
@@ -254,6 +259,8 @@ func (s *ChatService) applyUsageKeySourceToLLMUsage(ctx context.Context, r *http
 		v = cS
 	case "localai":
 		v = true // LocalAI always runs on the server
+	case "deepseek":
+		v = strings.TrimSpace(s.defaultDeepSeekKey) != ""
 	default:
 		return
 	}
@@ -269,6 +276,11 @@ func (s *ChatService) effectiveGeminiProvider(ctx context.Context, r *http.Reque
 func (s *ChatService) effectiveClaudeProvider(ctx context.Context, r *http.Request, authSessionID string) appai.ChatProvider {
 	_, _, k, m, _ := s.effectiveAIConfig(ctx, r, authSessionID)
 	return appai.NewClaudeProvider(k, m)
+}
+
+// effectiveDeepSeekProvider uses server env only (no per-user key overrides).
+func (s *ChatService) effectiveDeepSeekProvider() appai.ChatProvider {
+	return appai.NewDeepSeekProvider(s.defaultDeepSeekKey, s.defaultDeepSeekModel)
 }
 
 // effectiveLocalAIProvider returns a LocalAIProvider using the server-level config.
@@ -351,6 +363,12 @@ func (s *ChatService) ClaudeAvailable(ctx context.Context, r *http.Request) bool
 	return p != nil && p.IsAvailable()
 }
 
+// DeepSeekAvailable reports whether DeepSeek is configured from server env.
+func (s *ChatService) DeepSeekAvailable() bool {
+	p := s.effectiveDeepSeekProvider()
+	return p != nil && p.IsAvailable()
+}
+
 // GenerateResponse runs a full chat generation cycle.
 func (s *ChatService) GenerateResponse(ctx context.Context, r *http.Request, req model.ChatRequest) (*model.ChatResponse, error) {
 	// Choose provider explicitly so the requested provider is always honoured.
@@ -359,6 +377,8 @@ func (s *ChatService) GenerateResponse(ctx context.Context, r *http.Request, req
 	switch req.Provider {
 	case "claude":
 		provider = s.effectiveClaudeProvider(ctx, r, "")
+	case "deepseek":
+		provider = s.effectiveDeepSeekProvider()
 	case "localai":
 		provider = s.effectiveLocalAIProvider()
 	default:
@@ -441,6 +461,7 @@ func (s *ChatService) GenerateResponse(ctx context.Context, r *http.Request, req
 		systemPrompt += "\n\n**IMPORTANT Repeat Question:** Repeat the question in the same language and tone as the original question at the begining of the response"
 	}
 	systemPrompt = appendExplicitContentPolicy(systemPrompt, req.AllowExplicitContent)
+	systemPrompt = s.appendInlinedReferenceDocumentsToSystemPrompt(ctx, r, systemPrompt)
 	// Load conversation history
 	var history []appai.ConvTurn
 	if req.ConversationID != nil {
@@ -522,6 +543,8 @@ func (s *ChatService) GenerateRandomQuestion(ctx context.Context, r *http.Reques
 	switch req.Provider {
 	case "claude":
 		provider = s.effectiveClaudeProvider(ctx, r, "")
+	case "deepseek":
+		provider = s.effectiveDeepSeekProvider()
 	case "localai":
 		provider = s.effectiveLocalAIProvider()
 	default:
@@ -589,6 +612,7 @@ func (s *ChatService) GenerateRandomQuestion(ctx context.Context, r *http.Reques
 		"\n\n**Your Personae:**\n" + voiceText +
 		"\n\n**Who is asking:** " + whosAskingText
 	systemPrompt = appendExplicitContentPolicy(systemPrompt, req.AllowExplicitContent)
+	systemPrompt = s.appendInlinedReferenceDocumentsToSystemPrompt(ctx, r, systemPrompt)
 
 	// Load conversation history
 	var history []appai.ConvTurn
@@ -677,6 +701,19 @@ func (s *ChatService) GenerateRandomQuestion(ctx context.Context, r *http.Reques
 				}
 			}
 			delete(embeddedJSON, "embedded_json")
+		}
+		// Random-question responses must always expose these keys for the UI
+		// (Answer button + question handoff flow in chat.js).
+		embeddedJSON["randomQuestion"] = true
+		embeddedJSON["randomQuestionText"] = strings.TrimSpace(result.PlainText)
+	} else {
+		embeddedJSON = map[string]any{
+			"randomQuestion":     true,
+			"randomQuestionText": strings.TrimSpace(result.PlainText),
+			"response_text":      result.PlainText,
+			"prompt":             prompt,
+			"voice":              voice,
+			"temperature":        temperature,
 		}
 	}
 	return &model.ChatResponse{
@@ -871,13 +908,22 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 		provider = "gemini"
 	}
 	claudeP := s.effectiveClaudeProvider(ctx, nil, authSessionID)
+	deepseekP := s.effectiveDeepSeekProvider()
 	geminiP := s.effectiveGeminiProvider(ctx, nil, authSessionID)
 	localaiP := s.effectiveLocalAIProvider()
+	if provider == "deepseek" && (deepseekP == nil || !deepseekP.IsAvailable()) {
+		provider = "gemini" // fallback
+	}
 	if provider == "claude" && (claudeP == nil || !claudeP.IsAvailable()) {
 		provider = "gemini" // fallback
 	}
 	if provider == "gemini" && (geminiP == nil || !geminiP.IsAvailable()) {
 		provider = "claude" // fallback
+	}
+	if provider == "claude" && (claudeP == nil || !claudeP.IsAvailable()) {
+		if deepseekP != nil && deepseekP.IsAvailable() {
+			provider = "deepseek"
+		}
 	}
 
 	type simpleGen interface {
@@ -889,6 +935,10 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 		if cp, ok := claudeP.(*appai.ClaudeProvider); ok && cp != nil {
 			ai = cp
 		}
+	case "deepseek":
+		if dp, ok := deepseekP.(*appai.DeepSeekProvider); ok && dp != nil {
+			ai = dp
+		}
 	case "gemini":
 		if gp, ok := geminiP.(*appai.GeminiProvider); ok && gp != nil {
 			ai = gp
@@ -899,7 +949,7 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 		}
 	}
 	if ai == nil {
-		return fmt.Errorf("no AI provider available for complete profile (gemini, claude, or localai required)")
+		return fmt.Errorf("no AI provider available for complete profile (gemini, claude, deepseek, or localai required)")
 	}
 
 	var interimSummary string

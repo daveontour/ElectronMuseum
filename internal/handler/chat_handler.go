@@ -61,6 +61,7 @@ func (h *ChatHandler) GetAvailability(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"gemini_available":                    h.svc.GeminiAvailable(r.Context(), r),
 		"claude_available":                    h.svc.ClaudeAvailable(r.Context(), r),
+		"deepseek_available":                  h.svc.DeepSeekAvailable(),
 		"localai_available":                   h.svc.LocalAIAvailable(),
 		"llm_tools_count":                     tools,
 		"reference_documents_available_count": refDocs,
@@ -252,7 +253,7 @@ func (h *ChatHandler) ClearConversationHistory(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, map[string]any{
-		"success":         true,
+		"success":       true,
 		"turns_deleted": n,
 	})
 }
