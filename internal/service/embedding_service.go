@@ -45,6 +45,22 @@ func (s *EmbeddingService) EmbedText(ctx context.Context, text string) ([]float3
 	return s.provider.Embed(ctx, text, s.embeddingModel)
 }
 
+// EmbedTextWithModel returns an embedding vector using an explicit model name.
+// If model is blank, it falls back to the service default model behavior.
+func (s *EmbeddingService) EmbedTextWithModel(ctx context.Context, text, model string) ([]float32, error) {
+	if !s.IsAvailable() {
+		return nil, fmt.Errorf("embedding service: local AI not configured")
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("embedding service: text must not be empty")
+	}
+	m := strings.TrimSpace(model)
+	if m == "" {
+		return s.provider.Embed(ctx, text, s.embeddingModel)
+	}
+	return s.provider.Embed(ctx, text, m)
+}
+
 // EmbedBatch returns embedding vectors for each string in texts.
 // Each entry is embedded with a separate API call; the slice is returned in
 // the same order as the input. If any call fails the whole batch fails.

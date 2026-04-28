@@ -6,6 +6,12 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- SQLite-only note:
+-- The runtime SQLite migration also creates sqlite-vec virtual tables:
+--   email_embeddings   USING vec0(embedding float[768], int_ids text)
+--   message_embeddings USING vec0(embedding float[768], int_ids text)
+-- See internal/database/migrate_sqlite.go (ensureSQLiteVecEmbeddingTables).
+
 -- ============================================================
 -- Identity tables  (no user_id FK — these ARE the identity layer)
 -- ============================================================

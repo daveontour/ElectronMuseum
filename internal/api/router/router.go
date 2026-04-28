@@ -187,6 +187,8 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 
 	embeddingHandler := handler.NewEmbeddingHandler(embeddingSvc)
 	embeddingHandler.RegisterRoutes(r)
+	messageSimilarityHandler := handler.NewMessageSimilarityHandler(pool, embeddingSvc)
+	messageSimilarityHandler.RegisterRoutes(r)
 
 	// ── Chat & AI ────────────────────────────────────────────────────────────
 	geminiProvider := appai.NewGeminiProvider(cfg.AI.GeminiAPIKey, cfg.AI.GeminiModelName)

@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"os"
 	"strings"
 )
 
@@ -143,9 +142,9 @@ func (p *ClaudeProvider) GenerateResponse(
 			body["tools"] = claudeTools
 		}
 
-		bodyJSON, _ := json.Marshal(body)
-		//Appen the bodyJSON to a file, appending a newline
-		os.WriteFile("claude_body.json", append(bodyJSON, []byte("\n")...), 0644)
+		// bodyJSON, _ := json.Marshal(body)
+		// //Appen the bodyJSON to a file, appending a newline
+		// os.WriteFile("claude_body.json", append(bodyJSON, []byte("\n")...), 0644)
 
 		resp, err := claudePost(ctx, p.apiKey, body)
 		if err != nil {

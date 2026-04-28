@@ -15,7 +15,7 @@ scoped to its owning user via a `user_id` foreign key enforced at the repository
 ## Tech Stack
 
 - **Desktop shell:** Electron (Node.js) — `electron/main.js` manages the Go server process, Ollama, system tray, and IPC
-- **Backend:** Go 1.25, Chi v5 router, `database/sql` with `modernc.org/sqlite v1.38.2`
+- **Backend:** Go 1.25, Chi v5 router, `database/sql` with `github.com/mattn/go-sqlite3` (CGO)
 - **Frontend:** Vanilla JavaScript (no framework), marked.js, highlight.js, Font Awesome
 - **Database:** SQLite (two files — main app DB and billing DB)
 - **AI Providers:** Anthropic Claude (`claude-sonnet-4-6`), Google Gemini (`gemini-2.5-flash`), DeepSeek (`deepseek-chat`) via Anthropic-compatible API, and local Ollama (`gemma4`) via native Ollama API
@@ -262,7 +262,7 @@ filters with no special code paths.
 
 ## SQLite Dialect Notes
 
-The codebase targets SQLite exclusively (via `modernc.org/sqlite`). Key rules:
+The codebase targets SQLite exclusively (via `github.com/mattn/go-sqlite3`). Key rules:
 
 - **`internal/sqlutil/dialect.go`** — `IsSQLite(ctx, db *sql.DB) bool` detects the driver. Always returns `true` currently, but keep dialect branches for forward compatibility.
 - **`internal/sqlutil/dbtime.go`** — `ParseSQLiteDatetime()` handles multiple timestamp formats SQLite may store, including the non-standard `"2006-01-02 15:04:05 -0700 -0700"` format that Go's `time.String()` produces for timezones without an alphabetic name.
@@ -407,4 +407,4 @@ const MyModule = (() => {
 - Don't add `user_id` filtering to the `users`, `sessions`, or `archive_shares` tables — these are identity/auth tables
 - Don't use `context.Background()` in import background goroutines — always thread the `user_id` via `context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)`
 - Don't return nil slices from list handlers — always substitute an empty slice so JSON encodes as `[]` not `null`
-- Don't write raw SQL with `pgx` — the codebase now uses `database/sql` with `modernc.org/sqlite`
+- Don't write raw SQL with `pgx` — the codebase now uses `database/sql` with `github.com/mattn/go-sqlite3`

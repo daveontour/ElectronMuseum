@@ -1532,7 +1532,7 @@ const App = (() => {
                 const response = await fetch('/api/import-control-last-run');
                 if (!response.ok) return;
                 const data = await response.json();
-                const importTypes = ['email_processing', 'imap_processing', 'filesystem', 'imported_images', 'filesystem_reference', 'reference_import', 'email_embeddings', 'message_embeddings', 'image_export', 'contacts', 'zip_whatsapp', 'zip_instagram', 'zip_imessage', 'zip_facebook', 'upload_photos', 'upload_zip'];
+                const importTypes = ['email_processing', 'imap_processing', 'filesystem', 'imported_images', 'filesystem_reference', 'reference_import', 'email_embeddings', 'message_embeddings', 'message_context_embeddings', 'image_export', 'contacts', 'zip_whatsapp', 'zip_instagram', 'zip_imessage', 'zip_facebook', 'upload_photos', 'upload_zip'];
                 for (const importType of importTypes) {
                     const els = document.querySelectorAll(`[data-import-last-run="${importType}"]`);
                     const info = data[importType];
@@ -2043,6 +2043,7 @@ const App = (() => {
                 reference_import: 'Reference Images',
                 email_embeddings: 'Email Embeddings',
                 message_embeddings: 'Message Embeddings',
+                message_context_embeddings: 'Message Context Embeddings',
                 image_export: 'Export Images',
                 contacts: 'ProcessContacts'
             };
@@ -2392,6 +2393,7 @@ const App = (() => {
             reference_import: '/images/import-reference/cancel',
             email_embeddings: '/emails/embeddings/backfill/cancel',
             message_embeddings: '/messages/embeddings/backfill/cancel',
+            message_context_embeddings: '/messages/context-embeddings/backfill/cancel',
             image_export: '/images/export/cancel',
             thumbnails: '/images/process-thumbnails/cancel',
             contacts: '/contacts/extract/cancel'
@@ -2578,6 +2580,8 @@ const App = (() => {
                     return `Email: ${data.processed || 0}/${data.total || 0} | ${data.embedded || 0} embedded, ${data.skipped || 0} skipped | ${data.errors || 0} errors`;
                 case 'message_embeddings':
                     return `Message: ${data.processed || 0}/${data.total || 0} | ${data.embedded || 0} embedded, ${data.skipped || 0} skipped | ${data.errors || 0} errors`;
+                case 'message_context_embeddings':
+                    return `Message: ${data.processed || 0}/${data.total || 0} | ${data.embedded || 0} embedded, ${data.skipped || 0} skipped | ${data.errors || 0} errors`;
                 case 'image_export':
                     return `Item: ${data.processed || 0}/${data.total || 0} | ${data.exported || 0} exported, ${data.skipped || 0} skipped | ${data.errors || 0} errors`;
                 case 'thumbnails':
@@ -2670,6 +2674,7 @@ const App = (() => {
             reference_import: { needsInput: false, title: 'Import Reference Images to Database', run: async () => { const r = await fetch('/images/import-reference', { method: 'POST' }); return r; }, stream: '/images/import-reference/stream' },
             email_embeddings: { needsInput: false, title: 'Generate missing email embedding vectors', run: async () => { const r = await fetch('/emails/embeddings/backfill', { method: 'POST' }); return r; }, stream: '/emails/embeddings/backfill/stream' },
             message_embeddings: { needsInput: false, title: 'Generate missing message embedding vectors', run: async () => { const r = await fetch('/messages/embeddings/backfill', { method: 'POST' }); return r; }, stream: '/messages/embeddings/backfill/stream' },
+            message_context_embeddings: { needsInput: false, title: 'Build message context embeddings', run: async () => { const r = await fetch('/messages/context-embeddings/backfill', { method: 'POST' }); return r; }, stream: '/messages/context-embeddings/backfill/stream' },
             image_export: { needsInput: true, title: 'Export Images to Filesystem', fields: [{ id: 'target_directory', key: 'image_export_directory', label: 'Target Directory', placeholder: 'e.g., C:\\Users\\Dave\\Exports\\images', required: true }], run: async (vals) => { const r = await fetch('/images/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_directory: vals.target_directory }) }); return r; }, stream: '/images/export/stream' },
             thumbnails: { needsInput: false, title: 'Image Processing', run: async () => { const r = await fetch('/images/process-thumbnails', { method: 'POST' }); return r; }, stream: '/images/process-thumbnails/stream' },
             thumbnails_async: { needsInput: false, title: 'Image Processing (Async)', run: async () => { const r = await fetch('/images/process-thumbnails/async', { method: 'POST' }); return r; }, stream: null },
@@ -3424,7 +3429,7 @@ const App = (() => {
         })();
 
         async function checkInitialImportStatus() {
-            const types = ['upload_zip','email_processing','imap_processing','filesystem','reference_import','email_embeddings','message_embeddings','image_export','thumbnails','contacts'];
+            const types = ['upload_zip','email_processing','imap_processing','filesystem','reference_import','email_embeddings','message_embeddings','message_context_embeddings','image_export','thumbnails','contacts'];
             const statusEndpoints = {
                 upload_zip: '/import/upload/status',
                 email_processing: '/gmail/process/status',
@@ -3433,6 +3438,7 @@ const App = (() => {
                 reference_import: '/images/import-reference/status',
                 email_embeddings: '/emails/embeddings/backfill/status',
                 message_embeddings: '/messages/embeddings/backfill/status',
+                message_context_embeddings: '/messages/context-embeddings/backfill/status',
                 image_export: '/images/export/status',
                 thumbnails: '/images/process-thumbnails/status',
                 contacts: '/contacts/extract/status'
@@ -3655,6 +3661,136 @@ const App = (() => {
         if (contactsSidebarBtn) {
             contactsSidebarBtn.addEventListener('click', () => {
                 Modals.Contacts.open();
+            });
+        }
+
+        const messageSimilaritySidebarBtn = document.getElementById('message-similarity-sidebar-btn');
+        const messageSimilarityModal = document.getElementById('message-similarity-modal');
+        const closeMessageSimilarityModalBtn = document.getElementById('close-message-similarity-modal');
+        const messageSimilarityCancelBtn = document.getElementById('message-similarity-cancel-btn');
+        const messageSimilarityRunBtn = document.getElementById('message-similarity-run-btn');
+        const messageSimilarityText = document.getElementById('message-similarity-text');
+        const messageSimilarityN = document.getElementById('message-similarity-n');
+        const messageSimilarityStatus = document.getElementById('message-similarity-status');
+        const messageSimilarityResults = document.getElementById('message-similarity-results');
+
+        const setMessageSimilarityStatus = (msg, isError = false) => {
+            if (!messageSimilarityStatus) return;
+            if (!msg) {
+                messageSimilarityStatus.style.display = 'none';
+                messageSimilarityStatus.textContent = '';
+                return;
+            }
+            messageSimilarityStatus.style.display = 'block';
+            messageSimilarityStatus.textContent = msg;
+            messageSimilarityStatus.style.color = isError ? '#b91c1c' : '';
+        };
+
+        const renderMessageSimilarityResults = (data) => {
+            if (!messageSimilarityResults) return;
+            messageSimilarityResults.innerHTML = '';
+            const results = Array.isArray(data?.results) ? data.results : [];
+            const uniqueMessages = Array.isArray(data?.unique_messages) ? data.unique_messages : [];
+            if (!results || !results.length) {
+                const empty = document.createElement('div');
+                empty.className = 'app-card';
+                empty.textContent = 'No matches found.';
+                messageSimilarityResults.appendChild(empty);
+                return;
+            }
+            if (uniqueMessages.length > 0) {
+                const groupCard = document.createElement('div');
+                groupCard.className = 'app-card';
+                groupCard.style.padding = '10px';
+                groupCard.style.border = '1px solid var(--color-border)';
+                groupCard.style.borderRadius = '8px';
+
+                const groupHdr = document.createElement('div');
+                groupHdr.style.fontWeight = 'bold';
+                groupHdr.style.marginBottom = '6px';
+                groupHdr.textContent = `Unique grouped messages (${uniqueMessages.length})`;
+                groupCard.appendChild(groupHdr);
+
+                uniqueMessages.forEach((m) => {
+                    const row = document.createElement('div');
+                    row.style.padding = '6px 8px';
+                    row.style.marginBottom = '6px';
+                    row.style.borderLeft = '3px solid var(--color-blue)';
+                    row.style.background = 'var(--color-bg-alt)';
+                    row.textContent = `[${m.id}] ${m.chat_session || '(no chat)'}: ${m.text || ''}`;
+                    groupCard.appendChild(row);
+                });
+                messageSimilarityResults.appendChild(groupCard);
+            }
+            results.forEach((item, idx) => {
+                const card = document.createElement('div');
+                card.className = 'app-card';
+                card.style.padding = '10px';
+                card.style.border = '1px solid var(--color-border)';
+                card.style.borderRadius = '8px';
+                const hdr = document.createElement('div');
+                hdr.style.fontWeight = 'bold';
+                hdr.style.marginBottom = '6px';
+                hdr.textContent = `Match ${idx + 1} | row ${item.row_id} | distance ${item.distance}`;
+                card.appendChild(hdr);
+                const ids = Array.isArray(item.int_ids) ? item.int_ids : [];
+                const idsRow = document.createElement('div');
+                idsRow.style.fontSize = '0.9em';
+                idsRow.style.color = 'var(--color-text-muted)';
+                idsRow.textContent = `message ids: ${ids.join(', ')}`;
+                card.appendChild(idsRow);
+                messageSimilarityResults.appendChild(card);
+            });
+        };
+
+        const closeMessageSimilarityModal = () => {
+            if (!messageSimilarityModal) return;
+            messageSimilarityModal.style.display = 'none';
+        };
+
+        if (messageSimilaritySidebarBtn && messageSimilarityModal) {
+            messageSimilaritySidebarBtn.addEventListener('click', () => {
+                messageSimilarityModal.style.display = 'flex';
+                if (messageSimilarityText) messageSimilarityText.focus();
+            });
+        }
+        if (closeMessageSimilarityModalBtn) closeMessageSimilarityModalBtn.addEventListener('click', closeMessageSimilarityModal);
+        if (messageSimilarityCancelBtn) messageSimilarityCancelBtn.addEventListener('click', closeMessageSimilarityModal);
+        if (messageSimilarityModal) {
+            messageSimilarityModal.addEventListener('click', (e) => {
+                if (e.target === messageSimilarityModal) closeMessageSimilarityModal();
+            });
+        }
+        if (messageSimilarityRunBtn) {
+            messageSimilarityRunBtn.addEventListener('click', async () => {
+                const text = (messageSimilarityText?.value || '').trim();
+                const nVal = parseInt(messageSimilarityN?.value || '3', 10);
+                const n = Number.isFinite(nVal) && nVal > 0 ? nVal : 3;
+                if (!text) {
+                    setMessageSimilarityStatus('Please enter text to search.', true);
+                    return;
+                }
+                setMessageSimilarityStatus('Searching...');
+                renderMessageSimilarityResults({ results: [] });
+                messageSimilarityRunBtn.disabled = true;
+                try {
+                    const res = await fetch('/imessages/similarity-search/unique', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ text, n })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.detail || data.error || `Request failed (${res.status})`);
+                    }
+                    setMessageSimilarityStatus(`Found ${data.count || 0} match(es).`);
+                    renderMessageSimilarityResults(data || {});
+                } catch (err) {
+                    setMessageSimilarityStatus(`Search failed: ${err.message || err}`, true);
+                } finally {
+                    messageSimilarityRunBtn.disabled = false;
+                }
             });
         }
 

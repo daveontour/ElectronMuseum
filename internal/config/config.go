@@ -41,10 +41,16 @@ func (d DatabaseConfig) BillingConfig() DatabaseConfig {
 	return b
 }
 
-// SQLiteDSN builds a modernc.org/sqlite connection string for the main database.
+// SQLiteFileDSN builds a github.com/mattn/go-sqlite3 DSN for a database file path
+// (foreign keys on, 5s busy timeout). filePath should be non-empty.
+func SQLiteFileDSN(filePath string) string {
+	p := filepath.Clean(filePath)
+	return "file:" + filepath.ToSlash(p) + "?_foreign_keys=1&_busy_timeout=5000"
+}
+
+// SQLiteDSN builds a go-sqlite3 connection string for the main database.
 func (d DatabaseConfig) SQLiteDSN() string {
-	p := filepath.Clean(d.SQLitePath)
-	return "file:" + filepath.ToSlash(p) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	return SQLiteFileDSN(d.SQLitePath)
 }
 
 // ServerConfig holds HTTP server settings.

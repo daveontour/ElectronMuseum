@@ -338,6 +338,9 @@
                     <button type="button" class="more-options-btn" id="statistics-sidebar-btn">
                         <i class="fas fa-chart-bar"></i> Statistics
                     </button>
+                    <button type="button" class="more-options-btn" id="message-similarity-sidebar-btn">
+                        <i class="fas fa-search"></i> Message Similarity
+                    </button>
                 </div>
                 <div class="sidebar-spacer" aria-hidden="true"></div>
                 <div class="sidebar-bottom-tile">
@@ -360,6 +363,29 @@
             </div>
         </div>
         </div><!-- end main-content -->
+
+        <div id="message-similarity-modal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:760px; width:94vw;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2><i class="fas fa-search"></i> Message Similarity Search</h2>
+                    <button class="modal-close-btn" id="close-message-similarity-modal">&times;</button>
+                </div>
+                <div class="modal-body" style="padding:20px; display:flex; flex-direction:column; gap:12px;">
+                    <label for="message-similarity-text" style="font-weight:bold;">Text</label>
+                    <textarea id="message-similarity-text" rows="4" class="form-control" placeholder="Enter text to embed and search similar message windows..."></textarea>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <label for="message-similarity-n" style="font-weight:bold;">Number of matches</label>
+                        <input id="message-similarity-n" type="number" min="1" max="25" value="3" class="form-control" style="max-width:120px;">
+                    </div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end;">
+                        <button class="modal-btn modal-btn-secondary" id="message-similarity-cancel-btn">Close</button>
+                        <button class="modal-btn modal-btn-primary" id="message-similarity-run-btn"><i class="fas fa-play"></i> Search</button>
+                    </div>
+                    <div id="message-similarity-status" style="display:none; font-size:0.95em;"></div>
+                    <div id="message-similarity-results" style="display:flex; flex-direction:column; gap:10px; max-height:50vh; overflow:auto;"></div>
+                </div>
+            </div>
+        </div>
 
         <!-- Have A Chat Setup Modal -->
         <div id="have-a-chat-setup-modal" class="modal" style="display:none;">
@@ -1303,6 +1329,18 @@
                                         </div>
                                     </td>
                                     <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="thumbnails" title="Clears thumbnail bytes from stored blobs (images remain)"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
+                                </tr>
+                                <tr class="data-import-row" data-import="message_context_embeddings">
+                                    <td><i class="fas fa-vector-square"></i> Build Message Context Embeddings</td>
+                                    <td class="data-import-count">—</td>
+                                    <td class="data-import-last-run" data-import-last-run="message_context_embeddings"></td>
+                                    <td class="data-import-actions-td">
+                                        <div class="data-import-action-group">
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="message_context_embeddings"><i class="fas fa-play"></i> Run</button>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                        </div>
+                                    </td>
+                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="message_embeddings" title="Deletes all message embedding vectors for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
                                 </tr>
                                 <!-- <tr class="data-import-row" data-import="email_embeddings">
                                     <td><i class="fas fa-vector-square"></i> Generate Emails Search Vectors</td>

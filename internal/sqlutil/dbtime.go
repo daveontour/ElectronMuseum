@@ -9,7 +9,7 @@ import (
 )
 
 // DBTime wraps time.Time so database/sql can scan SQLite TEXT (and other driver
-// string forms) into Go time values. modernc.org/sqlite returns string for TEXT.
+// string forms) into Go time values. go-sqlite3 typically returns string for TEXT.
 type DBTime struct {
 	time.Time
 }
@@ -133,8 +133,8 @@ func (n NullDBTime) Ptr() *time.Time {
 }
 
 func trimGoMonotonicSuffix(s string) string {
-	// modernc.org/sqlite may persist time.Time using encoding like time.Time.String(),
-	// including a monotonic clock reading: " ... m=+12.345678901".
+	// SQLite TEXT may store time.Time.String(), including a monotonic clock suffix
+	// like " ... m=+12.345678901".
 	if i := strings.Index(s, " m=+"); i >= 0 {
 		return strings.TrimSpace(s[:i])
 	}

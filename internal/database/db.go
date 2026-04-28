@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/daveontour/aimuseum/internal/config"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // DB wraps a sql.DB pool.
@@ -18,8 +20,17 @@ type DB struct {
 	Std *sql.DB
 }
 
+var sqliteVecAutoOnce sync.Once
+
+func ensureSQLiteVecAuto() {
+	sqliteVecAutoOnce.Do(func() {
+		sqlite_vec.Auto()
+	})
+}
+
 // New opens the main SQLite database file.
 func New(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
+	ensureSQLiteVecAuto()
 	if cfg.SQLitePath == "" {
 		return nil, fmt.Errorf("SQLITE_PATH is required")
 	}
@@ -27,7 +38,7 @@ func New(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
 		return nil, fmt.Errorf("create sqlite directory: %w", err)
 	}
 	dsn := cfg.SQLiteDSN()
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
@@ -44,6 +55,7 @@ func New(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
 
 // NewBilling opens the billing SQLite database (LLM usage).
 func NewBilling(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
+	ensureSQLiteVecAuto()
 	cfg = cfg.BillingConfig()
 	path := cfg.BillingSQLitePath
 	if path == "" {
@@ -52,8 +64,8 @@ func NewBilling(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create billing sqlite directory: %w", err)
 	}
-	dsn := "file:" + filepath.ToSlash(path) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
-	db, err := sql.Open("sqlite", dsn)
+	dsn := config.SQLiteFileDSN(path)
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open billing sqlite: %w", err)
 	}

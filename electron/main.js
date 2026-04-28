@@ -548,8 +548,8 @@ app.whenReady().then(async () => {
     await killZombies();
 
     sendStatus('Finding available port...');
-    appPort = await findFreePort(8080);
-    //appPort = 8081;
+    //appPort = await findFreePort(8080);
+    appPort = 8081;
     log(`Using port ${appPort}`);
 
     dotenv.GMAIL_REDIRECT_URL = `http://localhost:${appPort}/gmail/auth/callback`;

@@ -143,6 +143,18 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
 		}
+	case "message_embeddings":
+		// message_embeddings is a vec0 table keyed by rowid=messages.id and does
+		// not carry user_id directly; scope deletion via the user's messages.
+		tag, e := h.pool.ExecContext(ctx, `
+			DELETE FROM message_embeddings
+			WHERE rowid IN (
+				SELECT id FROM messages WHERE COALESCE(user_id, 0) = $1
+			)`, uid)
+		err = e
+		if err == nil {
+			deleted = sqlutil.RowsAffected(tag)
+		}
 	default:
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown purge kind: %s", kind))
 		return

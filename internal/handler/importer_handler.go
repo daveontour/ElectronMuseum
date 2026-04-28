@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/daveontour/aimuseum/internal/appctx"
 	contactsimport "github.com/daveontour/aimuseum/internal/import/contacts"
 	facebookimport "github.com/daveontour/aimuseum/internal/import/facebook"
@@ -138,6 +139,11 @@ var (
 	})
 
 	messageEmbeddingBackfillJob = importer.NewImportJob("Message embedding backfill", map[string]any{
+		"status": "idle", "status_line": nil, "error_message": nil,
+		"total": 0, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0,
+	})
+
+	messageContextEmbeddingBackfillJob = importer.NewImportJob("Message context embedding backfill", map[string]any{
 		"status": "idle", "status_line": nil, "error_message": nil,
 		"total": 0, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0,
 	})
@@ -281,6 +287,12 @@ func (h *ImporterHandler) RegisterRoutes(r chi.Router) {
 	r.Get("/messages/embeddings/backfill/stream", h.MessageEmbeddingBackfillStream)
 	r.Post("/messages/embeddings/backfill/cancel", h.MessageEmbeddingBackfillCancel)
 	r.Get("/messages/embeddings/backfill/status", h.MessageEmbeddingBackfillStatus)
+
+	// Message context embedding backfill (windows of prev/current/next messages into sqlite-vec table)
+	r.Post("/messages/context-embeddings/backfill", h.MessageContextEmbeddingBackfillStart)
+	r.Get("/messages/context-embeddings/backfill/stream", h.MessageContextEmbeddingBackfillStream)
+	r.Post("/messages/context-embeddings/backfill/cancel", h.MessageContextEmbeddingBackfillCancel)
+	r.Get("/messages/context-embeddings/backfill/status", h.MessageContextEmbeddingBackfillStatus)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2342,6 +2354,266 @@ func (h *ImporterHandler) MessageEmbeddingBackfillCancel(w http.ResponseWriter, 
 
 func (h *ImporterHandler) MessageEmbeddingBackfillStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, messageEmbeddingBackfillJob.Status())
+}
+
+func (h *ImporterHandler) MessageContextEmbeddingBackfillStart(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
+		return
+	}
+	if err := messageContextEmbeddingBackfillJob.AssertNotRunning(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "message context embedding backfill not configured")
+		return
+	}
+	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
+		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
+		return
+	}
+
+	messageContextEmbeddingBackfillJob.Start()
+	messageContextEmbeddingBackfillJob.UpdateState(map[string]any{
+		"status": "in_progress", "status_line": "Starting message context embedding backfill...",
+		"total": 0, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0, "error_message": nil,
+	})
+	messageContextEmbeddingBackfillJob.Broadcast("status", map[string]any{"status_line": "Starting message context embedding backfill..."})
+
+	uid := appctx.UserIDFromCtx(r.Context())
+	go runMessageContextEmbeddingBackfill(h.pool, h.embeddingSvc, messageContextEmbeddingBackfillJob, uid)
+
+	writeJSON(w, map[string]any{"message": "Message context embedding backfill started", "status": "started"})
+}
+
+type messageContextCandidate struct {
+	id          int64
+	chatSession string
+	text        string
+}
+
+func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingService, job *importer.ImportJob, uid int64) {
+	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
+	defer job.Finish()
+
+	rows, err := pool.QueryContext(ctx, `
+		SELECT id, COALESCE(chat_session, ''), COALESCE(text, '')
+		FROM messages
+		WHERE COALESCE(user_id, 0) = $1
+		ORDER BY COALESCE(chat_session, ''), CASE WHEN message_date IS NULL THEN 1 ELSE 0 END, message_date, id
+	`, uid)
+	if err != nil {
+		msg := fmt.Sprintf("failed to query messages for context embeddings: %v", err)
+		job.UpdateState(map[string]any{"status": "error", "status_line": msg, "error_message": msg})
+		job.Broadcast("error", job.GetState())
+		return
+	}
+	defer rows.Close()
+
+	all := make([]messageContextCandidate, 0, 512)
+	for rows.Next() {
+		var c messageContextCandidate
+		if err := rows.Scan(&c.id, &c.chatSession, &c.text); err != nil {
+			msg := fmt.Sprintf("failed to scan message row: %v", err)
+			job.UpdateState(map[string]any{"status": "error", "status_line": msg, "error_message": msg})
+			job.Broadcast("error", job.GetState())
+			return
+		}
+		all = append(all, c)
+	}
+	if err := rows.Err(); err != nil {
+		msg := fmt.Sprintf("message query cursor failed: %v", err)
+		job.UpdateState(map[string]any{"status": "error", "status_line": msg, "error_message": msg})
+		job.Broadcast("error", job.GetState())
+		return
+	}
+
+	total := len(all)
+	job.UpdateState(map[string]any{
+		"total":       total,
+		"status_line": fmt.Sprintf("Found %d messages for context embedding windows", total),
+	})
+	job.Broadcast("progress", job.GetState())
+
+	embedded, skipped, errorsCount := 0, 0, 0
+	for i := range all {
+		if job.IsCancelled() {
+			job.UpdateState(map[string]any{
+				"status":      "cancelled",
+				"status_line": "Message context embedding backfill cancelled.",
+				"processed":   i,
+				"embedded":    embedded,
+				"skipped":     skipped,
+				"errors":      errorsCount,
+			})
+			job.Broadcast("cancelled", job.GetState())
+			return
+		}
+		// Skip every second record to reduce embedding workload.
+		// if i%2 == 1 {
+		// 	skipped++
+		// 	job.UpdateState(map[string]any{
+		// 		"processed":   i + 1,
+		// 		"embedded":    embedded,
+		// 		"skipped":     skipped,
+		// 		"errors":      errorsCount,
+		// 		"status_line": fmt.Sprintf("Processed %d/%d messages (%d embedded, %d skipped, %d errors)", i+1, total, embedded, skipped, errorsCount),
+		// 	})
+		// 	job.Broadcast("progress", job.GetState())
+		// 	continue
+		// }
+
+		windowIDs, contextPayload := buildMessageContextWindow(all, i, 5, 5)
+		if len(windowIDs) == 0 || strings.TrimSpace(contextPayload) == "" {
+			skipped++
+			job.UpdateState(map[string]any{
+				"processed":   i + 1,
+				"embedded":    embedded,
+				"skipped":     skipped,
+				"errors":      errorsCount,
+				"status_line": fmt.Sprintf("Processed %d/%d messages (%d embedded, %d skipped, %d errors)", i+1, total, embedded, skipped, errorsCount),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+
+		vec, err := embeddingSvc.EmbedTextWithModel(ctx, contextPayload, "embeddinggemma:latest")
+		if err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"embedded":      embedded,
+				"skipped":       skipped,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Embedding failed for message %d: %v", all[i].id, err),
+				"error_message": fmt.Sprintf("Embedding failed for message %d: %v", all[i].id, err),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		vecBlob, err := sqlite_vec.SerializeFloat32(vec)
+		if err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"embedded":      embedded,
+				"skipped":       skipped,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Failed to serialize embedding for message %d: %v", all[i].id, err),
+				"error_message": fmt.Sprintf("Failed to serialize embedding for message %d: %v", all[i].id, err),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		intIDsJSON, err := json.Marshal(windowIDs)
+		if err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"embedded":      embedded,
+				"skipped":       skipped,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Failed to serialize message id window for message %d: %v", all[i].id, err),
+				"error_message": fmt.Sprintf("Failed to serialize message id window for message %d: %v", all[i].id, err),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+
+		if _, err := pool.ExecContext(ctx, `
+			INSERT OR REPLACE INTO message_embeddings(rowid, embedding, int_ids)
+			VALUES (?, ?, ?)
+		`, all[i].id, vecBlob, string(intIDsJSON)); err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"embedded":      embedded,
+				"skipped":       skipped,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Failed saving context embedding for message %d: %v", all[i].id, err),
+				"error_message": fmt.Sprintf("Failed saving context embedding for message %d: %v", all[i].id, err),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+
+		embedded++
+		job.UpdateState(map[string]any{
+			"processed":   i + 1,
+			"embedded":    embedded,
+			"skipped":     skipped,
+			"errors":      errorsCount,
+			"status_line": fmt.Sprintf("Processed %d/%d messages (%d embedded, %d skipped, %d errors)", i+1, total, embedded, skipped, errorsCount),
+		})
+		job.Broadcast("progress", job.GetState())
+	}
+
+	job.UpdateState(map[string]any{
+		"status":      "completed",
+		"status_line": fmt.Sprintf("Message context embedding backfill complete: %d embedded, %d skipped, %d errors", embedded, skipped, errorsCount),
+		"processed":   total,
+		"embedded":    embedded,
+		"skipped":     skipped,
+		"errors":      errorsCount,
+	})
+	job.Broadcast("completed", job.GetState())
+}
+
+func buildMessageContextWindow(messages []messageContextCandidate, idx, back, forward int) ([]int64, string) {
+	if idx < 0 || idx >= len(messages) {
+		return nil, ""
+	}
+	if back < 0 {
+		back = 0
+	}
+	if forward < 0 {
+		forward = 0
+	}
+	targetChat := messages[idx].chatSession
+	start := idx
+	for start > 0 && messages[start-1].chatSession == targetChat {
+		start--
+	}
+	end := idx
+	for end+1 < len(messages) && messages[end+1].chatSession == targetChat {
+		end++
+	}
+	winStart := idx - back
+	if winStart < start {
+		winStart = start
+	}
+	winEnd := idx + forward
+	if winEnd > end {
+		winEnd = end
+	}
+
+	ids := make([]int64, 0, winEnd-winStart+1)
+	lines := make([]string, 0, winEnd-winStart+1)
+	for i := winStart; i <= winEnd; i++ {
+		m := messages[i]
+		ids = append(ids, m.id)
+		text := strings.TrimSpace(m.text)
+		if text == "" {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("Chat Session: %s\nText: %s", strings.TrimSpace(m.chatSession), text))
+	}
+	return ids, strings.TrimSpace(strings.Join(lines, "\n\n"))
+}
+
+func (h *ImporterHandler) MessageContextEmbeddingBackfillStream(w http.ResponseWriter, r *http.Request) {
+	messageContextEmbeddingBackfillJob.ServeSSE(w, r)
+}
+
+func (h *ImporterHandler) MessageContextEmbeddingBackfillCancel(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
+		return
+	}
+	writeJSON(w, messageContextEmbeddingBackfillJob.Cancel())
+}
+
+func (h *ImporterHandler) MessageContextEmbeddingBackfillStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, messageContextEmbeddingBackfillJob.Status())
 }
 
 // ── stdout parsers ────────────────────────────────────────────────────────────

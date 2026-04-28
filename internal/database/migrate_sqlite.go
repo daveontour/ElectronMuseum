@@ -111,7 +111,40 @@ func MigrateSQLite(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
+	if err := ensureSQLiteVecEmbeddingTables(ctx, db); err != nil {
+		return err
+	}
+
 	slog.Info("sqlite database migration complete")
+	return nil
+}
+
+func ensureSQLiteVecEmbeddingTables(ctx context.Context, db *sql.DB) error {
+	var vecVersion string
+	if err := db.QueryRowContext(ctx, `SELECT vec_version()`).Scan(&vecVersion); err != nil {
+		return fmt.Errorf("sqlite-vec not available (vec_version): %w", err)
+	}
+
+	tables := []string{"email_embeddings", "message_embeddings"}
+	for _, table := range tables {
+		var exists int
+		if err := db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table,
+		).Scan(&exists); err != nil {
+			return fmt.Errorf("sqlite_master %s: %w", table, err)
+		}
+		if exists > 0 {
+			continue
+		}
+		stmt := fmt.Sprintf(
+			`CREATE VIRTUAL TABLE %s USING vec0(embedding float[768], int_ids text)`,
+			table,
+		)
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("create vec0 table %s: %w", table, err)
+		}
+		slog.Info("sqlite migration: created sqlite-vec table", "table", table, "vec_version", vecVersion)
+	}
 	return nil
 }
 

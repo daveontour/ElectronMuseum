@@ -24,8 +24,9 @@ A personal digital archive and AI-powered memory explorer packaged as an **Elect
 ## Tech Stack
 
 - **Desktop shell:** Electron (Node.js) — `electron/main.js` manages the Go server process, Ollama, system tray, and IPC
-- **Backend:** Go 1.25, [Chi v5](https://github.com/go-chi/chi) router, `database/sql` with `modernc.org/sqlite`
+- **Backend:** Go 1.25, [Chi v5](https://github.com/go-chi/chi) router, `database/sql` with [`github.com/mattn/go-sqlite3`](https://github.com/mattn/go-sqlite3) (CGO)
 - **Database:** SQLite (two files — main app DB and billing DB)
+- **Vector search:** [`sqlite-vec`](https://github.com/asg017/sqlite-vec) via Go bindings, with `email_embeddings` and `message_embeddings` vec0 tables (`embedding float[768]`, `int_ids` JSON text)
 - **AI providers:** Anthropic Claude (`claude-sonnet-4-6`), Google Gemini (`gemini-2.5-flash`), DeepSeek (`deepseek-chat`), and local Ollama (`gemma4`)
 - **Email:** IMAP via `go-imap`, Gmail via OAuth2
 - **Frontend:** Vanilla JS, Leaflet (maps), Cytoscape (relationship graphs), Marked (Markdown), Highlight.js, Font Awesome
@@ -33,8 +34,23 @@ A personal digital archive and AI-powered memory explorer packaged as an **Elect
 ## Prerequisites
 
 - Go 1.25+
+- A C toolchain for CGO when building the Go server (e.g. [MSYS2](https://www.msys2.org/) with `mingw-w64-ucrt-x86_64-gcc` on Windows); `CGO_ENABLED=1`
 - Node.js (for the Electron shell)
 - At least one AI provider API key (Gemini, Anthropic, or DeepSeek), or a running Ollama instance
+
+### CGO / `cgo.exe: exit status 2` on Windows
+
+That message comes from **runtime/cgo** (before any project or go-sqlite3 code). It is usually a toolchain or PATH problem, not the app source. The `Makefile` prepends the directory of the `gcc` found in your shell to `PATH` to help `cc1.exe` load matching DLLs.
+
+If the error persists:
+
+1. Prefer **MSYS2** MinGW-w64 (`pacman -S mingw-w64-x86_64-gcc`) and open a **MINGW64** shell (or put `…\mingw64\bin` and, for some setups, `…\msys64\usr\bin` ahead of other PATH entries). See [golang/go#75838](https://github.com/golang/go/issues/75838) for community workarounds.
+2. **Update Git for Windows** (`git update-git-for-windows`); older Git Bash has been reported to break CGO while cmd/PowerShell works.
+3. If `cc1.exe` cannot find DLLs, add the compiler `bin` directory to the **system** PATH or inspect missing DLLs with Process Monitor (see comments in the same issue).
+
+### sqlite-vec header note (Windows)
+
+`sqlite-vec-go-bindings/cgo` expects `sqlite3.h`. This repo provides a compatibility header at `cgo-compat/sqlite3.h` that includes `mattn/go-sqlite3`'s `sqlite3-binding.h`, and the `Makefile` exports matching `CGO_CFLAGS` include paths. Build through `make` targets so those flags are applied.
 
 ## Running
 
@@ -50,6 +66,19 @@ npx electron .
 ```
 
 On first run the server applies all migrations and seeds reference data from `static/data/`.
+
+### Windows installer (`make electron-dist`)
+
+Builds `bin/digitalmuseum.exe` (Windows subsystem, no console) and runs `electron-builder` to produce `dist/electron/Digital Museum Setup *.exe`. Requires Node/npm. Use a shell where `rm` is available (e.g. Git Bash on Windows).
+
+If the NSIS step fails with `failed creating mmap` on `digital-museum-*-x64.nsis.7z`:
+
+1. Remove `dist/electron` and run `make electron-dist` again (stale or locked archives from a prior run often cause this).
+2. Temporarily exclude the repo or `dist/electron` from real-time antivirus during the build.
+3. Avoid building from a cloud-synced folder with “files on demand” delaying large reads.
+4. Ensure the drive has enough free space.
+
+Packaging copies `electron/.env.defaults` into the app resources as default configuration, not your private project-root `.env`.
 
 ## Configuration (`.env`)
 
@@ -209,7 +238,7 @@ internal/
   api/router/       ← Route wiring
   handler/          ← HTTP request handlers
   service/          ← Business logic
-  repository/       ← Database access (database/sql + modernc.org/sqlite)
+  repository/       ← Database access (database/sql + go-sqlite3)
   model/            ← Shared data types / DTOs
   crypto/           ← Encryption and key derivation
   config/           ← Environment-based configuration

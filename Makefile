@@ -1,8 +1,28 @@
-.PHONY: check-go build build-exe build-exe-electron build-linux build-launcher test generate lint run clean tidy
+.PHONY: check-go build build-exe build-exe-electron build-linux build-launcher test generate lint run clean tidy sqlitevec-demo sqlitevec-demo-seed message-search-cli
 
 MODULE := github.com/daveontour/aimuseum
 BINARY := digitalmuseum
 CMD     := ./cmd/server
+
+# SQLite uses github.com/mattn/go-sqlite3 (CGO). You need a C compiler on PATH
+# (e.g. MSYS2 mingw-w64 gcc on Windows). CGO_ENABLED=1 is required.
+#
+# Prepend the directory that contains gcc so cgo-spawned cc1.exe resolves the
+# same MinGW/MSYS2 DLLs (reduces opaque "cgo.exe: exit status 2" on Windows).
+GCC := $(shell command -v gcc 2>/dev/null)
+ifneq ($(GCC),)
+GCCDIR := $(dir $(GCC))
+ifneq ($(GCCDIR),./)
+export PATH := $(GCCDIR):$(PATH)
+endif
+endif
+
+# sqlite-vec-go-bindings/cgo includes "sqlite3.h". Point CGO includes at a
+# local shim header and mattn/go-sqlite3's bundled sqlite3-binding.h.
+SQLITE3_BINDING_DIR := $(shell go list -f '{{.Dir}}' -m github.com/mattn/go-sqlite3 2>/dev/null)
+ifneq ($(SQLITE3_BINDING_DIR),)
+export CGO_CFLAGS := -I$(CURDIR)/cgo-compat -I$(SQLITE3_BINDING_DIR) $(CGO_CFLAGS)
+endif
 
 # go.mod is 1.25+; grpc and stdlib (log/slog, slices, …) need a current toolchain.
 check-go:
@@ -25,7 +45,13 @@ build-exe-electron: check-go
 	go build -ldflags="-H windowsgui" -o bin/$(BINARY).exe $(CMD)
 
 build-linux: check-go
-	GOOS=linux GOARCH=amd64 go build -o bin/$(BINARY)-linux-amd64 $(CMD)
+	@hostos="$$(go env GOOS)"; \
+	if [ "$$hostos" != "linux" ]; then \
+		echo >&2 "build-linux: cannot cross-compile to linux/amd64 from $$hostos (go-sqlite3 requires CGO + a Linux C toolchain)."; \
+		echo >&2 "Run this target on Linux amd64, or build inside a Linux container/CI job."; \
+		exit 1; \
+	fi
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o bin/$(BINARY)-linux-amd64 $(CMD)
 
 build-launcher: check-go
 	go build -buildvcs=false -ldflags="-H windowsgui" -o launcher.exe ./cmd/launcher
@@ -68,6 +94,22 @@ electron-dev: build-exe-electron
 
 # Package the Electron app into a distributable installer.
 # Produces dist/electron/Digital Museum Setup *.exe (config: electron/electron-builder.yml).
+# Cleans dist/electron first so a stale or locked *.nsis.7z does not break NSIS (mmap errors on Windows).
 electron-dist: build-exe-electron
 	@test -f bin/$(BINARY).exe || { echo >&2 "Missing bin/$(BINARY).exe — run from repo root after build-exe-electron."; exit 1; }
+	rm -rf dist/electron
 	cd electron && npm install --prefer-offline && npx electron-builder
+
+# sqlite-vec demo CLI. Usage:
+# make sqlitevec-demo QUERY="family photos"
+sqlitevec-demo: check-go
+	cd cmd/sqlitevec-demo && go run . -query "$(if $(QUERY),$(QUERY),family memories and photos)"
+
+# Seed the demo DB without running a search query.
+sqlitevec-demo-seed: check-go
+	cd cmd/sqlitevec-demo && go run . -seed-only
+
+# Message similarity CLI. Usage:
+# make message-search-cli QUERY="text to search" N=5
+message-search-cli: check-go
+	go run ./cmd/message-search-cli -q "$(if $(QUERY),$(QUERY),family and photos)" -n "$(if $(N),$(N),5)"
