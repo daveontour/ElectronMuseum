@@ -38,9 +38,7 @@ func UnlockTierFromSession(store *keystore.SessionMasterStore, r *http.Request) 
 
 // ToolAccessRule is stored per tool name. Omitted tools default to denied for everyone.
 type ToolAccessRule struct {
-	NoKey   bool `json:"no_key"`
-	Visitor bool `json:"visitor"`
-	Master  bool `json:"master"`
+	Enabled bool `json:"enabled"`
 }
 
 // ToolAccessPolicy maps tool name -> rule. Nil or missing entries mean "deny".
@@ -48,7 +46,7 @@ type ToolAccessPolicy map[string]ToolAccessRule
 
 // storedPolicyJSON is the on-disk shape in private_store.
 type storedPolicyJSON struct {
-	Tools map[string]ToolAccessRule `json:"tools"`
+	Tools map[string]json.RawMessage `json:"tools"`
 }
 
 // ParseToolAccessPolicyJSON parses private_store JSON. Unknown fields ignored.
@@ -64,7 +62,27 @@ func ParseToolAccessPolicyJSON(raw string) (ToolAccessPolicy, error) {
 	if s.Tools == nil {
 		return ToolAccessPolicy{}, nil
 	}
-	return ToolAccessPolicy(s.Tools), nil
+	out := make(ToolAccessPolicy, len(s.Tools))
+	for name, ruleRaw := range s.Tools {
+		// New shape: {"enabled": true}
+		var rule ToolAccessRule
+		if err := json.Unmarshal(ruleRaw, &rule); err == nil {
+			out[name] = rule
+			continue
+		}
+		// Backward compatibility for older stored JSON:
+		// {"visitor": bool, "master": bool, "no_key": bool}
+		var old struct {
+			Visitor bool `json:"visitor"`
+			Master  bool `json:"master"`
+		}
+		if err := json.Unmarshal(ruleRaw, &old); err == nil {
+			out[name] = ToolAccessRule{Enabled: old.Visitor || old.Master}
+			continue
+		}
+		// Ignore malformed per-tool entries; keep parsing remaining tools.
+	}
+	return out, nil
 }
 
 // MarshalToolAccessPolicyJSON serialises policy for private_store.
@@ -72,7 +90,10 @@ func MarshalToolAccessPolicyJSON(p ToolAccessPolicy) (string, error) {
 	if p == nil {
 		p = ToolAccessPolicy{}
 	}
-	b, err := json.Marshal(storedPolicyJSON{Tools: map[string]ToolAccessRule(p)})
+	type marshalPolicyJSON struct {
+		Tools map[string]ToolAccessRule `json:"tools"`
+	}
+	b, err := json.Marshal(marshalPolicyJSON{Tools: map[string]ToolAccessRule(p)})
 	if err != nil {
 		return "", err
 	}
@@ -90,12 +111,12 @@ func PolicyAllows(policy ToolAccessPolicy, toolName string, tier UnlockTier) boo
 	}
 	switch tier {
 	case TierNone:
-		// no_key removed from settings UI; tools never run without an unlocked keyring.
+		// Tools never run without an unlocked keyring.
 		return false
 	case TierVisitor:
-		return rule.Visitor
+		return rule.Enabled
 	case TierMaster:
-		return rule.Master
+		return rule.Enabled
 	default:
 		return false
 	}

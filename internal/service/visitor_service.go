@@ -69,31 +69,41 @@ func (s *VisitorService) ResolveUserID(ctx context.Context, identifier string) (
 	return uid, nil
 }
 
-// GetHintsByEmail returns the plain-text hint strings for the archive owner
-// identified by email (case-insensitive) or, if no user matches that email,
-// by full name as parsed by UserRepo.FindByFullName (first token = first name,
-// rest = family name). Returns an empty slice (never nil) when unknown —
-// deliberately avoids confirming or denying existence except on ambiguous name match.
-func (s *VisitorService) GetHintsByEmail(ctx context.Context, email string) ([]string, error) {
-	trimmed := strings.TrimSpace(email)
-	normEmail := strings.ToLower(trimmed)
-	u, err := s.users.FindByEmail(ctx, normEmail)
+// ResolveArchiveOwnerUserID returns the assumed archive owner for visitor-key
+// flows that do not ask for a subject/username/email. Prefer the first
+// non-admin user account, then fall back to the first user if only admins exist.
+func (s *VisitorService) ResolveArchiveOwnerUserID(ctx context.Context) (int64, error) {
+	users, err := s.users.ListAll(ctx)
+	if err != nil {
+		return notFound, err
+	}
+	if len(users) == 0 {
+		return notFound, nil
+	}
+	for _, u := range users {
+		if u == nil {
+			continue
+		}
+		if !u.IsAdmin {
+			return u.ID, nil
+		}
+	}
+	if users[0] == nil {
+		return notFound, nil
+	}
+	return users[0].ID, nil
+}
+
+// GetHintsForArchiveOwner returns plain-text hint strings for the assumed archive owner.
+func (s *VisitorService) GetHintsForArchiveOwner(ctx context.Context) ([]string, error) {
+	uid, err := s.ResolveArchiveOwnerUserID(ctx)
 	if err != nil {
 		return []string{}, err
 	}
-	if u == nil {
-		u, err = s.users.FindByFullName(ctx, trimmed)
-		if err != nil {
-			// Ambiguous name or DB error — treat as not found to avoid leaking
-			// whether the name exists or is shared across multiple accounts.
-			return []string{}, nil
-		}
-		if u == nil {
-			return []string{}, nil
-		}
+	if uid == notFound {
+		return []string{}, nil
 	}
-
-	dCtx := context.WithValue(ctx, appctx.ContextKeyUserID, u.ID)
+	dCtx := context.WithValue(ctx, appctx.ContextKeyUserID, uid)
 	hints, err := s.sensitive.ListVisitorKeyHints(dCtx)
 	if err != nil {
 		return []string{}, err

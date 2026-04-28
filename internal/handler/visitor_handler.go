@@ -36,13 +36,11 @@ func (h *VisitorHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/visitor/login", h.Login)
 }
 
-// GET /visitor/hints?identifier=<username-or-email-or-name>
-// Returns hint strings for the archive owner identified by username/email or subject name.
-// Always responds 200 with { "hints": [] } even when the identifier is unknown,
-// to avoid leaking account existence.
+// GET /visitor/hints
+// Returns hint strings for the assumed archive owner.
+// Always responds 200 with { "hints": [] } to avoid leaking account existence.
 func (h *VisitorHandler) GetHints(w http.ResponseWriter, r *http.Request) {
-	identifier := r.URL.Query().Get("identifier")
-	hints, err := h.svc.GetHintsByEmail(r.Context(), identifier)
+	hints, err := h.svc.GetHintsForArchiveOwner(r.Context())
 	if err != nil {
 		// Log internally but always return an empty list — never a 5xx — so
 		// errors are indistinguishable from "identifier not found".
@@ -53,8 +51,8 @@ func (h *VisitorHandler) GetHints(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /visitor/login
-// Body: { "identifier": "<name or username/email>", "key": "<visitor key>" }
-// Verifies the visitor key against the named archive's keyring, creates a
+// Body: { "key": "<visitor key>" } (identifier may be provided but is ignored)
+// Verifies the visitor key against the assumed archive owner's keyring, creates a
 // dm_session cookie scoped to that archive's owner, and stores the key in the
 // RAM keystore so encrypted data is accessible.
 func (h *VisitorHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -67,27 +65,25 @@ func (h *VisitorHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := h.svc.ResolveUserID(r.Context(), req.Identifier)
+	userID, err := h.svc.ResolveArchiveOwnerUserID(r.Context())
 	if err != nil {
 		slog.Warn("visitor login: archive lookup failed", "err", err)
-		writeError(w, http.StatusUnauthorized, "invalid identifier or key")
+		writeError(w, http.StatusUnauthorized, "invalid visitor key")
 		return
 	}
 	if userID == -1 {
-		// Return 401 (not 404) so callers cannot distinguish a missing archive
-		// from a wrong key — prevents identifier enumeration.
-		writeError(w, http.StatusUnauthorized, "invalid identifier or key")
+		writeError(w, http.StatusUnauthorized, "invalid visitor key")
 		return
 	}
 
 	ok, err := h.svc.VerifyVisitorKey(r.Context(), userID, req.Key)
 	if err != nil {
 		slog.Warn("visitor login: key verification failed", "err", err)
-		writeError(w, http.StatusUnauthorized, "invalid identifier or key")
+		writeError(w, http.StatusUnauthorized, "invalid visitor key")
 		return
 	}
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "invalid identifier or key")
+		writeError(w, http.StatusUnauthorized, "invalid visitor key")
 		return
 	}
 

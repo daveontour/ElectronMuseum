@@ -47,7 +47,7 @@ func (h *LLMToolsAccessHandler) masterPassword(w http.ResponseWriter, r *http.Re
 	return mp, true
 }
 
-// Get returns all tools with visitor / master flags (default false if unset).
+// Get returns all tools with a single enabled flag (default false if unset).
 func (h *LLMToolsAccessHandler) Get(w http.ResponseWriter, r *http.Request) {
 	mp := h.resolveLLMToolsMasterPassword(r)
 	var policy appai.ToolAccessPolicy
@@ -80,8 +80,7 @@ func (h *LLMToolsAccessHandler) Get(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{
 			"name":        meta.Name,
 			"description": meta.Description,
-			"visitor":     rule.Visitor,
-			"master":      rule.Master,
+			"enabled":     rule.Enabled,
 		})
 	}
 	writeJSON(w, map[string]any{"tools": out})
@@ -91,8 +90,7 @@ func (h *LLMToolsAccessHandler) Get(w http.ResponseWriter, r *http.Request) {
 type llmToolsPutBody struct {
 	Tools []struct {
 		Name    string `json:"name"`
-		Visitor bool   `json:"visitor"`
-		Master  bool   `json:"master"`
+		Enabled bool   `json:"enabled"`
 	} `json:"tools"`
 }
 
@@ -124,9 +122,7 @@ func (h *LLMToolsAccessHandler) Put(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		policy[name] = appai.ToolAccessRule{
-			NoKey:   false,
-			Visitor: t.Visitor,
-			Master:  t.Master,
+			Enabled: t.Enabled,
 		}
 	}
 	raw, err := appai.MarshalToolAccessPolicyJSON(policy)

@@ -2791,7 +2791,7 @@ Modals.LLMToolsAccess = (() => {
             const res = await fetch('/api/settings/llm-tools-access', { credentials: 'same-origin' });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                _status(data.detail || 'Could not load policy. Unlock the keyring (master or visitor) first.', true);
+                _status(data.detail || 'Could not load policy. Unlock the keyring first.', true);
                 return;
             }
             const tools = data.tools || [];
@@ -2809,21 +2809,15 @@ Modals.LLMToolsAccess = (() => {
                 tdDesc.textContent = t.description || '';
                 tr.appendChild(tdName);
                 tr.appendChild(tdDesc);
-                const flags = [
-                    { key: 'visitor', val: !!t.visitor },
-                    { key: 'master', val: !!t.master }
-                ];
-                for (const f of flags) {
-                    const td = document.createElement('td');
-                    const inp = document.createElement('input');
-                    inp.type = 'checkbox';
-                    inp.className = 'llm-tool-chk';
-                    inp.dataset.name = name;
-                    inp.dataset.flag = f.key;
-                    inp.checked = f.val;
-                    td.appendChild(inp);
-                    tr.appendChild(td);
-                }
+                const td = document.createElement('td');
+                const inp = document.createElement('input');
+                inp.type = 'checkbox';
+                inp.className = 'llm-tool-chk';
+                inp.dataset.name = name;
+                inp.dataset.flag = 'enabled';
+                inp.checked = !!t.enabled;
+                td.appendChild(inp);
+                tr.appendChild(td);
                 tbody.appendChild(tr);
             }
         } catch (e) {
@@ -2832,16 +2826,20 @@ Modals.LLMToolsAccess = (() => {
     }
 
     async function save() {
+        const saveBtn = document.getElementById('llm-tools-access-save');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+        }
         const rows = {};
         document.querySelectorAll('#llm-tools-access-tbody .llm-tool-chk').forEach((chk) => {
             const name = chk.dataset.name;
             const flag = chk.dataset.flag;
             if (!name || !flag) return;
             if (!rows[name]) {
-                rows[name] = { name: name, visitor: false, master: false };
+                rows[name] = { name: name, enabled: false };
             }
-            if (flag === 'visitor') rows[name].visitor = chk.checked;
-            if (flag === 'master') rows[name].master = chk.checked;
+            if (flag === 'enabled') rows[name].enabled = chk.checked;
         });
         const tools = Object.values(rows);
         try {
@@ -2853,15 +2851,26 @@ Modals.LLMToolsAccess = (() => {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                _status(data.detail || 'Save failed', true);
+                if (typeof AppDialogs !== 'undefined' && AppDialogs.showAppAlert) {
+                    await AppDialogs.showAppAlert('Tools Access', data.detail || 'Save failed');
+                }
                 return;
             }
-            _status(data.message || 'Saved.', false);
+            if (typeof AppDialogs !== 'undefined' && AppDialogs.showAppAlert) {
+                await AppDialogs.showAppAlert('Tools Access', data.message || 'Tool access policy saved successfully.');
+            }
             if (typeof App !== 'undefined' && App.refreshChatAvailability) {
                 void App.refreshChatAvailability();
             }
         } catch (e) {
-            _status(e.message || 'Save failed', true);
+            if (typeof AppDialogs !== 'undefined' && AppDialogs.showAppAlert) {
+                await AppDialogs.showAppAlert('Tools Access', e.message || 'Save failed');
+            }
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save';
+            }
         }
     }
 
