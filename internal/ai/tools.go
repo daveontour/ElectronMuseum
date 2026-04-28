@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/daveontour/aimuseum/internal/appctx"
 	appcrypto "github.com/daveontour/aimuseum/internal/crypto"
 )
@@ -242,8 +243,127 @@ func toolVectorLiteral(values []float32) string {
 }
 
 func searchMessagesBySimilarity(ctx context.Context, pool *sql.DB, text string) (map[string]any, error) {
-	_, _, _ = ctx, pool, text
-	return map[string]any{"error": "vector similarity search is not available in this build", "messages": []any{}}, nil
+	queryText := strings.TrimSpace(text)
+	if queryText == "" {
+		return map[string]any{"error": "text is required", "messages": []any{}}, nil
+	}
+	if pool == nil {
+		return map[string]any{"error": "message similarity search not configured", "messages": []any{}}, nil
+	}
+
+	vec, err := toolEmbedText(ctx, queryText)
+	if err != nil {
+		return map[string]any{"error": fmt.Sprintf("embedding failed: %v", err), "messages": []any{}}, nil
+	}
+	vecBlob, err := sqlite_vec.SerializeFloat32(vec)
+	if err != nil {
+		return map[string]any{"error": fmt.Sprintf("failed to serialize embedding: %v", err), "messages": []any{}}, nil
+	}
+
+	const topN = 15
+	rows, err := pool.QueryContext(ctx, `
+		SELECT rowid, int_ids
+		FROM message_embeddings
+		WHERE embedding MATCH ? AND k = ?
+		ORDER BY distance ASC
+	`, vecBlob, topN)
+	if err != nil {
+		return map[string]any{"error": fmt.Sprintf("vector search failed: %v", err), "messages": []any{}}, nil
+	}
+	defer rows.Close()
+
+	combinedIDs := make([]int64, 0, topN*11)
+	seen := make(map[int64]struct{}, topN*11)
+	for rows.Next() {
+		var (
+			rowID    int64
+			intIDsJS string
+			ids      []int64
+		)
+		if err := rows.Scan(&rowID, &intIDsJS); err != nil {
+			return map[string]any{"error": fmt.Sprintf("scan match row: %v", err), "messages": []any{}}, nil
+		}
+		if strings.TrimSpace(intIDsJS) == "" {
+			continue
+		}
+		if err := json.Unmarshal([]byte(intIDsJS), &ids); err != nil {
+			return map[string]any{"error": fmt.Sprintf("parse int_ids for row %d: %v", rowID, err), "messages": []any{}}, nil
+		}
+		for _, id := range ids {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			combinedIDs = append(combinedIDs, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return map[string]any{"error": fmt.Sprintf("iterate vector results: %v", err), "messages": []any{}}, nil
+	}
+	_ = rows.Close()
+
+	if len(combinedIDs) == 0 {
+		return map[string]any{
+			"query_text":      queryText,
+			"match_count":     0,
+			"messages":        []any{},
+			"unique_messages": []any{},
+		}, nil
+	}
+
+	uid := appctx.UserIDFromCtx(ctx)
+	placeholders := make([]string, len(combinedIDs))
+	args := make([]any, 0, len(combinedIDs)+1)
+	for i, id := range combinedIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, uid)
+
+	q := fmt.Sprintf(`
+		SELECT id, COALESCE(chat_session, ''), COALESCE(text, '')
+		FROM messages
+		WHERE id IN (%s)
+		  AND COALESCE(user_id, 0) = ?
+	`, strings.Join(placeholders, ","))
+	msgRows, err := pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return map[string]any{"error": fmt.Sprintf("load unique messages failed: %v", err), "messages": []any{}}, nil
+	}
+	defer msgRows.Close()
+
+	byID := make(map[int64]map[string]any, len(combinedIDs))
+	for msgRows.Next() {
+		var (
+			id          int64
+			chatSession string
+			msgText     string
+		)
+		if err := msgRows.Scan(&id, &chatSession, &msgText); err != nil {
+			return map[string]any{"error": fmt.Sprintf("scan message row failed: %v", err), "messages": []any{}}, nil
+		}
+		byID[id] = map[string]any{
+			"id":           id,
+			"chat_session": chatSession,
+			"text":         msgText,
+		}
+	}
+	if err := msgRows.Err(); err != nil {
+		return map[string]any{"error": fmt.Sprintf("iterate message rows failed: %v", err), "messages": []any{}}, nil
+	}
+
+	uniqueMessages := make([]any, 0, len(combinedIDs))
+	for _, id := range combinedIDs {
+		if m, ok := byID[id]; ok {
+			uniqueMessages = append(uniqueMessages, m)
+		}
+	}
+	return map[string]any{
+		"query_text":      queryText,
+		"match_count":     len(uniqueMessages),
+		"messages":        uniqueMessages,
+		"unique_messages": uniqueMessages,
+	}, nil
 }
 
 func searchEmailsBySimilarity(ctx context.Context, pool *sql.DB, text string) (map[string]any, error) {

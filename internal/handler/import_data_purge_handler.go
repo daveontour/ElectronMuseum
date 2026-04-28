@@ -154,6 +154,11 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
+			_, err = h.pool.ExecContext(ctx, `
+				DELETE FROM message_embedding_meta
+				WHERE message_id IN (
+					SELECT id FROM messages WHERE COALESCE(user_id, 0) = $1
+				)`, uid)
 		}
 	default:
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown purge kind: %s", kind))

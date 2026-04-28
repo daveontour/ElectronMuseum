@@ -114,8 +114,27 @@ func MigrateSQLite(ctx context.Context, db *sql.DB) error {
 	if err := ensureSQLiteVecEmbeddingTables(ctx, db); err != nil {
 		return err
 	}
+	if err := ensureMessageEmbeddingMetaTable(ctx, db); err != nil {
+		return err
+	}
 
 	slog.Info("sqlite database migration complete")
+	return nil
+}
+
+func ensureMessageEmbeddingMetaTable(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS message_embedding_meta (
+			message_id INTEGER PRIMARY KEY,
+			model TEXT NOT NULL,
+			window_back INTEGER NOT NULL,
+			window_forward INTEGER NOT NULL,
+			content_hash TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create message_embedding_meta: %w", err)
+	}
 	return nil
 }
 

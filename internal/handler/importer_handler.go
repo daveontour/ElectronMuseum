@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -2396,11 +2398,20 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
 	defer job.Finish()
 
+	const (
+		messageEmbeddingModel   = "embeddinggemma:latest"
+		messageEmbeddingBack    = 5
+		messageEmbeddingForward = 5
+	)
+
 	rows, err := pool.QueryContext(ctx, `
-		SELECT id, COALESCE(chat_session, ''), COALESCE(text, '')
-		FROM messages
-		WHERE COALESCE(user_id, 0) = $1
-		ORDER BY COALESCE(chat_session, ''), CASE WHEN message_date IS NULL THEN 1 ELSE 0 END, message_date, id
+		SELECT m.id, COALESCE(m.chat_session, ''), COALESCE(m.text, '')
+		FROM messages m
+		WHERE COALESCE(m.user_id, 0) = ?
+		  AND NOT EXISTS (
+			SELECT 1 FROM message_embeddings me WHERE me.rowid = m.id
+		  )
+		ORDER BY COALESCE(m.chat_session, ''), CASE WHEN m.message_date IS NULL THEN 1 ELSE 0 END, m.message_date, m.id
 	`, uid)
 	if err != nil {
 		msg := fmt.Sprintf("failed to query messages for context embeddings: %v", err)
@@ -2436,6 +2447,7 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 	job.Broadcast("progress", job.GetState())
 
 	embedded, skipped, errorsCount := 0, 0, 0
+	seenAnchors := make(map[int64]struct{}, total)
 	for i := range all {
 		if job.IsCancelled() {
 			job.UpdateState(map[string]any{
@@ -2463,7 +2475,22 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 		// 	continue
 		// }
 
-		windowIDs, contextPayload := buildMessageContextWindow(all, i, 5, 5)
+		anchorID := all[i].id
+		if _, ok := seenAnchors[anchorID]; ok {
+			skipped++
+			job.UpdateState(map[string]any{
+				"processed":   i + 1,
+				"embedded":    embedded,
+				"skipped":     skipped,
+				"errors":      errorsCount,
+				"status_line": fmt.Sprintf("Processed %d/%d messages (%d embedded, %d skipped, %d errors)", i+1, total, embedded, skipped, errorsCount),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		seenAnchors[anchorID] = struct{}{}
+
+		windowIDs, contextPayload := buildMessageContextWindow(all, i, messageEmbeddingBack, messageEmbeddingForward)
 		if len(windowIDs) == 0 || strings.TrimSpace(contextPayload) == "" {
 			skipped++
 			job.UpdateState(map[string]any{
@@ -2476,8 +2503,8 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 			job.Broadcast("progress", job.GetState())
 			continue
 		}
-
-		vec, err := embeddingSvc.EmbedTextWithModel(ctx, contextPayload, "embeddinggemma:latest")
+		payloadHash := hashMessageEmbeddingPayload(contextPayload, windowIDs)
+		metaMatch, err := isMessageEmbeddingMetaCurrent(ctx, pool, anchorID, messageEmbeddingModel, messageEmbeddingBack, messageEmbeddingForward, payloadHash)
 		if err != nil {
 			errorsCount++
 			job.UpdateState(map[string]any{
@@ -2485,8 +2512,35 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 				"embedded":      embedded,
 				"skipped":       skipped,
 				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Embedding failed for message %d: %v", all[i].id, err),
-				"error_message": fmt.Sprintf("Embedding failed for message %d: %v", all[i].id, err),
+				"status_line":   fmt.Sprintf("Metadata check failed for message %d: %v", anchorID, err),
+				"error_message": fmt.Sprintf("Metadata check failed for message %d: %v", anchorID, err),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		if metaMatch {
+			skipped++
+			job.UpdateState(map[string]any{
+				"processed":   i + 1,
+				"embedded":    embedded,
+				"skipped":     skipped,
+				"errors":      errorsCount,
+				"status_line": fmt.Sprintf("Processed %d/%d messages (%d embedded, %d skipped, %d errors)", i+1, total, embedded, skipped, errorsCount),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+
+		vec, err := embeddingSvc.EmbedTextWithModel(ctx, contextPayload, messageEmbeddingModel)
+		if err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"embedded":      embedded,
+				"skipped":       skipped,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Embedding failed for message %d: %v", anchorID, err),
+				"error_message": fmt.Sprintf("Embedding failed for message %d: %v", anchorID, err),
 			})
 			job.Broadcast("progress", job.GetState())
 			continue
@@ -2499,8 +2553,8 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 				"embedded":      embedded,
 				"skipped":       skipped,
 				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Failed to serialize embedding for message %d: %v", all[i].id, err),
-				"error_message": fmt.Sprintf("Failed to serialize embedding for message %d: %v", all[i].id, err),
+				"status_line":   fmt.Sprintf("Failed to serialize embedding for message %d: %v", anchorID, err),
+				"error_message": fmt.Sprintf("Failed to serialize embedding for message %d: %v", anchorID, err),
 			})
 			job.Broadcast("progress", job.GetState())
 			continue
@@ -2513,8 +2567,8 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 				"embedded":      embedded,
 				"skipped":       skipped,
 				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Failed to serialize message id window for message %d: %v", all[i].id, err),
-				"error_message": fmt.Sprintf("Failed to serialize message id window for message %d: %v", all[i].id, err),
+				"status_line":   fmt.Sprintf("Failed to serialize message id window for message %d: %v", anchorID, err),
+				"error_message": fmt.Sprintf("Failed to serialize message id window for message %d: %v", anchorID, err),
 			})
 			job.Broadcast("progress", job.GetState())
 			continue
@@ -2523,15 +2577,28 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 		if _, err := pool.ExecContext(ctx, `
 			INSERT OR REPLACE INTO message_embeddings(rowid, embedding, int_ids)
 			VALUES (?, ?, ?)
-		`, all[i].id, vecBlob, string(intIDsJSON)); err != nil {
+		`, anchorID, vecBlob, string(intIDsJSON)); err != nil {
 			errorsCount++
 			job.UpdateState(map[string]any{
 				"processed":     i + 1,
 				"embedded":      embedded,
 				"skipped":       skipped,
 				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Failed saving context embedding for message %d: %v", all[i].id, err),
-				"error_message": fmt.Sprintf("Failed saving context embedding for message %d: %v", all[i].id, err),
+				"status_line":   fmt.Sprintf("Failed saving context embedding for message %d: %v", anchorID, err),
+				"error_message": fmt.Sprintf("Failed saving context embedding for message %d: %v", anchorID, err),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		if err := upsertMessageEmbeddingMeta(ctx, pool, anchorID, messageEmbeddingModel, messageEmbeddingBack, messageEmbeddingForward, payloadHash); err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"embedded":      embedded,
+				"skipped":       skipped,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Failed saving embedding metadata for message %d: %v", anchorID, err),
+				"error_message": fmt.Sprintf("Failed saving embedding metadata for message %d: %v", anchorID, err),
 			})
 			job.Broadcast("progress", job.GetState())
 			continue
@@ -2557,6 +2624,54 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 		"errors":      errorsCount,
 	})
 	job.Broadcast("completed", job.GetState())
+}
+
+func hashMessageEmbeddingPayload(contextPayload string, windowIDs []int64) string {
+	h := sha256.New()
+	_, _ = h.Write([]byte(strings.TrimSpace(contextPayload)))
+	_, _ = h.Write([]byte("|"))
+	for i, id := range windowIDs {
+		if i > 0 {
+			_, _ = h.Write([]byte(","))
+		}
+		_, _ = h.Write([]byte(strconv.FormatInt(id, 10)))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func isMessageEmbeddingMetaCurrent(ctx context.Context, pool *sql.DB, messageID int64, model string, back, forward int, payloadHash string) (bool, error) {
+	var (
+		storedModel   string
+		storedBack    int
+		storedForward int
+		storedHash    string
+	)
+	err := pool.QueryRowContext(ctx, `
+		SELECT model, window_back, window_forward, content_hash
+		FROM message_embedding_meta
+		WHERE message_id = ?
+	`, messageID).Scan(&storedModel, &storedBack, &storedForward, &storedHash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return storedModel == model && storedBack == back && storedForward == forward && storedHash == payloadHash, nil
+}
+
+func upsertMessageEmbeddingMeta(ctx context.Context, pool *sql.DB, messageID int64, model string, back, forward int, payloadHash string) error {
+	_, err := pool.ExecContext(ctx, `
+		INSERT INTO message_embedding_meta(message_id, model, window_back, window_forward, content_hash, updated_at)
+		VALUES (?, ?, ?, ?, ?, datetime('now'))
+		ON CONFLICT(message_id) DO UPDATE SET
+			model = excluded.model,
+			window_back = excluded.window_back,
+			window_forward = excluded.window_forward,
+			content_hash = excluded.content_hash,
+			updated_at = excluded.updated_at
+	`, messageID, model, back, forward, payloadHash)
+	return err
 }
 
 func buildMessageContextWindow(messages []messageContextCandidate, idx, back, forward int) ([]int64, string) {
