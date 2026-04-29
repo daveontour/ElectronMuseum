@@ -31,7 +31,7 @@ func (r *EmailRepo) GetByID(ctx context.Context, id int64) (*model.Email, error)
 		       has_attachments, user_deleted, is_personal, is_business, is_social, is_promotional,
 		       is_spam, is_important, use_by_ai, source, created_at, updated_at
 		FROM emails
-		WHERE id = $1
+		WHERE id = ?1
 		  AND user_deleted = FALSE`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
@@ -67,17 +67,17 @@ func (r *EmailRepo) Search(ctx context.Context, p model.EmailSearchParams) ([]*m
 	)
 
 	add := func(cond string, val any) {
-		conds = append(conds, strings.ReplaceAll(cond, "?", fmt.Sprintf("$%d", n)))
+		conds = append(conds, strings.ReplaceAll(cond, "?", fmt.Sprintf("?%d", n)))
 		args = append(args, val)
 		n++
 	}
 
 	// addLIKE appends a single-parameter OR clause across multiple columns.
-	// All fields share the same $n placeholder so only one arg is added.
+	// All fields share the same ?n placeholder so only one arg is added.
 	addLIKE := func(fields []string, val string) {
 		parts := make([]string, len(fields))
 		for i, f := range fields {
-			parts[i] = fmt.Sprintf("%s LIKE $%d", f, n)
+			parts[i] = fmt.Sprintf("%s LIKE ?%d", f, n)
 		}
 		conds = append(conds, "("+strings.Join(parts, " OR ")+")")
 		args = append(args, "%"+val+"%")
@@ -113,7 +113,7 @@ func (r *EmailRepo) Search(ctx context.Context, p model.EmailSearchParams) ([]*m
 			var orParts []string
 			for _, addr := range parts {
 				orParts = append(orParts,
-					fmt.Sprintf("(to_addresses LIKE $%d OR from_address LIKE $%d)", n, n+1),
+					fmt.Sprintf("(to_addresses LIKE ?%d OR from_address LIKE ?%d)", n, n+1),
 				)
 				args = append(args, "%"+addr+"%", "%"+addr+"%")
 				n += 2
@@ -142,7 +142,7 @@ func (r *EmailRepo) Search(ctx context.Context, p model.EmailSearchParams) ([]*m
 
 	if uid > 0 {
 		args = append(args, uid)
-		conds = append(conds, fmt.Sprintf("user_id = $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("user_id = ?%d", len(args)))
 	}
 
 	sql := `SELECT id, uid, folder, subject, from_address, to_addresses, cc_addresses, bcc_addresses,
@@ -178,7 +178,7 @@ func (r *EmailRepo) GetByLabels(ctx context.Context, labels []string) ([]*model.
 	n := 1
 	for _, label := range labels {
 		conds = append(conds,
-			fmt.Sprintf("(folder = $%d OR folder LIKE $%d OR folder LIKE $%d OR folder LIKE $%d)",
+			fmt.Sprintf("(folder = ?%d OR folder LIKE ?%d OR folder LIKE ?%d OR folder LIKE ?%d)",
 				n, n+1, n+2, n+3),
 		)
 		args = append(args,
@@ -258,7 +258,7 @@ func (r *EmailRepo) Update(ctx context.Context, id int64, isPersonal, isBusiness
 	n := 1
 
 	addSet := func(col string, val any) {
-		sets = append(sets, fmt.Sprintf("%s = $%d", col, n))
+		sets = append(sets, fmt.Sprintf("%s = ?%d", col, n))
 		args = append(args, val)
 		n++
 	}
@@ -277,7 +277,7 @@ func (r *EmailRepo) Update(ctx context.Context, id int64, isPersonal, isBusiness
 	}
 	if len(sets) == 0 {
 		// nothing to update — check existence
-		q := `SELECT EXISTS(SELECT 1 FROM emails WHERE id = $1 AND user_deleted = FALSE`
+		q := `SELECT EXISTS(SELECT 1 FROM emails WHERE id = ?1 AND user_deleted = FALSE`
 		args2 := []any{id}
 		q, args2 = addUIDFilter(q, args2, uid)
 		q += ")"
@@ -288,7 +288,7 @@ func (r *EmailRepo) Update(ctx context.Context, id int64, isPersonal, isBusiness
 
 	args = append(args, id)
 	q := fmt.Sprintf(
-		"UPDATE emails SET %s WHERE id = $%d AND user_deleted = FALSE",
+		"UPDATE emails SET %s WHERE id = ?%d AND user_deleted = FALSE",
 		strings.Join(sets, ", "), n,
 	)
 	n++
@@ -319,7 +319,7 @@ func (r *EmailRepo) SoftDelete(ctx context.Context, id int64) (bool, error) {
 		    embedding         = NULL,
 		    has_attachments   = FALSE,
 		    user_deleted      = TRUE
-		WHERE id = $1 AND user_deleted = FALSE`
+		WHERE id = ?1 AND user_deleted = FALSE`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	tag, err := tx.ExecContext(ctx, q, args...)
@@ -366,7 +366,7 @@ func (r *EmailRepo) BulkSoftDelete(ctx context.Context, ids []int64) (int64, err
 	args := idArgs
 	if uid > 0 {
 		args = append(args, uid)
-		q += fmt.Sprintf(" AND user_id = $%d", nextArg)
+		q += fmt.Sprintf(" AND user_id = ?%d", nextArg)
 	}
 	tag, err := tx.ExecContext(ctx, q, args...)
 	if err != nil {
@@ -395,7 +395,7 @@ func (r *EmailRepo) GetThreadEmails(ctx context.Context, participant string) ([]
 		       has_attachments, user_deleted, is_personal, is_business, is_social, is_promotional,
 		       is_spam, is_important, use_by_ai, source, created_at, updated_at
 		FROM emails
-		WHERE (from_address LIKE $1 OR to_addresses LIKE $1)
+		WHERE (from_address LIKE ?1 OR to_addresses LIKE ?1)
 		  AND user_deleted = FALSE`
 	args := []any{"%" + participant + "%"}
 	q, args = addUIDFilter(q, args, uid)

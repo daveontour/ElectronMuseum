@@ -25,7 +25,7 @@ func ClearFacebookAllDataForUser(ctx context.Context, pool *sql.DB, userID int64
 		return fmt.Errorf("failed to clear Facebook Messenger media: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM messages WHERE service = 'Facebook Messenger' AND user_id = $1`, userID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM messages WHERE service = 'Facebook Messenger' AND user_id = ?1`, userID)
 	if err != nil {
 		return fmt.Errorf("failed to clear Facebook Messenger messages: %w", err)
 	}
@@ -34,12 +34,12 @@ func ClearFacebookAllDataForUser(ctx context.Context, pool *sql.DB, userID int64
 		return fmt.Errorf("failed to clear Facebook album media: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM facebook_albums WHERE user_id = $1`, userID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM facebook_albums WHERE user_id = ?1`, userID)
 	if err != nil {
 		return fmt.Errorf("failed to clear Facebook albums: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM locations WHERE source = 'facebook' AND user_id = $1`, userID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM locations WHERE source = 'facebook' AND user_id = ?1`, userID)
 	if err != nil {
 		return fmt.Errorf("failed to clear Facebook places: %w", err)
 	}
@@ -48,7 +48,7 @@ func ClearFacebookAllDataForUser(ctx context.Context, pool *sql.DB, userID int64
 		return fmt.Errorf("failed to clear Facebook post media: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM facebook_posts WHERE user_id = $1`, userID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM facebook_posts WHERE user_id = ?1`, userID)
 	if err != nil {
 		return fmt.Errorf("failed to clear Facebook posts: %w", err)
 	}

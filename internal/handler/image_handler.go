@@ -1,33 +1,59 @@
 package handler
 
 import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	"image/jpeg"
+	_ "image/png"
+	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
+	"github.com/daveontour/aimuseum/internal/appctx"
+	"github.com/daveontour/aimuseum/internal/importer"
 	"github.com/daveontour/aimuseum/internal/keystore"
 	"github.com/daveontour/aimuseum/internal/model"
 	"github.com/daveontour/aimuseum/internal/repository"
 	"github.com/daveontour/aimuseum/internal/service"
 	"github.com/go-chi/chi/v5"
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/webp"
 )
+
+var imageAIClassificationJob = importer.NewImportJob("Image AI classification", map[string]any{
+	"status": "idle", "status_line": nil, "error_message": nil,
+	"total": 0, "processed": 0,
+})
 
 // ImageHandler handles all /images/*, /getLocations, and /facebook/albums/* read endpoints.
 type ImageHandler struct {
 	svc          *service.ImageService
 	sessionStore *keystore.SessionMasterStore
+	pool         *sql.DB
 }
 
 // NewImageHandler creates an ImageHandler.
-func NewImageHandler(svc *service.ImageService, sessionStore *keystore.SessionMasterStore) *ImageHandler {
-	return &ImageHandler{svc: svc, sessionStore: sessionStore}
+func NewImageHandler(svc *service.ImageService, sessionStore *keystore.SessionMasterStore, pool *sql.DB) *ImageHandler {
+	return &ImageHandler{svc: svc, sessionStore: sessionStore, pool: pool}
 }
 
 // RegisterRoutes mounts all image routes onto r.
 func (h *ImageHandler) RegisterRoutes(r chi.Router) {
 	// Specific sub-paths must be registered before parameterised {image_id} routes.
+	r.Post("/image/ai-classification", h.ImageAIClassificationStart)
+	r.Post("/image/ai-classification/missing-gemma-classified", h.ImageAIClassificationGemmaUnclassifiedStart)
+	r.Get("/image/ai-classification/stream", h.ImageAIClassificationStream)
+	r.Post("/image/ai-classification/cancel", h.ImageAIClassificationCancel)
+	r.Get("/image/ai-classification/status", h.ImageAIClassificationStatus)
+
 	r.Get("/images/search", h.Search)
 	r.Get("/images/years", h.GetYears)
 	r.Get("/images/tags", h.GetTags)
@@ -438,6 +464,337 @@ func (h *ImageHandler) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, resp)
 }
 
+// ImageAIClassificationStart starts a background stub job that processes the given image IDs.
+// POST /image/ai-classification  body: { "ids": [1,2,3] }
+func (h *ImageHandler) ImageAIClassificationStart(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not configured")
+		return
+	}
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if len(req.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "ids is required")
+		return
+	}
+	if err := imageAIClassificationJob.AssertNotRunning(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	uid := appctx.UserIDFromCtx(r.Context())
+	idsCopy := append([]int64(nil), req.IDs...)
+
+	imageAIClassificationJob.Start()
+	imageAIClassificationJob.UpdateState(map[string]any{
+		"status":        "in_progress",
+		"status_line":   fmt.Sprintf("Starting AI classification for %d image(s)...", len(idsCopy)),
+		"total":         len(idsCopy),
+		"processed":     0,
+		"classified":    0,
+		"errors":        0,
+		"error_message": nil,
+	})
+	imageAIClassificationJob.Broadcast("status", map[string]any{"status_line": fmt.Sprintf("Starting AI classification for %d image(s)...", len(idsCopy))})
+
+	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, idsCopy)
+
+	writeJSON(w, map[string]any{"message": "Image AI classification started", "status": "started", "count": len(idsCopy)})
+}
+
+// ImageAIClassificationGemmaUnclassifiedStart starts classification for image rows missing the GemmaClassified tag.
+func (h *ImageHandler) ImageAIClassificationGemmaUnclassifiedStart(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not configured")
+		return
+	}
+	if err := imageAIClassificationJob.AssertNotRunning(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ids, err := h.svc.ListImageIDsMissingTag(r.Context(), "GemmaClassified")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to build classification list: %v", err))
+		return
+	}
+	uid := appctx.UserIDFromCtx(r.Context())
+
+	imageAIClassificationJob.Start()
+	imageAIClassificationJob.UpdateState(map[string]any{
+		"status":        "in_progress",
+		"status_line":   fmt.Sprintf("Starting AI classification for %d unclassified image(s)...", len(ids)),
+		"total":         len(ids),
+		"processed":     0,
+		"classified":    0,
+		"errors":        0,
+		"error_message": nil,
+	})
+	imageAIClassificationJob.Broadcast("status", map[string]any{
+		"status_line": fmt.Sprintf("Starting AI classification for %d unclassified image(s)...", len(ids)),
+	})
+
+	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, append([]int64(nil), ids...))
+
+	writeJSON(w, map[string]any{
+		"message": "Image AI classification job started for unclassified images",
+		"status":  "started",
+		"count":   len(ids),
+	})
+}
+
+func (h *ImageHandler) ImageAIClassificationStream(w http.ResponseWriter, r *http.Request) {
+	imageAIClassificationJob.ServeSSE(w, r)
+}
+
+func (h *ImageHandler) ImageAIClassificationCancel(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	writeJSON(w, imageAIClassificationJob.Cancel())
+}
+
+func (h *ImageHandler) ImageAIClassificationStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, imageAIClassificationJob.Status())
+}
+
+// normalizePutImageTags maps JSON "tags" (string or array of strings per API spec) to a single comma-separated value.
+func normalizePutImageTags(v any) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	switch t := v.(type) {
+	case string:
+		return &t, nil
+	case []any:
+		parts := make([]string, 0, len(t))
+		for i, item := range t {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("tags: element %d must be a string", i)
+			}
+			parts = append(parts, s)
+		}
+		out := strings.Join(parts, ", ")
+		return &out, nil
+	default:
+		return nil, fmt.Errorf("tags: expected string or array of strings, got %T", v)
+	}
+}
+
+// normalizePutImageRating maps JSON "rating" (number or numeric string) to int for media_items.rating.
+func normalizePutImageRating(v any) (*int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var n int
+	switch t := v.(type) {
+	case float64:
+		if t != math.Trunc(t) {
+			return nil, fmt.Errorf("rating must be a whole number between 1 and 5")
+		}
+		n = int(t)
+	case json.Number:
+		i64, err := t.Int64()
+		if err != nil {
+			f, ferr := t.Float64()
+			if ferr != nil {
+				return nil, fmt.Errorf("rating: invalid number")
+			}
+			if f != math.Trunc(f) {
+				return nil, fmt.Errorf("rating must be a whole number between 1 and 5")
+			}
+			n = int(f)
+		} else {
+			n = int(i64)
+		}
+	case string:
+		i, err := strconv.Atoi(strings.TrimSpace(t))
+		if err != nil {
+			return nil, fmt.Errorf("rating must be an integer between 1 and 5")
+		}
+		n = i
+	case int:
+		n = t
+	case int64:
+		n = int(t)
+	default:
+		return nil, fmt.Errorf("rating: unsupported type %T", v)
+	}
+	if n < 1 || n > 5 {
+		return nil, fmt.Errorf("rating must be between 1 and 5")
+	}
+	return &n, nil
+}
+
+func normalizeImageMIME(contentType string) string {
+	ct := strings.TrimSpace(contentType)
+	if i := strings.Index(ct, ";"); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	return strings.ToLower(ct)
+}
+
+// convertImageBytesToJPEGIfNeeded returns JPEG bytes. If the input is already a valid JPEG, returns data unchanged.
+func convertImageBytesToJPEGIfNeeded(data []byte, contentType string) ([]byte, error) {
+	ct := normalizeImageMIME(contentType)
+	if ct == "image/jpeg" || ct == "image/jpg" {
+		if _, err := jpeg.Decode(bytes.NewReader(data)); err == nil {
+			return data, nil
+		}
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("decode image: %w", err)
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 88}); err != nil {
+		return nil, fmt.Errorf("encode jpeg: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+func runImageAIClassificationStub(svc *service.ImageService, job *importer.ImportJob, uid int64, imageIDs []int64) {
+	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
+	defer job.Finish()
+
+	total := len(imageIDs)
+	classified, errorsCount := 0, 0
+	job.UpdateState(map[string]any{
+		"total":       total,
+		"processed":   0,
+		"classified":  classified,
+		"errors":      errorsCount,
+		"status":      "in_progress",
+		"status_line": fmt.Sprintf("AI classification: %d image(s) queued", total),
+	})
+	job.Broadcast("progress", job.GetState())
+
+	for i, id := range imageIDs {
+		if job.IsCancelled() {
+			job.UpdateState(map[string]any{
+				"status":      "cancelled",
+				"status_line": "Image AI classification cancelled.",
+				"processed":   i,
+				"classified":  classified,
+				"errors":      errorsCount,
+			})
+			job.Broadcast("cancelled", job.GetState())
+			return
+		}
+
+		content, err := svc.GetImageContent(ctx, id, "metadata", false)
+		if err != nil || content == nil || len(content.Data) == 0 {
+			errorsCount++
+			msg := fmt.Sprintf("load image %d: %v", id, err)
+			if content == nil && err == nil {
+				msg = fmt.Sprintf("load image %d: not found", id)
+			}
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"classified":    classified,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Processed %d/%d — %s", i+1, total, msg),
+				"error_message": msg,
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+
+		jpegBytes, err := convertImageBytesToJPEGIfNeeded(content.Data, content.ContentType)
+		if err != nil {
+			errorsCount++
+			msg := fmt.Sprintf("jpeg convert image %d: %v", id, err)
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"classified":    classified,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Processed %d/%d — %s", i+1, total, msg),
+				"error_message": msg,
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+
+		encodedB64 := base64.StdEncoding.EncodeToString(jpegBytes)
+		keywordTags, llmErr := classifyImageKeywordsWithOllama(ctx, encodedB64)
+		if llmErr != nil {
+			errorsCount++
+			msg := fmt.Sprintf("classify image %d: %v", id, llmErr)
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"classified":    classified,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Processed %d/%d - %s", i+1, total, msg),
+				"error_message": msg,
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		if strings.TrimSpace(keywordTags) == "" {
+			errorsCount++
+			msg := fmt.Sprintf("classify image %d: model returned no keywords", id)
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"classified":    classified,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Processed %d/%d - %s", i+1, total, msg),
+				"error_message": msg,
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+
+		tagsForUpdate := keywordTags + ", GemmaClassified"
+		n, tagErrs := svc.BulkUpdateTags(ctx, []int64{id}, tagsForUpdate)
+		if n == 0 || len(tagErrs) > 0 {
+			errorsCount++
+			msg := fmt.Sprintf("tag update image %d failed", id)
+			if len(tagErrs) > 0 {
+				msg = fmt.Sprintf("tag update image %d: %s", id, strings.Join(tagErrs, "; "))
+			}
+			job.UpdateState(map[string]any{
+				"processed":     i + 1,
+				"classified":    classified,
+				"errors":        errorsCount,
+				"status_line":   fmt.Sprintf("Processed %d/%d — %s", i+1, total, msg),
+				"error_message": msg,
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+
+		classified++
+		job.UpdateState(map[string]any{
+			"processed":   i + 1,
+			"classified":  classified,
+			"errors":      errorsCount,
+			"status_line": fmt.Sprintf("Processed %d/%d (image id %d, %d AI keywords)", i+1, total, id, countNonEmptyCSV(keywordTags)),
+		})
+		job.Broadcast("progress", job.GetState())
+	}
+
+	job.UpdateState(map[string]any{
+		"status":      "completed",
+		"status_line": fmt.Sprintf("Image AI classification complete: %d classified, %d errors (of %d)", classified, errorsCount, total),
+		"processed":   total,
+		"classified":  classified,
+		"errors":      errorsCount,
+	})
+	job.Broadcast("completed", job.GetState())
+}
+
 func (h *ImageHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
 		return
@@ -506,22 +863,25 @@ func (h *ImageHandler) UpdateMetadata(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var payload struct {
+		Description *string `json:"description"`
+		Tags        any     `json:"tags"`
+		Rating      any     `json:"rating"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	var description, tags *string
-	var rating *int
-	if v, ok := req["description"].(string); ok {
-		description = &v
+	description := payload.Description
+	tags, err := normalizePutImageTags(payload.Tags)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
-	if v, ok := req["tags"].(string); ok {
-		tags = &v
-	}
-	if v, ok := req["rating"].(float64); ok {
-		rt := int(v)
-		rating = &rt
+	rating, err := normalizePutImageRating(payload.Rating)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	ok2, err := h.svc.UpdateMetadata(r.Context(), id, description, tags, rating)
 	if err != nil {
@@ -567,6 +927,114 @@ func (h *ImageHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+type ollamaImageMessage struct {
+	Role    string   `json:"role"`
+	Content string   `json:"content"`
+	Images  []string `json:"images,omitempty"`
+}
+
+type ollamaImageChatRequest struct {
+	Model    string               `json:"model"`
+	Messages []ollamaImageMessage `json:"messages"`
+	Stream   bool                 `json:"stream"`
+	Options  map[string]any       `json:"options,omitempty"`
+}
+
+type ollamaImageChatResponse struct {
+	Message struct {
+		Content string `json:"content"`
+	} `json:"message"`
+}
+
+func classifyImageKeywordsWithOllama(ctx context.Context, encodedImageB64 string) (string, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("LOCALAI_BASE_URL")), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:11434"
+	}
+	reqBody := ollamaImageChatRequest{
+		Model:  "gemma4:latest",
+		Stream: false,
+		Messages: []ollamaImageMessage{
+			{
+				Role: "user",
+				Content: "Analyze this image and return only a JSON array of short keyword strings. " +
+					"Capture content, atmosphere, vibe, and location. " +
+					"Use 8 to 16 concise keywords. Do not include any text outside the JSON array.",
+				Images: []string{encodedImageB64},
+			},
+		},
+		Options: map[string]any{"temperature": 0.2},
+	}
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal ollama image request: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/api/chat", bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("build ollama image request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("call ollama: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ollama API status %d", resp.StatusCode)
+	}
+	var body ollamaImageChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("decode ollama response: %w", err)
+	}
+	keywords, err := parseKeywordJSONArray(body.Message.Content)
+	if err != nil {
+		return "", fmt.Errorf("parse keyword array: %w", err)
+	}
+	return strings.Join(keywords, ", "), nil
+}
+
+func parseKeywordJSONArray(raw string) ([]string, error) {
+	s := strings.TrimSpace(raw)
+	if i := strings.Index(s, "["); i >= 0 {
+		if j := strings.LastIndex(s, "]"); j > i {
+			s = s[i : j+1]
+		}
+	}
+	var arr []string
+	if err := json.Unmarshal([]byte(s), &arr); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(arr))
+	seen := make(map[string]struct{}, len(arr))
+	for _, kw := range arr {
+		k := strings.TrimSpace(kw)
+		if k == "" {
+			continue
+		}
+		key := strings.ToLower(k)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, k)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("empty keyword array")
+	}
+	return out, nil
+}
+
+func countNonEmptyCSV(csv string) int {
+	parts := strings.Split(csv, ",")
+	n := 0
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			n++
+		}
+	}
+	return n
+}
 
 func (h *ImageHandler) serveImageContent(w http.ResponseWriter, r *http.Request, id int64, idType string, preview bool) {
 	content, err := h.svc.GetImageContent(r.Context(), id, idType, preview)

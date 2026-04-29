@@ -74,7 +74,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 	// ── Images & media ─────────────────────────────────────────────────────────
 	imageRepo := repository.NewImageRepo(pool)
 	imageSvc := service.NewImageService(imageRepo)
-	imageHandler := handler.NewImageHandler(imageSvc, sessionMasterStore)
+	imageHandler := handler.NewImageHandler(imageSvc, sessionMasterStore, pool)
 	imageHandler.RegisterRoutes(r)
 
 	// ── Messages ────────────────────────────────────────────────────────────────

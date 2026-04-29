@@ -627,6 +627,12 @@ Modals.NewImageGallery = (() => {
                     await _applyTagsToSelected();
                 });
             }
+
+            if (DOM.newImageGalleryAIClassificationBtn) {
+                DOM.newImageGalleryAIClassificationBtn.addEventListener('click', async () => {
+                    await _startAIClassificationForSelected();
+                });
+            }
             
             // Bulk delete selected images
             if (DOM.newImageGalleryDeleteSelectedBtn) {
@@ -1241,6 +1247,10 @@ Modals.NewImageGallery = (() => {
             if (DOM.newImageGalleryDeleteSelectedBtn) {
                 DOM.newImageGalleryDeleteSelectedBtn.disabled = !selectMode || selectedImageIds.size === 0;
             }
+
+            if (DOM.newImageGalleryAIClassificationBtn) {
+                DOM.newImageGalleryAIClassificationBtn.disabled = !selectMode || selectedImageIds.size === 0;
+            }
             
             // Update thumbnail visual selection state
             const thumbnails = DOM.newImageGalleryThumbnailGrid.querySelectorAll('.new-image-gallery-thumbnail-item');
@@ -1257,6 +1267,33 @@ Modals.NewImageGallery = (() => {
             });
         }
         
+        async function _startAIClassificationForSelected() {
+            if (selectedImageIds.size === 0) return;
+            const ids = Array.from(selectedImageIds);
+            const btn = DOM.newImageGalleryAIClassificationBtn;
+            if (btn) {
+                btn.disabled = true;
+            }
+            try {
+                const response = await fetch('/image/ai-classification', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+                }
+                await AppDialogs.showAppAlert('AI Classification', data.message || 'Job started.');
+            } catch (e) {
+                console.error('AI classification start failed:', e);
+                await AppDialogs.showAppAlert('AI Classification', e.message || 'Request failed.');
+            } finally {
+                _updateSelectionUI();
+            }
+        }
+
         async function _applyTagsToSelected() {
             if (selectedImageIds.size === 0) return;
             

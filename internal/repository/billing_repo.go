@@ -54,7 +54,7 @@ func (r *BillingRepo) InsertLLMUsage(ctx context.Context, provider string, userI
 	}
 	_, err := r.pool.ExecContext(ctx, `
 		INSERT INTO llm_usage_events (provider, user_id, is_visitor, input_tokens, output_tokens, model_name, user_email, user_first_name, user_family_name, used_server_llm_key, succeeded, error_message)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
 		provider, userID, isVisitor, inputTokens, outputTokens, modelName, userEmail, userFirstName, userFamilyName, usedServerLLMKey, succeeded, errorMessage,
 	)
 	return err
@@ -88,16 +88,16 @@ func (r *BillingRepo) SummaryByUser(ctx context.Context, userID int64, from, to 
 	if r == nil || r.pool == nil {
 		return sum, nil, nil, errors.New("billing: not configured")
 	}
-	q := `SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*) FROM llm_usage_events WHERE user_id = $1`
+	q := `SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*) FROM llm_usage_events WHERE user_id = ?1`
 	args := []any{userID}
 	n := 2
 	if from != nil {
-		q += fmt.Sprintf(" AND created_at >= $%d", n)
+		q += fmt.Sprintf(" AND created_at >= ?%d", n)
 		args = append(args, *from)
 		n++
 	}
 	if to != nil {
-		q += fmt.Sprintf(" AND created_at < $%d", n)
+		q += fmt.Sprintf(" AND created_at < ?%d", n)
 		args = append(args, *to)
 	}
 	err = r.pool.QueryRowContext(ctx, q, args...).Scan(&sum.TotalInputTokens, &sum.TotalOutputTokens, &sum.EventCount)
@@ -105,16 +105,16 @@ func (r *BillingRepo) SummaryByUser(ctx context.Context, userID int64, from, to 
 		return sum, nil, nil, err
 	}
 
-	q2 := `SELECT provider, COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*) FROM llm_usage_events WHERE user_id = $1`
+	q2 := `SELECT provider, COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*) FROM llm_usage_events WHERE user_id = ?1`
 	args2 := []any{userID}
 	n2 := 2
 	if from != nil {
-		q2 += fmt.Sprintf(" AND created_at >= $%d", n2)
+		q2 += fmt.Sprintf(" AND created_at >= ?%d", n2)
 		args2 = append(args2, *from)
 		n2++
 	}
 	if to != nil {
-		q2 += fmt.Sprintf(" AND created_at < $%d", n2)
+		q2 += fmt.Sprintf(" AND created_at < ?%d", n2)
 		args2 = append(args2, *to)
 	}
 	q2 += ` GROUP BY provider ORDER BY provider`
@@ -134,16 +134,16 @@ func (r *BillingRepo) SummaryByUser(ctx context.Context, userID int64, from, to 
 		return sum, nil, nil, err
 	}
 
-	q3 := `SELECT is_visitor, COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*) FROM llm_usage_events WHERE user_id = $1`
+	q3 := `SELECT is_visitor, COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*) FROM llm_usage_events WHERE user_id = ?1`
 	args3 := []any{userID}
 	n3 := 2
 	if from != nil {
-		q3 += fmt.Sprintf(" AND created_at >= $%d", n3)
+		q3 += fmt.Sprintf(" AND created_at >= ?%d", n3)
 		args3 = append(args3, *from)
 		n3++
 	}
 	if to != nil {
-		q3 += fmt.Sprintf(" AND created_at < $%d", n3)
+		q3 += fmt.Sprintf(" AND created_at < ?%d", n3)
 		args3 = append(args3, *to)
 	}
 	q3 += ` GROUP BY is_visitor ORDER BY is_visitor`
@@ -176,20 +176,20 @@ func (r *BillingRepo) ListEventsByUser(ctx context.Context, userID int64, from, 
 	q := `SELECT id, created_at, provider, user_id, is_visitor, input_tokens, output_tokens, model_name,
 		user_email, user_first_name, user_family_name, used_server_llm_key,
 		COALESCE(succeeded, TRUE), error_message
-		FROM llm_usage_events WHERE user_id = $1`
+		FROM llm_usage_events WHERE user_id = ?1`
 	args := []any{userID}
 	n := 2
 	if from != nil {
-		q += fmt.Sprintf(" AND created_at >= $%d", n)
+		q += fmt.Sprintf(" AND created_at >= ?%d", n)
 		args = append(args, *from)
 		n++
 	}
 	if to != nil {
-		q += fmt.Sprintf(" AND created_at < $%d", n)
+		q += fmt.Sprintf(" AND created_at < ?%d", n)
 		args = append(args, *to)
 		n++
 	}
-	q += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, n, n+1)
+	q += fmt.Sprintf(` ORDER BY created_at DESC LIMIT ?%d OFFSET ?%d`, n, n+1)
 	args = append(args, limit, offset)
 	rows, err := r.pool.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -253,21 +253,21 @@ func (r *BillingRepo) ListFailedEvents(ctx context.Context, userID *int64, from,
 	args := []any{}
 	n := 1
 	if userID != nil {
-		q += fmt.Sprintf(" AND user_id = $%d", n)
+		q += fmt.Sprintf(" AND user_id = ?%d", n)
 		args = append(args, *userID)
 		n++
 	}
 	if from != nil {
-		q += fmt.Sprintf(" AND created_at >= $%d", n)
+		q += fmt.Sprintf(" AND created_at >= ?%d", n)
 		args = append(args, *from)
 		n++
 	}
 	if to != nil {
-		q += fmt.Sprintf(" AND created_at < $%d", n)
+		q += fmt.Sprintf(" AND created_at < ?%d", n)
 		args = append(args, *to)
 		n++
 	}
-	q += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, n, n+1)
+	q += fmt.Sprintf(` ORDER BY created_at DESC LIMIT ?%d OFFSET ?%d`, n, n+1)
 	args = append(args, limit, offset)
 	rows, err := r.pool.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -329,20 +329,20 @@ func (r *BillingRepo) ListEventsByUserAll(ctx context.Context, userID int64, fro
 	q := `SELECT id, created_at, provider, user_id, is_visitor, input_tokens, output_tokens, model_name,
 		user_email, user_first_name, user_family_name, used_server_llm_key,
 		COALESCE(succeeded, TRUE), error_message
-		FROM llm_usage_events WHERE user_id = $1`
+		FROM llm_usage_events WHERE user_id = ?1`
 	args := []any{userID}
 	n := 2
 	if from != nil {
-		q += fmt.Sprintf(" AND created_at >= $%d", n)
+		q += fmt.Sprintf(" AND created_at >= ?%d", n)
 		args = append(args, *from)
 		n++
 	}
 	if to != nil {
-		q += fmt.Sprintf(" AND created_at < $%d", n)
+		q += fmt.Sprintf(" AND created_at < ?%d", n)
 		args = append(args, *to)
 		n++
 	}
-	q += fmt.Sprintf(` ORDER BY created_at ASC LIMIT $%d`, n)
+	q += fmt.Sprintf(` ORDER BY created_at ASC LIMIT ?%d`, n)
 	args = append(args, limit)
 	rows, err := r.pool.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -412,24 +412,24 @@ func (r *BillingRepo) TimeseriesByUser5Min(ctx context.Context, userID int64, fr
 			CAST(COALESCE(SUM(input_tokens), 0) AS INTEGER),
 			CAST(COALESCE(SUM(output_tokens), 0) AS INTEGER)
 		FROM llm_usage_events
-		WHERE user_id = $1`
+		WHERE user_id = ?1`
 	} else {
 		q = `
 		SELECT to_timestamp(floor(extract(epoch FROM created_at) / 300) * 300) AS bucket_start,
 			COALESCE(SUM(input_tokens), 0)::bigint,
 			COALESCE(SUM(output_tokens), 0)::bigint
 		FROM llm_usage_events
-		WHERE user_id = $1`
+		WHERE user_id = ?1`
 	}
 	args := []any{userID}
 	n := 2
 	if from != nil {
-		q += fmt.Sprintf(" AND created_at >= $%d", n)
+		q += fmt.Sprintf(" AND created_at >= ?%d", n)
 		args = append(args, *from)
 		n++
 	}
 	if to != nil {
-		q += fmt.Sprintf(" AND created_at < $%d", n)
+		q += fmt.Sprintf(" AND created_at < ?%d", n)
 		args = append(args, *to)
 	}
 	q += ` GROUP BY 1 ORDER BY 1`

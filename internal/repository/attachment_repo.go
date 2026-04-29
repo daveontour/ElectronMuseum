@@ -82,7 +82,7 @@ func (r *AttachmentRepo) GetByIDOrder(ctx context.Context, offset int) (*model.A
 	args = append(args, offset)
 	q += fmt.Sprintf(`
 		ORDER BY mm.id ASC
-		OFFSET $%d
+		OFFSET ?%d
 		LIMIT 1`, len(args))
 	a, err := scanAttachmentInfo(r.pool.QueryRowContext(ctx, q, args...))
 	if err != nil {
@@ -113,7 +113,7 @@ func (r *AttachmentRepo) GetBySize(ctx context.Context, orderDesc bool, offset i
 	args = append(args, offset)
 	q += fmt.Sprintf(`
 		ORDER BY octet_length(mb.image_data) %s
-		OFFSET $%d
+		OFFSET ?%d
 		LIMIT 1`, dir, len(args))
 	var a model.AttachmentInfo
 	var sz *int64
@@ -161,7 +161,7 @@ func (r *AttachmentRepo) GetInfo(ctx context.Context, id int64) (*model.Attachme
 		SELECT ` + attachmentInfoColsGetInfo + `
 		FROM media_items mm
 		LEFT JOIN emails e ON e.id = ` + emailIDJoinExpr + `
-		WHERE ` + emailAttachmentSourcesSQL + ` AND mm.id = $1`
+		WHERE ` + emailAttachmentSourcesSQL + ` AND mm.id = ?1`
 	args := []any{id}
 	// Use qualified alias — media_items mm and emails e both have user_id
 	q, args = addUIDFilterQualified(q, args, uid, "mm")
@@ -182,7 +182,7 @@ func (r *AttachmentRepo) GetData(ctx context.Context, id int64) (data, thumbnail
 		SELECT mb.image_data, mb.thumbnail_data, COALESCE(mm.media_type,'application/octet-stream'), COALESCE(mm.title,'attachment')
 		FROM media_items mm
 		JOIN media_blobs mb ON mb.id = mm.media_blob_id
-		WHERE ` + emailAttachmentSourcesSQL + ` AND mm.id = $1`
+		WHERE ` + emailAttachmentSourcesSQL + ` AND mm.id = ?1`
 	args := []any{id}
 	// Use qualified alias — media_items mm and media_blobs mb both have user_id
 	q, args = addUIDFilterQualified(q, args, uid, "mm")
@@ -202,7 +202,7 @@ func (r *AttachmentRepo) GetData(ctx context.Context, id int64) (data, thumbnail
 func (r *AttachmentRepo) Delete(ctx context.Context, id int64) (bool, error) {
 	var blobID *int64
 	err := r.pool.QueryRowContext(ctx,
-		`SELECT media_blob_id FROM media_items WHERE id=$1 AND source IN ('email_attachment', 'gmail_attachment')`, id).
+		`SELECT media_blob_id FROM media_items WHERE id=?1 AND source IN ('email_attachment', 'gmail_attachment')`, id).
 		Scan(&blobID)
 	if err != nil {
 		if isNoRows(err) {
@@ -211,14 +211,14 @@ func (r *AttachmentRepo) Delete(ctx context.Context, id int64) (bool, error) {
 		return false, err
 	}
 
-	if _, err := r.pool.ExecContext(ctx, `DELETE FROM media_items WHERE id=$1`, id); err != nil {
+	if _, err := r.pool.ExecContext(ctx, `DELETE FROM media_items WHERE id=?1`, id); err != nil {
 		return false, err
 	}
 
 	if blobID != nil {
 		var refs int
-		if err := r.pool.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_items WHERE media_blob_id=$1`, *blobID).Scan(&refs); err == nil && refs == 0 {
-			_, _ = r.pool.ExecContext(ctx, `DELETE FROM media_blobs WHERE id=$1`, *blobID)
+		if err := r.pool.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_items WHERE media_blob_id=?1`, *blobID).Scan(&refs); err == nil && refs == 0 {
+			_, _ = r.pool.ExecContext(ctx, `DELETE FROM media_blobs WHERE id=?1`, *blobID)
 		}
 	}
 	return true, nil
@@ -287,7 +287,7 @@ func (r *AttachmentRepo) ListImages(ctx context.Context, page, pageSize int, ord
 	listArgs = append(listArgs, pageSize, offset)
 	listBase += fmt.Sprintf(`
 		ORDER BY %s
-		LIMIT $%d OFFSET $%d`, orderExpr, len(listArgs)-1, len(listArgs))
+		LIMIT ?%d OFFSET ?%d`, orderExpr, len(listArgs)-1, len(listArgs))
 
 	rows, err := r.pool.QueryContext(ctx, listBase, listArgs...)
 	if err != nil {

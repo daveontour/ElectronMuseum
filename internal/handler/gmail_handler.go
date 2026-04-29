@@ -398,7 +398,7 @@ func (h *GmailHandler) runGmailImport(ctx context.Context, tok *oauth2.Token, la
 			uidArg = uid
 		}
 		rows, err := h.pool.QueryContext(ctx,
-			`SELECT uid FROM emails WHERE user_id = $1 OR ($1 IS NULL AND user_id IS NULL)`,
+			`SELECT uid FROM emails WHERE user_id = ?1 OR (?1 IS NULL AND user_id IS NULL)`,
 			uidArg)
 		if err == nil {
 			defer rows.Close()
@@ -566,7 +566,7 @@ func (h *GmailHandler) storeGmailEmail(ctx context.Context, msg *appgmail.Messag
 		                    date, raw_message, plain_text, snippet, has_attachments,
 		                    user_deleted, is_personal, is_business, is_social, is_promotional,
 		                    is_spam, is_important, use_by_ai, user_id, source)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,$11,'gmail')
+		VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,?11,'gmail')
 		ON CONFLICT(uid, folder, user_id) DO UPDATE SET
 			subject=EXCLUDED.subject, from_address=EXCLUDED.from_address, to_addresses=EXCLUDED.to_addresses,
 			date=EXCLUDED.date, raw_message=EXCLUDED.raw_message, plain_text=EXCLUDED.plain_text, snippet=EXCLUDED.snippet,
@@ -583,7 +583,7 @@ func (h *GmailHandler) storeGmailEmail(ctx context.Context, msg *appgmail.Messag
 
 	ref := fmt.Sprintf("%d", emailID)
 	// Remove prior Gmail rows and any legacy rows wrongly tagged email_attachment for this email (same emails.id).
-	if _, err = tx.ExecContext(ctx, `DELETE FROM media_items WHERE source_reference = $1 AND source IN ($2, $3)`, ref, gmailAttachmentSource, "email_attachment"); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM media_items WHERE source_reference = ?1 AND source IN (?2, ?3)`, ref, gmailAttachmentSource, "email_attachment"); err != nil {
 		return err
 	}
 
@@ -601,7 +601,7 @@ func (h *GmailHandler) storeGmailEmail(ctx context.Context, msg *appgmail.Messag
 			mt = mt[:255]
 		}
 		var blobID int64
-		if err = tx.QueryRowContext(ctx, `INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES ($1, NULL, $2) RETURNING id`, att.Data, userIDVal).Scan(&blobID); err != nil {
+		if err = tx.QueryRowContext(ctx, `INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES (?1, NULL, ?2) RETURNING id`, att.Data, userIDVal).Scan(&blobID); err != nil {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, `
@@ -609,7 +609,7 @@ func (h *GmailHandler) storeGmailEmail(ctx context.Context, msg *appgmail.Messag
 				media_blob_id, title, media_type, source, source_reference, user_id,
 				processed, available_for_task, rating, has_gps, is_referenced,
 				is_personal, is_business, is_social, is_promotional, is_spam, is_important
-			) VALUES ($1, $2, $3, $4, $5, $6,
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6,
 				FALSE, FALSE, 5, FALSE, FALSE,
 				FALSE, FALSE, FALSE, FALSE, FALSE, FALSE)`,
 			blobID, title, mt, gmailAttachmentSource, ref, userIDVal); err != nil {

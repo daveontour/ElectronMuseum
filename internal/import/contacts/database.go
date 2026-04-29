@@ -179,7 +179,7 @@ func WriteContactsToDatabase(ctx context.Context, db *sql.DB, records []Formatte
 			userIDArg = ownerUserID
 		}
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO contacts (id, name, alternative_names, email, numemails, numwhatsapp, numimessages, numfacebook, numsms, numinstagram, is_group, total, user_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			`INSERT INTO contacts (id, name, alternative_names, email, numemails, numwhatsapp, numimessages, numfacebook, numsms, numinstagram, is_group, total, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`,
 			r.ID, r.PrimaryName, r.AlternativeNames, r.Emails,
 			nemails, nw, ni, nf, ns, ninst, r.IsGroupChat, total, userIDArg)
 		if err != nil {
@@ -194,7 +194,7 @@ func WriteContactsToDatabase(ctx context.Context, db *sql.DB, records []Formatte
 	if subjectIds.WhatsAppID != nil || subjectIds.IMessageID != nil || subjectIds.SMSID != nil ||
 		subjectIds.FacebookID != nil || subjectIds.InstagramID != nil {
 		_, err = tx.ExecContext(ctx,
-			`UPDATE contacts SET whatsappid = $1, imessageid = $2, smsid = $3, facebookid = $4, instagramid = $5 WHERE id = 0`,
+			`UPDATE contacts SET whatsappid = ?1, imessageid = ?2, smsid = ?3, facebookid = ?4, instagramid = ?5 WHERE id = 0`,
 			subjectIds.WhatsAppID, subjectIds.IMessageID, subjectIds.SMSID, subjectIds.FacebookID, subjectIds.InstagramID)
 		if err != nil {
 			return fmt.Errorf("restore subject identifiers: %w", err)
@@ -284,7 +284,7 @@ func GetDirectionalMessageCounts(ctx context.Context, db *sql.DB, chatSession, s
 	}
 
 	rows, err := db.QueryContext(ctx,
-		`SELECT sender_id FROM messages WHERE chat_session = $1 AND service = $2`,
+		`SELECT sender_id FROM messages WHERE chat_session = ?1 AND service = ?2`,
 		chatSession, serviceVal)
 	if err != nil {
 		return DirectionalCounts{}, fmt.Errorf("query messages: %w", err)

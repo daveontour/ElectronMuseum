@@ -17,11 +17,11 @@ type Interview struct {
 	Provider      string  `json:"provider,omitempty"`
 	Writeup       *string `json:"writeup,omitempty"`
 	// HasWriteup is true when a non-empty writeup exists (set on list and detail responses).
-	HasWriteup bool       `json:"has_writeup"`
+	HasWriteup bool               `json:"has_writeup"`
 	CreatedAt  sqlutil.DBTime     `json:"created_at"`
 	UpdatedAt  sqlutil.DBTime     `json:"updated_at"`
 	LastTurnAt sqlutil.NullDBTime `json:"last_turn_at,omitempty"`
-	TurnCount  int        `json:"turn_count,omitempty"`
+	TurnCount  int                `json:"turn_count,omitempty"`
 }
 
 // SetHasWriteupFromWriteup sets HasWriteup from the Writeup field (for detail loads).
@@ -38,11 +38,11 @@ func (iv *Interview) SetHasWriteupFromWriteup() {
 
 // InterviewTurn is a row from the interview_turns table.
 type InterviewTurn struct {
-	ID          int64     `json:"id"`
-	InterviewID int64     `json:"interview_id"`
-	Question    string    `json:"question"`
-	Answer      *string   `json:"answer,omitempty"`
-	TurnNumber  int       `json:"turn_number"`
+	ID          int64          `json:"id"`
+	InterviewID int64          `json:"interview_id"`
+	Question    string         `json:"question"`
+	Answer      *string        `json:"answer,omitempty"`
+	TurnNumber  int            `json:"turn_number"`
 	CreatedAt   sqlutil.DBTime `json:"created_at"`
 }
 

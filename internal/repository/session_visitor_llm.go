@@ -28,7 +28,7 @@ func (r *UserRepo) GetVisitorSessionLLMPolicy(ctx context.Context, sessionID str
 			COALESCE(h.llm_allow_server_keys, TRUE)
 		FROM sessions s
 		LEFT JOIN visitor_key_hints h ON h.id = s.visitor_key_hint_id
-		WHERE s.id = $1 AND s.expires_at > CURRENT_TIMESTAMP AND s.is_visitor = TRUE`,
+		WHERE s.id = ?1 AND s.expires_at > CURRENT_TIMESTAMP AND s.is_visitor = TRUE`,
 		sessionID,
 	).Scan(&ao, &as)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -82,7 +82,7 @@ func (r *UserRepo) GetSessionVisitorLLM(ctx context.Context, sessionID string) (
 	err := r.pool.QueryRowContext(ctx, `
 		SELECT visitor_llm_overrides
 		FROM sessions
-		WHERE id = $1 AND expires_at > CURRENT_TIMESTAMP AND is_visitor = TRUE`,
+		WHERE id = ?1 AND expires_at > CURRENT_TIMESTAMP AND is_visitor = TRUE`,
 		sessionID,
 	).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -119,8 +119,8 @@ func (r *UserRepo) PatchSessionVisitorLLM(ctx context.Context, sessionID string,
 	}
 	tag, err := r.pool.ExecContext(ctx, `
 		UPDATE sessions
-		SET visitor_llm_overrides = $2
-		WHERE id = $1 AND expires_at > CURRENT_TIMESTAMP AND is_visitor = TRUE`,
+		SET visitor_llm_overrides = ?2
+		WHERE id = ?1 AND expires_at > CURRENT_TIMESTAMP AND is_visitor = TRUE`,
 		sessionID, string(payload),
 	)
 	if err != nil {

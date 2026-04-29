@@ -33,7 +33,7 @@ func NewImageStorage(pool *sql.DB) *ImageStorage {
 // FilesystemMediaItemExists reports whether a media_items row exists for source=filesystem
 // and the given source_reference. Matches the lookup used by SaveImage before insert/update.
 func (s *ImageStorage) FilesystemMediaItemExists(ctx context.Context, sourceRef string) (bool, error) {
-	const q = `SELECT 1 FROM media_items WHERE source = $1 AND source_reference = $2 LIMIT 1`
+	const q = `SELECT 1 FROM media_items WHERE source = ?1 AND source_reference = ?2 LIMIT 1`
 	var one int
 	err := s.pool.QueryRowContext(ctx, q, filesystemSource, sourceRef).Scan(&one)
 	if err == nil {
@@ -65,19 +65,19 @@ func (s *ImageStorage) SaveImage(ctx context.Context, sourceRef string, imageDat
 
 	var existingID int64
 	var existingBlobID int64
-	checkQuery := `SELECT id, media_blob_id FROM media_items WHERE source = $1 AND source_reference = $2 LIMIT 1`
+	checkQuery := `SELECT id, media_blob_id FROM media_items WHERE source = ?1 AND source_reference = ?2 LIMIT 1`
 	err = tx.QueryRowContext(ctx, checkQuery, filesystemSource, sourceRef).Scan(&existingID, &existingBlobID)
 
 	if err == nil {
 		if !isReferenced {
-			updateBlobQuery := `UPDATE media_blobs SET image_data = $1, thumbnail_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+			updateBlobQuery := `UPDATE media_blobs SET image_data = ?1, thumbnail_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?2`
 			_, err = tx.ExecContext(ctx, updateBlobQuery, imageData, existingBlobID)
 			if err != nil {
 				return 0, false, fmt.Errorf("failed to update media blob: %w", err)
 			}
 		}
 
-		updateMetaQuery := `UPDATE media_items SET title = $1, tags = $2, media_type = $3, is_referenced = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5`
+		updateMetaQuery := `UPDATE media_items SET title = ?1, tags = ?2, media_type = ?3, is_referenced = ?4, updated_at = CURRENT_TIMESTAMP WHERE id = ?5`
 		_, err = tx.ExecContext(ctx, updateMetaQuery, title, nullIfEmpty(tags), nullIfEmpty(mediaType), isReferenced, existingID)
 		if err != nil {
 			return 0, false, fmt.Errorf("failed to update media item: %w", err)
@@ -94,7 +94,7 @@ func (s *ImageStorage) SaveImage(ctx context.Context, sourceRef string, imageDat
 	}
 
 	var blobID int64
-	insertBlobQuery := `INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES ($1, $2, $3) RETURNING id`
+	insertBlobQuery := `INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES (?1, ?2, ?3) RETURNING id`
 	err = tx.QueryRowContext(ctx, insertBlobQuery, imageData, nil, uidVal(uid)).Scan(&blobID)
 	if err != nil {
 		return 0, false, fmt.Errorf("failed to insert media blob: %w", err)
@@ -106,7 +106,7 @@ func (s *ImageStorage) SaveImage(ctx context.Context, sourceRef string, imageDat
 		media_type, year, month, latitude, longitude, altitude, has_gps,
 		processed, available_for_task, rating, is_personal, is_business,
 		is_social, is_promotional, is_spam, is_important, is_referenced, user_id, created_at, updated_at
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	RETURNING id`
 
 	err = tx.QueryRowContext(ctx, insertMetaQuery,
@@ -162,7 +162,7 @@ func (s *ImageStorage) SaveImagesBatch(ctx context.Context, items []BatchImageIt
 	existing := make(map[string]struct{ id, blobID int64 })
 	inCond, inArgs, _ := sqlutil.StringIN("source_reference", sourceRefs, 2)
 	batchQ := fmt.Sprintf(
-		`SELECT source_reference, id, media_blob_id FROM media_items WHERE source = $1 AND %s`,
+		`SELECT source_reference, id, media_blob_id FROM media_items WHERE source = ?1 AND %s`,
 		inCond)
 	args := append([]any{filesystemSource}, inArgs...)
 	rows, err := tx.QueryContext(ctx, batchQ, args...)
@@ -186,13 +186,13 @@ func (s *ImageStorage) SaveImagesBatch(ctx context.Context, items []BatchImageIt
 	for _, item := range items {
 		if ex, ok := existing[item.SourceRef]; ok {
 			if !item.IsReferenced {
-				_, err = tx.ExecContext(ctx, `UPDATE media_blobs SET image_data = $1, thumbnail_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+				_, err = tx.ExecContext(ctx, `UPDATE media_blobs SET image_data = ?1, thumbnail_data = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?2`,
 					item.ImageData, ex.blobID)
 				if err != nil {
 					return 0, 0, fmt.Errorf("failed to update media blob for %s: %w", item.SourceRef, err)
 				}
 			}
-			_, err = tx.ExecContext(ctx, `UPDATE media_items SET title = $1, tags = $2, media_type = $3, is_referenced = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5`,
+			_, err = tx.ExecContext(ctx, `UPDATE media_items SET title = ?1, tags = ?2, media_type = ?3, is_referenced = ?4, updated_at = CURRENT_TIMESTAMP WHERE id = ?5`,
 				nullIfEmpty(item.Title), nullIfEmpty(item.Tags), nullIfEmpty(item.MediaType), item.IsReferenced, ex.id)
 			if err != nil {
 				return 0, 0, fmt.Errorf("failed to update media item for %s: %w", item.SourceRef, err)
@@ -200,7 +200,7 @@ func (s *ImageStorage) SaveImagesBatch(ctx context.Context, items []BatchImageIt
 			updated++
 		} else {
 			var blobID int64
-			err = tx.QueryRowContext(ctx, `INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES ($1, $2, $3) RETURNING id`,
+			err = tx.QueryRowContext(ctx, `INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES (?1, ?2, ?3) RETURNING id`,
 				item.ImageData, nil, uidVal(uid)).Scan(&blobID)
 			if err != nil {
 				return 0, 0, fmt.Errorf("failed to insert media blob for %s: %w", item.SourceRef, err)
@@ -210,7 +210,7 @@ func (s *ImageStorage) SaveImagesBatch(ctx context.Context, items []BatchImageIt
 				media_type, year, month, latitude, longitude, altitude, has_gps,
 				processed, available_for_task, rating, is_personal, is_business,
 				is_social, is_promotional, is_spam, is_important, is_referenced, user_id, created_at, updated_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 				blobID,
 				nullIfEmpty(item.Tags),
 				filesystemSource,

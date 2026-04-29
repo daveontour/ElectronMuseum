@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/daveontour/aimuseum/internal/model"
@@ -40,7 +41,7 @@ const mediaItemColumnsQualified = `
 // GetMediaItemByID returns a media_items row by primary key.
 func (r *ImageRepo) GetMediaItemByID(ctx context.Context, id int64) (*model.MediaItem, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT ` + mediaItemColumns + ` FROM media_items WHERE id = $1`
+	q := `SELECT ` + mediaItemColumns + ` FROM media_items WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	row := r.pool.QueryRowContext(ctx, q, args...)
@@ -51,7 +52,7 @@ func (r *ImageRepo) GetMediaItemByID(ctx context.Context, id int64) (*model.Medi
 func (r *ImageRepo) GetBlobByID(ctx context.Context, blobID int64) (*model.MediaBlob, error) {
 	b := &model.MediaBlob{}
 	err := r.pool.QueryRowContext(ctx,
-		`SELECT id, image_data, thumbnail_data FROM media_blobs WHERE id = $1`, blobID,
+		`SELECT id, image_data, thumbnail_data FROM media_blobs WHERE id = ?1`, blobID,
 	).Scan(&b.ID, &b.ImageData, &b.ThumbnailData)
 	if err != nil {
 		if isNoRows(err) {
@@ -69,7 +70,7 @@ func (r *ImageRepo) GetBlobByMetadataID(ctx context.Context, metaID int64) (*mod
 		SELECT mb.id, mb.image_data, mb.thumbnail_data
 		FROM media_blobs mb
 		JOIN media_items mi ON mi.media_blob_id = mb.id
-		WHERE mi.id = $1`
+		WHERE mi.id = ?1`
 	args := []any{metaID}
 	q, args = addUIDFilterQualified(q, args, uid, "mi")
 	b := &model.MediaBlob{}
@@ -86,7 +87,7 @@ func (r *ImageRepo) GetBlobByMetadataID(ctx context.Context, metaID int64) (*mod
 // GetMediaItemByBlobID returns the media_items row for a given media_blob.id.
 func (r *ImageRepo) GetMediaItemByBlobID(ctx context.Context, blobID int64) (*model.MediaItem, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT ` + mediaItemColumns + ` FROM media_items WHERE media_blob_id = $1`
+	q := `SELECT ` + mediaItemColumns + ` FROM media_items WHERE media_blob_id = ?1`
 	args := []any{blobID}
 	q, args = addUIDFilter(q, args, uid)
 	row := r.pool.QueryRowContext(ctx, q, args...)
@@ -102,17 +103,17 @@ func (r *ImageRepo) Search(ctx context.Context, p model.ImageSearchParams) ([]*m
 	n := 1
 
 	addLike := func(col, val string) {
-		conds = append(conds, fmt.Sprintf("%s LIKE $%d", col, n))
+		conds = append(conds, fmt.Sprintf("%s LIKE ?%d", col, n))
 		args = append(args, "%"+val+"%")
 		n++
 	}
 	addExact := func(col, val string) {
-		conds = append(conds, fmt.Sprintf("%s LIKE $%d", col, n))
+		conds = append(conds, fmt.Sprintf("%s LIKE ?%d", col, n))
 		args = append(args, val) // no wildcards — mirrors Python .ilike(filters.source)
 		n++
 	}
 	addEq := func(col string, val any) {
-		conds = append(conds, fmt.Sprintf("%s = $%d", col, n))
+		conds = append(conds, fmt.Sprintf("%s = ?%d", col, n))
 		args = append(args, val)
 		n++
 	}
@@ -132,7 +133,7 @@ func (r *ImageRepo) Search(ctx context.Context, p model.ImageSearchParams) ([]*m
 		if len(tagList) > 0 {
 			var orParts []string
 			for _, tag := range tagList {
-				orParts = append(orParts, fmt.Sprintf("tags LIKE $%d", n))
+				orParts = append(orParts, fmt.Sprintf("tags LIKE ?%d", n))
 				args = append(args, "%"+tag+"%")
 				n++
 			}
@@ -164,12 +165,12 @@ func (r *ImageRepo) Search(ctx context.Context, p model.ImageSearchParams) ([]*m
 		addEq("rating", *p.Rating)
 	} else {
 		if p.RatingMin != nil {
-			conds = append(conds, fmt.Sprintf("rating >= $%d", n))
+			conds = append(conds, fmt.Sprintf("rating >= ?%d", n))
 			args = append(args, *p.RatingMin)
 			n++
 		}
 		if p.RatingMax != nil {
-			conds = append(conds, fmt.Sprintf("rating <= $%d", n))
+			conds = append(conds, fmt.Sprintf("rating <= ?%d", n))
 			args = append(args, *p.RatingMax)
 			n++
 		}
@@ -189,7 +190,7 @@ func (r *ImageRepo) Search(ctx context.Context, p model.ImageSearchParams) ([]*m
 
 	if uid > 0 {
 		args = append(args, uid)
-		conds = append(conds, fmt.Sprintf("user_id = $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("user_id = ?%d", len(args)))
 	}
 
 	sql := `SELECT ` + mediaItemColumns + ` FROM media_items`
@@ -254,6 +255,40 @@ func (r *ImageRepo) GetAllTagStrings(ctx context.Context) ([]string, error) {
 	return all, rows.Err()
 }
 
+// ListImageIDsMissingTag returns image media_items IDs that do not contain the given tag.
+// Matching is case-insensitive and treats NULL/empty tags as missing.
+func (r *ImageRepo) ListImageIDsMissingTag(ctx context.Context, tag string) ([]int64, error) {
+	uid := uidFromCtx(ctx)
+	needle := strings.TrimSpace(tag)
+	if needle == "" {
+		return nil, fmt.Errorf("tag is required")
+	}
+	q := `
+		SELECT id
+		FROM media_items
+		WHERE media_type LIKE 'image/%'
+		  AND (tags IS NULL OR TRIM(tags) = '' OR LOWER(tags) NOT LIKE LOWER(?1))`
+	args := []any{"%" + needle + "%"}
+	q, args = addUIDFilter(q, args, uid)
+	q += " ORDER BY id ASC"
+
+	rows, err := r.pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ListImageIDsMissingTag: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // GetLocations returns media_items with GPS data (has_gps=true or lat/lng non-null).
 func (r *ImageRepo) GetLocations(ctx context.Context) ([]*model.MediaItem, error) {
 	uid := uidFromCtx(ctx)
@@ -298,29 +333,101 @@ func (r *ImageRepo) GetFacebookPlaces(ctx context.Context) ([]model.FacebookPlac
 // UpdateTags updates the tags column for a media item (merge: append to existing).
 func (r *ImageRepo) UpdateTags(ctx context.Context, id int64, newTags string) (bool, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT tags FROM media_items WHERE id = $1`
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+	slog.Debug("UpdateTags trace: start",
+		"media_item_id", id,
+		"user_id", uid,
+		"new_tags_len", len(newTags),
+		"new_tags_preview", truncateForLog(newTags, 120),
+	)
+
+	q := `SELECT tags FROM media_items WHERE id = ?1`
 	args := []any{id}
-	q, args = addUIDFilter(q, args, uid)
+	//q, args = addUIDFilter(q, args, uid)
 	var existing *string
 	err := r.pool.QueryRowContext(ctx, q, args...).Scan(&existing)
 	if err != nil {
 		if isNoRows(err) {
+			slog.Warn("UpdateTags trace: SELECT found no row (skipping UPDATE)",
+				"media_item_id", id,
+				"user_id", uid,
+				"select_err", "sql.ErrNoRows",
+			)
 			return false, nil
 		}
+		slog.Warn("UpdateTags trace: SELECT failed",
+			"media_item_id", id,
+			"user_id", uid,
+			"err", err,
+		)
 		return false, fmt.Errorf("UpdateTags: %w", err)
 	}
+
+	existingLen := 0
+	existingPreview := ""
+	if existing != nil {
+		existingLen = len(*existing)
+		existingPreview = truncateForLog(*existing, 120)
+	}
+	slog.Debug("UpdateTags trace: after SELECT",
+		"media_item_id", id,
+		"user_id", uid,
+		"existing_is_nil", existing == nil,
+		"existing_len", existingLen,
+		"existing_preview", existingPreview,
+	)
+
 	merged := newTags
 	if existing != nil && strings.TrimSpace(*existing) != "" {
 		merged = strings.TrimSpace(*existing) + ", " + strings.TrimSpace(newTags)
 	}
-	uq := `UPDATE media_items SET tags = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1`
+	uq := `UPDATE media_items SET tags = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1`
 	uargs := []any{id, merged}
-	uq, uargs = addUIDFilter(uq, uargs, uid)
+	//uq, uargs = addUIDFilter(uq, uargs, uid)
+
+	slog.Debug("UpdateTags trace: before UPDATE",
+		"media_item_id", id,
+		"user_id", uid,
+		"merged_len", len(merged),
+		"merged_preview", truncateForLog(merged, 200),
+	)
+
 	res, err := r.pool.ExecContext(ctx, uq, uargs...)
 	if err != nil {
+		slog.Warn("UpdateTags trace: UPDATE ExecContext failed",
+			"media_item_id", id,
+			"user_id", uid,
+			"err", err,
+		)
 		return false, fmt.Errorf("UpdateTags: %w", err)
 	}
-	return rowsAffectedOrZero(res) > 0, nil
+
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		slog.Warn("UpdateTags trace: RowsAffected returned error (treating as 0)",
+			"media_item_id", id,
+			"user_id", uid,
+			"rows_affected_err", raErr,
+		)
+		n = 0
+	}
+	slog.Debug("UpdateTags trace: after UPDATE",
+		"media_item_id", id,
+		"user_id", uid,
+		"rows_affected", n,
+		"rows_affected_ok", raErr == nil,
+	)
+	if n == 0 {
+		slog.Warn("UpdateTags trace: UPDATE reported 0 rows changed",
+			"media_item_id", id,
+			"user_id", uid,
+			"merged_len", len(merged),
+			"merged_preview", truncateForLog(merged, 200),
+			"note", "id may not exist in media_items, value unchanged (SQLite no-op), or driver did not report changes",
+		)
+	}
+
+	return n > 0, nil
 }
 
 // UpdateMetadata updates description, tags, and/or rating for a media item.
@@ -329,24 +436,24 @@ func (r *ImageRepo) UpdateMetadata(ctx context.Context, id int64, description, t
 	if err != nil || item == nil {
 		return false, nil
 	}
-	uid := uidFromCtx(ctx)
+	//uid := uidFromCtx(ctx)
 	var setParts []string
 	var args []any
 	n := 1
 	args = append(args, id)
 	n++
 	if description != nil {
-		setParts = append(setParts, fmt.Sprintf("description = $%d", n))
+		setParts = append(setParts, fmt.Sprintf("description = ?%d", n))
 		args = append(args, *description)
 		n++
 	}
 	if tags != nil {
-		setParts = append(setParts, fmt.Sprintf("tags = $%d", n))
+		setParts = append(setParts, fmt.Sprintf("tags = ?%d", n))
 		args = append(args, *tags)
 		n++
 	}
 	if rating != nil {
-		setParts = append(setParts, fmt.Sprintf("rating = $%d", n))
+		setParts = append(setParts, fmt.Sprintf("rating = ?%d", n))
 		args = append(args, *rating)
 		n++
 	}
@@ -354,8 +461,8 @@ func (r *ImageRepo) UpdateMetadata(ctx context.Context, id int64, description, t
 		return true, nil
 	}
 	setParts = append(setParts, "updated_at = CURRENT_TIMESTAMP")
-	sql := fmt.Sprintf(`UPDATE media_items SET %s WHERE id = $1`, strings.Join(setParts, ", "))
-	sql, args = addUIDFilter(sql, args, uid)
+	sql := fmt.Sprintf(`UPDATE media_items SET %s WHERE id = ?1`, strings.Join(setParts, ", "))
+	//sql, args = addUIDFilterDollar(sql, args, uid)
 	res, err := r.pool.ExecContext(ctx, sql, args...)
 	if err != nil {
 		return false, fmt.Errorf("UpdateMetadata: %w", err)
@@ -366,7 +473,7 @@ func (r *ImageRepo) UpdateMetadata(ctx context.Context, id int64, description, t
 // DeleteByMetadataID deletes a media_items row and its media_blobs row.
 func (r *ImageRepo) DeleteByMetadataID(ctx context.Context, id int64) (bool, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT media_blob_id FROM media_items WHERE id = $1`
+	q := `SELECT media_blob_id FROM media_items WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	var blobID int64
@@ -377,14 +484,14 @@ func (r *ImageRepo) DeleteByMetadataID(ctx context.Context, id int64) (bool, err
 		}
 		return false, fmt.Errorf("DeleteByMetadataID: %w", err)
 	}
-	dq := `DELETE FROM media_items WHERE id = $1`
+	dq := `DELETE FROM media_items WHERE id = ?1`
 	dargs := []any{id}
 	dq, dargs = addUIDFilter(dq, dargs, uid)
 	_, err = r.pool.ExecContext(ctx, dq, dargs...)
 	if err != nil {
 		return false, fmt.Errorf("DeleteByMetadataID: %w", err)
 	}
-	_, _ = r.pool.ExecContext(ctx, `DELETE FROM media_blobs WHERE id = $1`, blobID)
+	_, _ = r.pool.ExecContext(ctx, `DELETE FROM media_blobs WHERE id = ?1`, blobID)
 	return true, nil
 }
 
@@ -410,12 +517,12 @@ func (r *ImageRepo) DeleteByIDRange(ctx context.Context, all bool, startID, endI
 	} else {
 		parts := []string{"media_type LIKE 'image/%'"}
 		if startID != nil {
-			parts = append(parts, fmt.Sprintf("id >= $%d", n))
+			parts = append(parts, fmt.Sprintf("id >= ?%d", n))
 			args = append(args, *startID)
 			n++
 		}
 		if endID != nil {
-			parts = append(parts, fmt.Sprintf("id <= $%d", n))
+			parts = append(parts, fmt.Sprintf("id <= ?%d", n))
 			args = append(args, *endID)
 			n++
 		}
@@ -494,11 +601,11 @@ func (r *ImageRepo) UpdateBlobImageDataAndClearReferenced(ctx context.Context, i
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	_, err = tx.ExecContext(ctx, `UPDATE media_blobs SET image_data = $2 WHERE id = $1`, blobID, data)
+	_, err = tx.ExecContext(ctx, `UPDATE media_blobs SET image_data = ?2 WHERE id = ?1`, blobID, data)
 	if err != nil {
 		return fmt.Errorf("UpdateBlobImageData: %w", err)
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE media_items SET is_referenced = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, itemID)
+	_, err = tx.ExecContext(ctx, `UPDATE media_items SET is_referenced = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ?1`, itemID)
 	if err != nil {
 		return fmt.Errorf("SetItemNotReferenced: %w", err)
 	}
@@ -540,7 +647,7 @@ func (r *ImageRepo) ListMediaItemsForExport(ctx context.Context) ([]ExportItem, 
 // GetBlobImageData returns image_data for a blob. Returns nil if not found or empty.
 func (r *ImageRepo) GetBlobImageData(ctx context.Context, blobID int64) ([]byte, error) {
 	var data []byte
-	err := r.pool.QueryRowContext(ctx, `SELECT image_data FROM media_blobs WHERE id = $1`, blobID).Scan(&data)
+	err := r.pool.QueryRowContext(ctx, `SELECT image_data FROM media_blobs WHERE id = ?1`, blobID).Scan(&data)
 	if err != nil {
 		if isNoRows(err) {
 			return nil, nil
@@ -589,7 +696,7 @@ func (r *ImageRepo) GetAlbumImages(ctx context.Context, albumID int64) ([]*model
 	q := `SELECT ` + mediaItemColumnsQualified + `
 	      FROM media_items mi
 	      JOIN album_media am ON mi.id = am.media_item_id
-	      WHERE am.album_id = $1`
+	      WHERE am.album_id = ?1`
 	args := []any{albumID}
 	q, args = addUIDFilterQualified(q, args, uid, "mi")
 	q += ` ORDER BY mi.created_at ASC`
@@ -607,7 +714,7 @@ func (r *ImageRepo) GetAlbumImageByID(ctx context.Context, imageID int64) (*mode
 	q := `SELECT ` + mediaItemColumnsQualified + `
 	      FROM media_items mi
 	      JOIN album_media am ON mi.id = am.media_item_id
-	      WHERE mi.id = $1`
+	      WHERE mi.id = ?1`
 	args := []any{imageID}
 	q, args = addUIDFilterQualified(q, args, uid, "mi")
 	q += ` LIMIT 1`
@@ -650,7 +757,7 @@ func (r *ImageRepo) GetFacebookPosts(ctx context.Context, p GetFacebookPostsPara
 	argNum := 1
 
 	if p.Search != "" {
-		conds = append(conds, fmt.Sprintf("(fp.post_text LIKE $%d OR fp.title LIKE $%d)", argNum, argNum))
+		conds = append(conds, fmt.Sprintf("(fp.post_text LIKE ?%d OR fp.title LIKE ?%d)", argNum, argNum))
 		args = append(args, "%"+p.Search+"%")
 		argNum++
 	}
@@ -667,7 +774,7 @@ func (r *ImageRepo) GetFacebookPosts(ctx context.Context, p GetFacebookPostsPara
 
 	if uid > 0 {
 		args = append(args, uid)
-		baseQuery += fmt.Sprintf(" AND fp.user_id = $%d", len(args))
+		baseQuery += fmt.Sprintf(" AND fp.user_id = ?%d", len(args))
 		argNum++
 	}
 
@@ -684,7 +791,7 @@ func (r *ImageRepo) GetFacebookPosts(ctx context.Context, p GetFacebookPostsPara
 	// Fetch page
 	offset := (p.Page - 1) * p.PageSize
 	args = append(args, p.PageSize, offset)
-	pageQuery := baseQuery + fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+	pageQuery := baseQuery + fmt.Sprintf(" LIMIT ?%d OFFSET ?%d", len(args)-1, len(args))
 
 	rows, err := r.pool.QueryContext(ctx, pageQuery, args...)
 	if err != nil {
@@ -721,7 +828,7 @@ func (r *ImageRepo) GetPostMediaByID(ctx context.Context, mediaID int64) (*model
 	q := `SELECT ` + mediaItemColumnsQualified + `
 	      FROM media_items mi
 	      JOIN post_media pm ON mi.id = pm.media_item_id
-	      WHERE mi.id = $1`
+	      WHERE mi.id = ?1`
 	args := []any{mediaID}
 	q, args = addUIDFilterQualified(q, args, uid, "mi")
 	q += ` LIMIT 1`
@@ -735,7 +842,7 @@ func (r *ImageRepo) GetPostMedia(ctx context.Context, postID int64) ([]*model.Me
 	q := `SELECT ` + mediaItemColumnsQualified + `
 	      FROM media_items mi
 	      JOIN post_media pm ON mi.id = pm.media_item_id
-	      WHERE pm.post_id = $1`
+	      WHERE pm.post_id = ?1`
 	args := []any{postID}
 	q, args = addUIDFilterQualified(q, args, uid, "mi")
 	q += ` ORDER BY mi.created_at ASC`
@@ -797,4 +904,16 @@ func scanMediaItems(rows interface {
 		items = append(items, m)
 	}
 	return items, rows.Err()
+}
+
+// truncateForLog returns s truncated to at most maxRunes runes (for slog fields).
+func truncateForLog(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes]) + "…"
 }

@@ -82,7 +82,7 @@ func (r *MessageRepo) GetConversationMessages(ctx context.Context, chatSession s
 		       edited_date, service, type, sender_id, sender_name, status, replying_to,
 		       subject, text, processed, created_at, updated_at
 		FROM messages
-		WHERE chat_session = $1`
+		WHERE chat_session = ?1`
 	args := []any{chatSession}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` ORDER BY message_date ASC`
@@ -139,7 +139,7 @@ func (r *MessageRepo) GetMessageByID(ctx context.Context, id int64) (*model.Mess
 		       edited_date, service, type, sender_id, sender_name, status, replying_to,
 		       subject, text, processed, created_at, updated_at
 		FROM messages
-		WHERE id = $1`
+		WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	rows, err := r.pool.QueryContext(ctx, q, args...)
@@ -165,7 +165,7 @@ func (r *MessageRepo) GetAttachmentMediaForMessage(ctx context.Context, messageI
 	var mediaItemID int64
 	err := r.pool.QueryRowContext(ctx, `
 		SELECT media_item_id FROM message_attachments
-		WHERE message_id = $1
+		WHERE message_id = ?1
 		ORDER BY id ASC
 		LIMIT 1`, messageID,
 	).Scan(&mediaItemID)
@@ -178,7 +178,7 @@ func (r *MessageRepo) GetAttachmentMediaForMessage(ctx context.Context, messageI
 
 	// Get media_item
 	itemRows, err := r.pool.QueryContext(ctx,
-		`SELECT `+mediaItemColsForMessage+` FROM media_items WHERE id = $1`, mediaItemID)
+		`SELECT `+mediaItemColsForMessage+` FROM media_items WHERE id = ?1`, mediaItemID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -193,7 +193,7 @@ func (r *MessageRepo) GetAttachmentMediaForMessage(ctx context.Context, messageI
 	// Get blob
 	blob := &model.MediaBlob{}
 	err = r.pool.QueryRowContext(ctx,
-		`SELECT id, image_data, thumbnail_data FROM media_blobs WHERE id = $1`, item.MediaBlobID,
+		`SELECT id, image_data, thumbnail_data FROM media_blobs WHERE id = ?1`, item.MediaBlobID,
 	).Scan(&blob.ID, &blob.ImageData, &blob.ThumbnailData)
 	if err != nil {
 		if isNoRows(err) {
@@ -216,12 +216,12 @@ func (r *MessageRepo) DeleteBySession(ctx context.Context, chatSession string) (
 
 	q := `
 		DELETE FROM message_attachments
-		WHERE message_id IN (SELECT id FROM messages WHERE chat_session = $1`
+		WHERE message_id IN (SELECT id FROM messages WHERE chat_session = ?1`
 	args := []any{chatSession}
 	// For the subquery we need uid filter inline
 	if uid > 0 {
 		args = append(args, uid)
-		q += fmt.Sprintf(" AND user_id = $%d", len(args))
+		q += fmt.Sprintf(" AND user_id = ?%d", len(args))
 	}
 	q += ")"
 	_, err = tx.ExecContext(ctx, q, args...)
@@ -229,7 +229,7 @@ func (r *MessageRepo) DeleteBySession(ctx context.Context, chatSession string) (
 		return 0, fmt.Errorf("DeleteBySession attachments: %w", err)
 	}
 
-	dq := `DELETE FROM messages WHERE chat_session = $1`
+	dq := `DELETE FROM messages WHERE chat_session = ?1`
 	dargs := []any{chatSession}
 	dq, dargs = addUIDFilter(dq, dargs, uid)
 	tag, err := tx.ExecContext(ctx, dq, dargs...)

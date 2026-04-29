@@ -55,7 +55,7 @@ func (r *SavedResponseRepo) List(ctx context.Context) ([]*model.SavedResponse, e
 func (r *SavedResponseRepo) GetByID(ctx context.Context, id int64) (*model.SavedResponse, error) {
 	uid := uidFromCtx(ctx)
 	q := `SELECT id, title, content, voice, llm_provider, created_at
-	      FROM saved_responses WHERE id = $1`
+	      FROM saved_responses WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	s, err := scanSavedResponse(r.pool.QueryRowContext(ctx, q, args...))
@@ -73,7 +73,7 @@ func (r *SavedResponseRepo) Create(ctx context.Context, title, content string, v
 	uid := uidFromCtx(ctx)
 	s, err := scanSavedResponse(r.pool.QueryRowContext(ctx,
 		`INSERT INTO saved_responses (title, content, voice, llm_provider, user_id)
-		 VALUES ($1,$2,$3,$4,$5)
+		 VALUES (?1,?2,?3,?4,?5)
 		 RETURNING id, title, content, voice, llm_provider, created_at`,
 		title, content, voice, llmProvider, uidVal(uid),
 	))
@@ -87,11 +87,11 @@ func (r *SavedResponseRepo) Create(ctx context.Context, title, content string, v
 func (r *SavedResponseRepo) Update(ctx context.Context, id int64, title, content, voice, llmProvider *string) (*model.SavedResponse, error) {
 	uid := uidFromCtx(ctx)
 	q := `UPDATE saved_responses SET
-	      title        = COALESCE($1, title),
-	      content      = COALESCE($2, content),
-	      voice        = COALESCE($3, voice),
-	      llm_provider = COALESCE($4, llm_provider)
-	      WHERE id = $5`
+	      title        = COALESCE(?1, title),
+	      content      = COALESCE(?2, content),
+	      voice        = COALESCE(?3, voice),
+	      llm_provider = COALESCE(?4, llm_provider)
+	      WHERE id = ?5`
 	args := []any{title, content, voice, llmProvider, id}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` RETURNING id, title, content, voice, llm_provider, created_at`
@@ -108,7 +108,7 @@ func (r *SavedResponseRepo) Update(ctx context.Context, id int64, title, content
 // Delete removes a saved response. Returns false if not found.
 func (r *SavedResponseRepo) Delete(ctx context.Context, id int64) (bool, error) {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM saved_responses WHERE id = $1`
+	q := `DELETE FROM saved_responses WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	tag, err := r.pool.ExecContext(ctx, q, args...)

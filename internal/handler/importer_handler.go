@@ -284,11 +284,12 @@ func (h *ImporterHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/emails/embeddings/backfill/cancel", h.EmailEmbeddingBackfillCancel)
 	r.Get("/emails/embeddings/backfill/status", h.EmailEmbeddingBackfillStatus)
 
-	// Message embedding backfill (embed rows where embedding_vector is NULL)
-	r.Post("/messages/embeddings/backfill", h.MessageEmbeddingBackfillStart)
-	r.Get("/messages/embeddings/backfill/stream", h.MessageEmbeddingBackfillStream)
-	r.Post("/messages/embeddings/backfill/cancel", h.MessageEmbeddingBackfillCancel)
-	r.Get("/messages/embeddings/backfill/status", h.MessageEmbeddingBackfillStatus)
+	// // Message embedding backfill (embed rows where embedding_vector is NULL)
+	//superseeded by message context embedding backfill
+	// r.Post("/messages/embeddings/backfill", h.MessageEmbeddingBackfillStart)
+	// r.Get("/messages/embeddings/backfill/stream", h.MessageEmbeddingBackfillStream)
+	// r.Post("/messages/embeddings/backfill/cancel", h.MessageEmbeddingBackfillCancel)
+	// r.Get("/messages/embeddings/backfill/status", h.MessageEmbeddingBackfillStatus)
 
 	// Message context embedding backfill (windows of prev/current/next messages into sqlite-vec table)
 	r.Post("/messages/context-embeddings/backfill", h.MessageContextEmbeddingBackfillStart)
@@ -1888,7 +1889,7 @@ func runEmailEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingServ
 		SELECT id, COALESCE(to_addresses, ''), COALESCE(from_address, ''), COALESCE(plain_text, '')
 		FROM emails
 		WHERE embedding_vector IS NULL
-		  AND COALESCE(user_id, 0) = $1
+		  AND COALESCE(user_id, 0) = ?1
 		ORDER BY id ASC
 	`, uid)
 	if err != nil {
@@ -1993,9 +1994,10 @@ func runEmailEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingServ
 		}
 
 		vectorLiteral := float32SliceToVectorLiteral(vec)
+		// PostgreSQL (pgvector) uses $n placeholders; SQLite uses ?n (see go-sqlite3 $n binding).
 		emailEmbedSQL := `UPDATE emails SET embedding_vector = $1::vector, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND COALESCE(user_id, 0) = $3`
 		if sqlutil.IsSQLite(ctx, pool) {
-			emailEmbedSQL = `UPDATE emails SET embedding_vector = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND COALESCE(user_id, 0) = $3`
+			emailEmbedSQL = `UPDATE emails SET embedding_vector = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND COALESCE(user_id, 0) = ?3`
 		}
 		if _, err := pool.ExecContext(ctx, emailEmbedSQL, vectorLiteral, c.id, uid); err != nil {
 			errorsCount++
@@ -2121,35 +2123,35 @@ func (h *ImporterHandler) EmailEmbeddingBackfillStatus(w http.ResponseWriter, r 
 	writeJSON(w, emailEmbeddingBackfillJob.Status())
 }
 
-func (h *ImporterHandler) MessageEmbeddingBackfillStart(w http.ResponseWriter, r *http.Request) {
-	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
-		return
-	}
-	if err := messageEmbeddingBackfillJob.AssertNotRunning(); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if h.pool == nil {
-		writeError(w, http.StatusServiceUnavailable, "message embedding backfill not configured")
-		return
-	}
-	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
-		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
-		return
-	}
+// func (h *ImporterHandler) MessageEmbeddingBackfillStart(w http.ResponseWriter, r *http.Request) {
+// 	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
+// 		return
+// 	}
+// 	if err := messageEmbeddingBackfillJob.AssertNotRunning(); err != nil {
+// 		writeError(w, http.StatusBadRequest, err.Error())
+// 		return
+// 	}
+// 	if h.pool == nil {
+// 		writeError(w, http.StatusServiceUnavailable, "message embedding backfill not configured")
+// 		return
+// 	}
+// 	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
+// 		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
+// 		return
+// 	}
 
-	messageEmbeddingBackfillJob.Start()
-	messageEmbeddingBackfillJob.UpdateState(map[string]any{
-		"status": "in_progress", "status_line": "Starting message embedding backfill...",
-		"total": 0, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0, "error_message": nil,
-	})
-	messageEmbeddingBackfillJob.Broadcast("status", map[string]any{"status_line": "Starting message embedding backfill..."})
+// 	messageEmbeddingBackfillJob.Start()
+// 	messageEmbeddingBackfillJob.UpdateState(map[string]any{
+// 		"status": "in_progress", "status_line": "Starting message embedding backfill...",
+// 		"total": 0, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0, "error_message": nil,
+// 	})
+// 	messageEmbeddingBackfillJob.Broadcast("status", map[string]any{"status_line": "Starting message embedding backfill..."})
 
-	uid := appctx.UserIDFromCtx(r.Context())
-	go runMessageEmbeddingBackfill(h.pool, h.embeddingSvc, messageEmbeddingBackfillJob, uid)
+// 	uid := appctx.UserIDFromCtx(r.Context())
+// 	go runMessageEmbeddingBackfill(h.pool, h.embeddingSvc, messageEmbeddingBackfillJob, uid)
 
-	writeJSON(w, map[string]any{"message": "Message embedding backfill started", "status": "started"})
-}
+// 	writeJSON(w, map[string]any{"message": "Message embedding backfill started", "status": "started"})
+// }
 
 func runMessageEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingService, job *importer.ImportJob, uid int64) {
 	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
@@ -2159,7 +2161,8 @@ func runMessageEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingSe
 		SELECT id, COALESCE(chat_session, ''), COALESCE(text, '')
 		FROM messages
 		WHERE embedding_vector IS NULL
-		  AND COALESCE(user_id, 0) = $1
+		  AND COALESCE(user_id, 0) = ?1
+		  AND text IS NOT NULL
 		ORDER BY id ASC
 	`, uid)
 	if err != nil {
@@ -2263,7 +2266,7 @@ func runMessageEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingSe
 		vectorLiteral := float32SliceToVectorLiteral(vec)
 		msgEmbedSQL := `UPDATE messages SET embedding_vector = $1::vector, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND COALESCE(user_id, 0) = $3`
 		if sqlutil.IsSQLite(ctx, pool) {
-			msgEmbedSQL = `UPDATE messages SET embedding_vector = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND COALESCE(user_id, 0) = $3`
+			msgEmbedSQL = `UPDATE messages SET embedding_vector = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND COALESCE(user_id, 0) = ?3`
 		}
 		if _, err := pool.ExecContext(ctx, msgEmbedSQL, vectorLiteral, c.id, uid); err != nil {
 			errorsCount++
@@ -2343,20 +2346,20 @@ func buildMessageEmbeddingInput(chatSession, text string, maxChars int) string {
 	return strings.TrimSpace(prefix + "\n" + body)
 }
 
-func (h *ImporterHandler) MessageEmbeddingBackfillStream(w http.ResponseWriter, r *http.Request) {
-	messageEmbeddingBackfillJob.ServeSSE(w, r)
-}
+// func (h *ImporterHandler) MessageEmbeddingBackfillStream(w http.ResponseWriter, r *http.Request) {
+// 	messageEmbeddingBackfillJob.ServeSSE(w, r)
+// }
 
-func (h *ImporterHandler) MessageEmbeddingBackfillCancel(w http.ResponseWriter, r *http.Request) {
-	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
-		return
-	}
-	writeJSON(w, messageEmbeddingBackfillJob.Cancel())
-}
+// func (h *ImporterHandler) MessageEmbeddingBackfillCancel(w http.ResponseWriter, r *http.Request) {
+// 	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
+// 		return
+// 	}
+// 	writeJSON(w, messageEmbeddingBackfillJob.Cancel())
+// }
 
-func (h *ImporterHandler) MessageEmbeddingBackfillStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, messageEmbeddingBackfillJob.Status())
-}
+// func (h *ImporterHandler) MessageEmbeddingBackfillStatus(w http.ResponseWriter, r *http.Request) {
+// 	writeJSON(w, messageEmbeddingBackfillJob.Status())
+// }
 
 func (h *ImporterHandler) MessageContextEmbeddingBackfillStart(w http.ResponseWriter, r *http.Request) {
 	if !RequireOwnerMasterUnlockOrNoKeyring(w, r, h.sessionStore, h.sensitiveSvc, h.authSvc) {
@@ -2408,6 +2411,7 @@ func runMessageContextEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.Embe
 		SELECT m.id, COALESCE(m.chat_session, ''), COALESCE(m.text, '')
 		FROM messages m
 		WHERE COALESCE(m.user_id, 0) = ?
+		  AND m.text IS NOT NULL
 		  AND NOT EXISTS (
 			SELECT 1 FROM message_embeddings me WHERE me.rowid = m.id
 		  )

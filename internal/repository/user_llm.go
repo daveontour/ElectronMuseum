@@ -56,7 +56,7 @@ func (r *UserRepo) GetUserLLMStored(ctx context.Context, userID int64) (*UserLLM
 		       COALESCE(user_claude_model, ''),
 		       COALESCE(user_tavily_api_key, ''),
 		       allow_server_llm_keys
-		FROM users WHERE id = $1`,
+		FROM users WHERE id = ?1`,
 		userID,
 	).Scan(&s.GeminiAPIKey, &s.AnthropicAPIKey, &s.GeminiModel, &s.ClaudeModel, &s.TavilyAPIKey, &s.AllowServerLLMKeys)
 	if err != nil {
@@ -74,12 +74,12 @@ func (r *UserRepo) PatchUserLLMSettings(ctx context.Context, userID int64, p Use
 	next := mergeLLMStoredWithPatch(*cur, p)
 	_, err = r.pool.ExecContext(ctx, `
 		UPDATE users SET
-			user_gemini_api_key = NULLIF($2, ''),
-			user_anthropic_api_key = NULLIF($3, ''),
-			user_gemini_model = NULLIF($4, ''),
-			user_claude_model = NULLIF($5, ''),
-			user_tavily_api_key = NULLIF($6, '')
-		WHERE id = $1`,
+			user_gemini_api_key = NULLIF(?2, ''),
+			user_anthropic_api_key = NULLIF(?3, ''),
+			user_gemini_model = NULLIF(?4, ''),
+			user_claude_model = NULLIF(?5, ''),
+			user_tavily_api_key = NULLIF(?6, '')
+		WHERE id = ?1`,
 		userID, next.GeminiAPIKey, next.AnthropicAPIKey, next.GeminiModel, next.ClaudeModel, next.TavilyAPIKey,
 	)
 	return err

@@ -54,7 +54,7 @@ func (r *UserRepo) Create(ctx context.Context, email, passwordHash, displayName,
 	var u User
 	err := r.pool.QueryRowContext(ctx,
 		`INSERT INTO users (email, password_hash, display_name, first_name, family_name, is_admin)
-		 VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), FALSE)
+		 VALUES (?1, ?2, NULLIF(?3, ''), NULLIF(?4, ''), NULLIF(?5, ''), FALSE)
 		 RETURNING id, email, password_hash,
 		           COALESCE(display_name, ''), COALESCE(first_name, ''), COALESCE(family_name, ''),
 		           is_active, is_admin, created_at`,
@@ -68,7 +68,7 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*User, error)
 	var u User
 	err := r.pool.QueryRowContext(ctx,
 		`SELECT id, email, password_hash, COALESCE(display_name, ''), COALESCE(first_name, ''), COALESCE(family_name, ''), is_active, is_admin, created_at
-		 FROM users WHERE email = $1`,
+		 FROM users WHERE email = ?1`,
 		email,
 	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.FirstName, &u.FamilyName, &u.IsActive, &u.IsAdmin, &u.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -78,8 +78,8 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*User, error)
 }
 
 const findByFullNameSelect = `SELECT id, email, password_hash, COALESCE(display_name, ''), COALESCE(first_name, ''), COALESCE(family_name, ''), is_active, is_admin, created_at
-		 FROM users WHERE LOWER(TRIM(COALESCE(first_name, ''))) = LOWER($1)
-		   AND LOWER(TRIM(COALESCE(family_name, ''))) = LOWER($2)
+		 FROM users WHERE LOWER(TRIM(COALESCE(first_name, ''))) = LOWER(?1)
+		   AND LOWER(TRIM(COALESCE(family_name, ''))) = LOWER(?2)
 		 LIMIT 2`
 
 // FindByFullName parses fullName as whitespace-separated tokens: the first token is first_name
@@ -130,7 +130,7 @@ func (r *UserRepo) FindByID(ctx context.Context, id int64) (*User, error) {
 	var u User
 	err := r.pool.QueryRowContext(ctx,
 		`SELECT id, email, password_hash, COALESCE(display_name, ''), COALESCE(first_name, ''), COALESCE(family_name, ''), is_active, is_admin, allow_server_llm_keys, created_at
-		 FROM users WHERE id = $1`,
+		 FROM users WHERE id = ?1`,
 		id,
 	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.FirstName, &u.FamilyName, &u.IsActive, &u.IsAdmin, &u.AllowServerLLMKeys, &u.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -142,7 +142,7 @@ func (r *UserRepo) FindByID(ctx context.Context, id int64) (*User, error) {
 // UpdatePasswordHash replaces the password hash for a user.
 func (r *UserRepo) UpdatePasswordHash(ctx context.Context, id int64, hash string) error {
 	_, err := r.pool.ExecContext(ctx,
-		`UPDATE users SET password_hash = $1 WHERE id = $2`,
+		`UPDATE users SET password_hash = ?1 WHERE id = ?2`,
 		hash, id,
 	)
 	return err
@@ -151,7 +151,7 @@ func (r *UserRepo) UpdatePasswordHash(ctx context.Context, id int64, hash string
 // TouchLastLogin sets last_login_at = CURRENT_TIMESTAMP for the given user.
 func (r *UserRepo) TouchLastLogin(ctx context.Context, id int64) {
 	// Best-effort — ignore error so login still succeeds if this fails.
-	_, _ = r.pool.ExecContext(ctx, `UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1`, id)
+	_, _ = r.pool.ExecContext(ctx, `UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?1`, id)
 }
 
 // AdminExists reports whether any user with is_admin = true exists.
@@ -176,7 +176,7 @@ func (r *UserRepo) AnyNonAdminUserExists(ctx context.Context) (bool, error) {
 // SetIsAdmin sets the is_admin flag for the given user.
 func (r *UserRepo) SetIsAdmin(ctx context.Context, id int64, isAdmin bool) error {
 	_, err := r.pool.ExecContext(ctx,
-		`UPDATE users SET is_admin = $1 WHERE id = $2`,
+		`UPDATE users SET is_admin = ?1 WHERE id = ?2`,
 		isAdmin, id,
 	)
 	return err
@@ -186,7 +186,7 @@ func (r *UserRepo) SetIsAdmin(ctx context.Context, id int64, isAdmin bool) error
 func (r *UserRepo) EmailExists(ctx context.Context, email string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`, email,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE email = ?1)`, email,
 	).Scan(&exists)
 	return exists, err
 }
@@ -224,7 +224,7 @@ func (r *UserRepo) CreateSession(ctx context.Context, id string, userID int64, e
 	exp := sqlutil.DBTime{Time: expiresAt.UTC()}
 	_, err := r.pool.ExecContext(ctx,
 		`INSERT INTO sessions (id, user_id, expires_at, is_visitor, share_link_session, visitor_key_hint_id)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
 		id, userID, exp, isVisitor, shareLinkSession, hintArg,
 	)
 	return err
@@ -236,7 +236,7 @@ func (r *UserRepo) FindSession(ctx context.Context, id string) (*AuthSession, er
 	var hint sql.NullInt64
 	err := r.pool.QueryRowContext(ctx,
 		`SELECT id, user_id, expires_at, is_visitor, share_link_session, visitor_key_hint_id FROM sessions
-		 WHERE id = $1 AND expires_at > CURRENT_TIMESTAMP`,
+		 WHERE id = ?1 AND expires_at > CURRENT_TIMESTAMP`,
 		id,
 	).Scan(&s.ID, &s.UserID, &s.ExpiresAt, &s.IsVisitor, &s.ShareLinkSession, &hint)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -275,7 +275,7 @@ func (r *UserRepo) GetVisitorKeyPermissionsForOwner(ctx context.Context, hintID,
 		SELECT h.can_messages_chat, h.can_emails, h.can_contacts, h.can_relationship_sensitive, h.can_sensitive_private
 		FROM visitor_key_hints h
 		INNER JOIN sensitive_keyring k ON k.id = h.keyring_id AND k.is_master = FALSE
-		WHERE h.id = $1 AND k.user_id = $2`,
+		WHERE h.id = ?1 AND k.user_id = ?2`,
 		hintID, ownerUserID,
 	).Scan(&canMessages, &canEmails, &canContacts, &canRelationships, &canSensitivePrivate)
 	if errors.Is(e, sql.ErrNoRows) {
@@ -291,7 +291,7 @@ func (r *UserRepo) GetVisitorKeyPermissionsForOwner(ctx context.Context, hintID,
 func (r *UserRepo) ExtendSession(ctx context.Context, id string, newExpiry time.Time) error {
 	exp := sqlutil.DBTime{Time: newExpiry.UTC()}
 	_, err := r.pool.ExecContext(ctx,
-		`UPDATE sessions SET expires_at = $1 WHERE id = $2`,
+		`UPDATE sessions SET expires_at = ?1 WHERE id = ?2`,
 		exp, id,
 	)
 	return err
@@ -299,7 +299,7 @@ func (r *UserRepo) ExtendSession(ctx context.Context, id string, newExpiry time.
 
 // DeleteSession removes a session (used on logout).
 func (r *UserRepo) DeleteSession(ctx context.Context, id string) error {
-	_, err := r.pool.ExecContext(ctx, `DELETE FROM sessions WHERE id = $1`, id)
+	_, err := r.pool.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?1`, id)
 	return err
 }
 
@@ -343,12 +343,12 @@ func (r *UserRepo) ListAll(ctx context.Context) ([]*User, error) {
 // SetAllowServerLLMKeys sets whether the user may use server GEMINI_API_KEY, ANTHROPIC_API_KEY,
 // and TAVILY_API_KEY when they have not set their own (per-provider) keys.
 func (r *UserRepo) SetAllowServerLLMKeys(ctx context.Context, userID int64, allow bool) error {
-	_, err := r.pool.ExecContext(ctx, `UPDATE users SET allow_server_llm_keys = $2 WHERE id = $1`, userID, allow)
+	_, err := r.pool.ExecContext(ctx, `UPDATE users SET allow_server_llm_keys = ?2 WHERE id = ?1`, userID, allow)
 	return err
 }
 
 // Delete removes a user by ID; all associated data cascades via FK.
 func (r *UserRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.pool.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
+	_, err := r.pool.ExecContext(ctx, `DELETE FROM users WHERE id = ?1`, id)
 	return err
 }

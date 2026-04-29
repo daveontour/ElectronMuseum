@@ -56,7 +56,7 @@ func (r *VoiceRepo) List(ctx context.Context) ([]*model.CustomVoice, error) {
 // GetByID returns a single custom voice.
 func (r *VoiceRepo) GetByID(ctx context.Context, id int64) (*model.CustomVoice, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT ` + voiceCols + ` FROM custom_voices WHERE id = $1`
+	q := `SELECT ` + voiceCols + ` FROM custom_voices WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	v, err := scanVoice(r.pool.QueryRowContext(ctx, q, args...))
@@ -72,7 +72,7 @@ func (r *VoiceRepo) GetByID(ctx context.Context, id int64) (*model.CustomVoice, 
 // GetByKey returns a custom voice by its slug key.
 func (r *VoiceRepo) GetByKey(ctx context.Context, key string) (*model.CustomVoice, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT ` + voiceCols + ` FROM custom_voices WHERE key = $1`
+	q := `SELECT ` + voiceCols + ` FROM custom_voices WHERE key = ?1`
 	args := []any{key}
 	q, args = addUIDFilter(q, args, uid)
 	v, err := scanVoice(r.pool.QueryRowContext(ctx, q, args...))
@@ -88,7 +88,7 @@ func (r *VoiceRepo) GetByKey(ctx context.Context, key string) (*model.CustomVoic
 // KeyExistsExcluding returns true if another row with key exists (excluding given ID).
 func (r *VoiceRepo) KeyExistsExcluding(ctx context.Context, key string, excludeID int64) (bool, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT COUNT(*) FROM custom_voices WHERE key=$1 AND id!=$2`
+	q := `SELECT COUNT(*) FROM custom_voices WHERE key=?1 AND id!=?2`
 	args := []any{key, excludeID}
 	q, args = addUIDFilter(q, args, uid)
 	var n int
@@ -101,7 +101,7 @@ func (r *VoiceRepo) Create(ctx context.Context, key, name string, description *s
 	uid := uidFromCtx(ctx)
 	v, err := scanVoice(r.pool.QueryRowContext(ctx,
 		`INSERT INTO custom_voices (key, name, description, instructions, creativity, user_id)
-		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING `+voiceCols,
+		 VALUES (?1,?2,?3,?4,?5,?6) RETURNING `+voiceCols,
 		key, name, description, instructions, creativity, uidVal(uid),
 	))
 	if err != nil {
@@ -114,13 +114,13 @@ func (r *VoiceRepo) Create(ctx context.Context, key, name string, description *s
 func (r *VoiceRepo) Update(ctx context.Context, id int64, key, name *string, description *string, instructions *string, creativity *float64) (*model.CustomVoice, error) {
 	uid := uidFromCtx(ctx)
 	q := `UPDATE custom_voices SET
-	      key          = COALESCE($1, key),
-	      name         = COALESCE($2, name),
-	      description  = COALESCE($3, description),
-	      instructions = COALESCE($4, instructions),
-	      creativity   = COALESCE($5, creativity),
+	      key          = COALESCE(?1, key),
+	      name         = COALESCE(?2, name),
+	      description  = COALESCE(?3, description),
+	      instructions = COALESCE(?4, instructions),
+	      creativity   = COALESCE(?5, creativity),
 	      updated_at   = CURRENT_TIMESTAMP
-	      WHERE id = $6`
+	      WHERE id = ?6`
 	args := []any{key, name, description, instructions, creativity, id}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` RETURNING ` + voiceCols
@@ -137,7 +137,7 @@ func (r *VoiceRepo) Update(ctx context.Context, id int64, key, name *string, des
 // Delete removes a custom voice.
 func (r *VoiceRepo) Delete(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM custom_voices WHERE id = $1`
+	q := `DELETE FROM custom_voices WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)

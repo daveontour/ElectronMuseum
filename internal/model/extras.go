@@ -6,23 +6,23 @@ import "github.com/daveontour/aimuseum/internal/sqlutil"
 
 // ReferenceDocument is a row from the reference_documents table.
 type ReferenceDocument struct {
-	ID               int64
-	Filename         string
-	Title            *string
-	Description      *string
-	Author           *string
-	ContentType      string
-	Size             int64
-	Tags             *string
-	Categories       *string
-	Notes            *string
-	AvailableForTask bool
+	ID                    int64
+	Filename              string
+	Title                 *string
+	Description           *string
+	Author                *string
+	ContentType           string
+	Size                  int64
+	Tags                  *string
+	Categories            *string
+	Notes                 *string
+	AvailableForTask      bool
 	IncludeInSystemPrompt bool
-	IsPrivate        bool
-	IsSensitive      bool
-	IsEncrypted      bool
-	CreatedAt        sqlutil.DBTime
-	UpdatedAt        sqlutil.DBTime
+	IsPrivate             bool
+	IsSensitive           bool
+	IsEncrypted           bool
+	CreatedAt             sqlutil.DBTime
+	UpdatedAt             sqlutil.DBTime
 }
 
 // ReferenceDocumentPromptBlob is a reference_documents row (with data blob) for system-prompt inlining.
@@ -65,17 +65,17 @@ type Interest struct {
 // VisitorKeyHint is a row from visitor_key_hints (plain-text hint for unlock UI).
 // KeyringID is set when listing for admin; omitted from the public unlock-dialog JSON.
 type VisitorKeyHint struct {
-	ID                  int64     `json:"id"`
-	KeyringID           int64     `json:"keyring_id,omitempty"`
-	Hint                string    `json:"hint"`
+	ID                  int64          `json:"id"`
+	KeyringID           int64          `json:"keyring_id,omitempty"`
+	Hint                string         `json:"hint"`
 	CreatedAt           sqlutil.DBTime `json:"created_at"`
-	CanMessagesChat     bool      `json:"can_messages_chat"`
-	CanEmails           bool      `json:"can_emails"`
-	CanContacts         bool      `json:"can_contacts"`
-	CanRelationships    bool      `json:"can_relationships"`
-	CanSensitivePrivate bool      `json:"can_sensitive_private"`
-	LLMAllowOwnerKeys   bool      `json:"llm_allow_owner_keys"`
-	LLMAllowServerKeys  bool      `json:"llm_allow_server_keys"`
+	CanMessagesChat     bool           `json:"can_messages_chat"`
+	CanEmails           bool           `json:"can_emails"`
+	CanContacts         bool           `json:"can_contacts"`
+	CanRelationships    bool           `json:"can_relationships"`
+	CanSensitivePrivate bool           `json:"can_sensitive_private"`
+	LLMAllowOwnerKeys   bool           `json:"llm_allow_owner_keys"`
+	LLMAllowServerKeys  bool           `json:"llm_allow_server_keys"`
 }
 
 // ── App Configuration ──────────────────────────────────────────────────────────

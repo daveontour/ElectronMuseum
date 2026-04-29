@@ -78,22 +78,22 @@ func (h *AdminHandler) GetImportControlLastRun(w http.ResponseWriter, r *http.Re
 	uidArg := []any{uid}
 	// Email / IMAP — same table, split by import source
 	for k, v := range map[string]string{
-		"email_processing": `SELECT CAST(MAX(created_at) AS TEXT) FROM emails WHERE user_id = $1 AND source = 'gmail'`,
-		"imap_processing":  `SELECT CAST(MAX(created_at) AS TEXT) FROM emails WHERE user_id = $1 AND (source IS NULL OR source <> 'gmail')`,
+		"email_processing": `SELECT CAST(MAX(created_at) AS TEXT) FROM emails WHERE user_id = ?1 AND source = 'gmail'`,
+		"imap_processing":  `SELECT CAST(MAX(created_at) AS TEXT) FROM emails WHERE user_id = ?1 AND (source IS NULL OR source <> 'gmail')`,
 	} {
 		key, info := run(k, v, uidArg...)
 		result[key] = info
 	}
 	// Message services
 	for k, v := range map[string]string{
-		"whatsapp":      `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = $1 AND service = 'WhatsApp'`,
-		"instagram":     `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = $1 AND service = 'Instagram'`,
-		"imessage":      `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = $1 AND service IN ('iMessage', 'SMS', 'MMS')`,
-		"facebook":      `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = $1 AND service = 'Facebook Messenger'`,
-		"zip_whatsapp":  `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = $1 AND service = 'WhatsApp'`,
-		"zip_instagram": `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = $1 AND service = 'Instagram'`,
-		"zip_imessage":  `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = $1 AND service IN ('iMessage', 'SMS', 'MMS')`,
-		"upload_zip":    `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = $1`,
+		"whatsapp":      `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = ?1 AND service = 'WhatsApp'`,
+		"instagram":     `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = ?1 AND service = 'Instagram'`,
+		"imessage":      `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = ?1 AND service IN ('iMessage', 'SMS', 'MMS')`,
+		"facebook":      `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = ?1 AND service = 'Facebook Messenger'`,
+		"zip_whatsapp":  `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = ?1 AND service = 'WhatsApp'`,
+		"zip_instagram": `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = ?1 AND service = 'Instagram'`,
+		"zip_imessage":  `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = ?1 AND service IN ('iMessage', 'SMS', 'MMS')`,
+		"upload_zip":    `SELECT CAST(MAX(created_at) AS TEXT) FROM messages WHERE user_id = ?1`,
 	} {
 		key, info := run(k, v, uidArg...)
 		result[key] = info
@@ -101,13 +101,13 @@ func (h *AdminHandler) GetImportControlLastRun(w http.ResponseWriter, r *http.Re
 	// Facebook ZIP / full — aggregate activity across Messenger + albums + posts + FB locations
 	fbAllSQL := `
 SELECT CAST(MAX(ts) AS TEXT) FROM (
-  SELECT MAX(m.created_at) AS ts FROM messages m WHERE m.user_id = $1 AND m.service = 'Facebook Messenger'
+  SELECT MAX(m.created_at) AS ts FROM messages m WHERE m.user_id = ?1 AND m.service = 'Facebook Messenger'
   UNION ALL
-  SELECT MAX(fa.updated_at) FROM facebook_albums fa WHERE fa.user_id = $1
+  SELECT MAX(fa.updated_at) FROM facebook_albums fa WHERE fa.user_id = ?1
   UNION ALL
-  SELECT MAX(fp.updated_at) FROM facebook_posts fp WHERE fp.user_id = $1
+  SELECT MAX(fp.updated_at) FROM facebook_posts fp WHERE fp.user_id = ?1
   UNION ALL
-  SELECT MAX(l.created_at) FROM locations l WHERE l.user_id = $1 AND l.source = 'facebook'
+  SELECT MAX(l.created_at) FROM locations l WHERE l.user_id = ?1 AND l.source = 'facebook'
 ) t`
 	for _, key := range []string{"zip_facebook", "facebook_all"} {
 		k, info := run(key, fbAllSQL, uidArg...)
@@ -115,23 +115,23 @@ SELECT CAST(MAX(ts) AS TEXT) FROM (
 	}
 	// Other path imports
 	for k, v := range map[string]string{
-		"facebook_albums":      `SELECT CAST(MAX(updated_at) AS TEXT) FROM facebook_albums WHERE user_id = $1`,
-		"facebook_posts":       `SELECT CAST(MAX(updated_at) AS TEXT) FROM facebook_posts WHERE user_id = $1`,
-		"facebook_places":      `SELECT CAST(MAX(created_at) AS TEXT) FROM locations WHERE user_id = $1 AND source = 'facebook'`,
-		"filesystem":           `SELECT CAST(MAX(created_at) AS TEXT) FROM media_items WHERE user_id = $1 AND source = 'filesystem'`,
-		"filesystem_reference": `SELECT CAST(MAX(created_at) AS TEXT) FROM media_items WHERE user_id = $1 AND source = 'filesystem'`,
-		"upload_photos":        `SELECT CAST(MAX(created_at) AS TEXT) FROM media_items WHERE user_id = $1 AND source = 'filesystem'`,
-		"reference_import":     `SELECT CAST(MAX(updated_at) AS TEXT) FROM reference_documents WHERE user_id = $1`,
+		"facebook_albums":      `SELECT CAST(MAX(updated_at) AS TEXT) FROM facebook_albums WHERE user_id = ?1`,
+		"facebook_posts":       `SELECT CAST(MAX(updated_at) AS TEXT) FROM facebook_posts WHERE user_id = ?1`,
+		"facebook_places":      `SELECT CAST(MAX(created_at) AS TEXT) FROM locations WHERE user_id = ?1 AND source = 'facebook'`,
+		"filesystem":           `SELECT CAST(MAX(created_at) AS TEXT) FROM media_items WHERE user_id = ?1 AND source = 'filesystem'`,
+		"filesystem_reference": `SELECT CAST(MAX(created_at) AS TEXT) FROM media_items WHERE user_id = ?1 AND source = 'filesystem'`,
+		"upload_photos":        `SELECT CAST(MAX(created_at) AS TEXT) FROM media_items WHERE user_id = ?1 AND source = 'filesystem'`,
+		"reference_import":     `SELECT CAST(MAX(updated_at) AS TEXT) FROM reference_documents WHERE user_id = ?1`,
 	} {
 		key, info := run(k, v, uidArg...)
 		result[key] = info
 	}
 	// Thumbnails processing (best-effort: last media row update)
-	key, info := run("thumbnails", `SELECT CAST(MAX(updated_at) AS TEXT) FROM media_items WHERE user_id = $1`, uidArg...)
+	key, info := run("thumbnails", `SELECT CAST(MAX(updated_at) AS TEXT) FROM media_items WHERE user_id = ?1`, uidArg...)
 	result[key] = info
-	key, info = run("contacts", `SELECT CAST(MAX(updated_at) AS TEXT) FROM contacts WHERE user_id = $1 AND id <> 0`, uidArg...)
+	key, info = run("contacts", `SELECT CAST(MAX(updated_at) AS TEXT) FROM contacts WHERE user_id = ?1 AND id <> 0`, uidArg...)
 	result[key] = info
-	key, info = run("image_export", `SELECT CAST(MAX(updated_at) AS TEXT) FROM media_items WHERE user_id = $1`, uidArg...)
+	key, info = run("image_export", `SELECT CAST(MAX(updated_at) AS TEXT) FROM media_items WHERE user_id = ?1`, uidArg...)
 	result[key] = info
 
 	writeJSON(w, result)
@@ -317,7 +317,7 @@ func (h *AdminHandler) sampleEmailsForAI(ctx context.Context, limit int) (string
 		FROM emails
 		WHERE plain_text IS NOT NULL AND user_deleted = FALSE
 		ORDER BY date DESC
-		LIMIT $1`, limit)
+		LIMIT ?1`, limit)
 	if err != nil {
 		return "", err
 	}

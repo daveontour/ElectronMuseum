@@ -64,25 +64,25 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch kind {
 	case "emails_gmail":
-		tag, e := h.pool.ExecContext(ctx, `DELETE FROM emails WHERE user_id = $1 AND source = 'gmail'`, uid)
+		tag, e := h.pool.ExecContext(ctx, `DELETE FROM emails WHERE user_id = ?1 AND source = 'gmail'`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
 		}
 	case "emails_imap":
-		tag, e := h.pool.ExecContext(ctx, `DELETE FROM emails WHERE user_id = $1 AND (source IS NULL OR source <> 'gmail')`, uid)
+		tag, e := h.pool.ExecContext(ctx, `DELETE FROM emails WHERE user_id = ?1 AND (source IS NULL OR source <> 'gmail')`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
 		}
 	case "whatsapp":
-		tag, e := h.pool.ExecContext(ctx, `DELETE FROM messages WHERE user_id = $1 AND service = 'WhatsApp'`, uid)
+		tag, e := h.pool.ExecContext(ctx, `DELETE FROM messages WHERE user_id = ?1 AND service = 'WhatsApp'`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
 		}
 	case "instagram":
-		tag, e := h.pool.ExecContext(ctx, `DELETE FROM messages WHERE user_id = $1 AND service = 'Instagram'`, uid)
+		tag, e := h.pool.ExecContext(ctx, `DELETE FROM messages WHERE user_id = ?1 AND service = 'Instagram'`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
@@ -90,7 +90,7 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 	case "imessage":
 		tag, e := h.pool.ExecContext(ctx, `
 			DELETE FROM messages
-			WHERE user_id = $1 AND service IN ('iMessage', 'SMS', 'MMS')`, uid)
+			WHERE user_id = ?1 AND service IN ('iMessage', 'SMS', 'MMS')`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
@@ -113,7 +113,7 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		n, err = h.purgeFacebookPosts(ctx, uid)
 		deleted = n
 	case "facebook_places":
-		tag, e := h.pool.ExecContext(ctx, `DELETE FROM locations WHERE user_id = $1 AND source = 'facebook'`, uid)
+		tag, e := h.pool.ExecContext(ctx, `DELETE FROM locations WHERE user_id = ?1 AND source = 'facebook'`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
@@ -125,20 +125,20 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 	case "thumbnails":
 		tag, e := h.pool.ExecContext(ctx, `
 			UPDATE media_blobs SET thumbnail_data = NULL
-			WHERE id IN (SELECT media_blob_id FROM media_items WHERE user_id = $1)
+			WHERE id IN (SELECT media_blob_id FROM media_items WHERE user_id = ?1)
 			  AND thumbnail_data IS NOT NULL`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
 		}
 	case "reference_documents":
-		tag, e := h.pool.ExecContext(ctx, `DELETE FROM reference_documents WHERE user_id = $1`, uid)
+		tag, e := h.pool.ExecContext(ctx, `DELETE FROM reference_documents WHERE user_id = ?1`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
 		}
 	case "contacts":
-		tag, e := h.pool.ExecContext(ctx, `DELETE FROM contacts WHERE user_id = $1 AND id <> 0`, uid)
+		tag, e := h.pool.ExecContext(ctx, `DELETE FROM contacts WHERE user_id = ?1 AND id <> 0`, uid)
 		err = e
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
@@ -149,7 +149,7 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		tag, e := h.pool.ExecContext(ctx, `
 			DELETE FROM message_embeddings
 			WHERE rowid IN (
-				SELECT id FROM messages WHERE COALESCE(user_id, 0) = $1
+				SELECT id FROM messages WHERE COALESCE(user_id, 0) = ?1
 			)`, uid)
 		err = e
 		if err == nil {
@@ -157,7 +157,7 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 			_, err = h.pool.ExecContext(ctx, `
 				DELETE FROM message_embedding_meta
 				WHERE message_id IN (
-					SELECT id FROM messages WHERE COALESCE(user_id, 0) = $1
+					SELECT id FROM messages WHERE COALESCE(user_id, 0) = ?1
 				)`, uid)
 		}
 	default:
@@ -184,7 +184,7 @@ func (h *ImportDataPurgeHandler) purgeFacebookMessenger(ctx context.Context, uid
 		return 0, fmt.Errorf("facebook messenger media: %w", err)
 	}
 
-	tag, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE service = 'Facebook Messenger' AND user_id = $1`, uid)
+	tag, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE service = 'Facebook Messenger' AND user_id = ?1`, uid)
 	if err != nil {
 		return 0, fmt.Errorf("facebook messenger messages: %w", err)
 	}
@@ -206,7 +206,7 @@ func (h *ImportDataPurgeHandler) purgeFacebookAlbums(ctx context.Context, uid in
 		return 0, fmt.Errorf("facebook albums media: %w", err)
 	}
 
-	tag, err := tx.ExecContext(ctx, `DELETE FROM facebook_albums WHERE user_id = $1`, uid)
+	tag, err := tx.ExecContext(ctx, `DELETE FROM facebook_albums WHERE user_id = ?1`, uid)
 	if err != nil {
 		return 0, fmt.Errorf("facebook albums: %w", err)
 	}
@@ -228,7 +228,7 @@ func (h *ImportDataPurgeHandler) purgeFacebookPosts(ctx context.Context, uid int
 		return 0, fmt.Errorf("facebook posts media: %w", err)
 	}
 
-	tag, err := tx.ExecContext(ctx, `DELETE FROM facebook_posts WHERE user_id = $1`, uid)
+	tag, err := tx.ExecContext(ctx, `DELETE FROM facebook_posts WHERE user_id = ?1`, uid)
 	if err != nil {
 		return 0, fmt.Errorf("facebook posts: %w", err)
 	}

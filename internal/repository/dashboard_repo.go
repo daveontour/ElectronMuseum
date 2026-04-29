@@ -32,7 +32,7 @@ func (r *DashboardRepo) GetStats(ctx context.Context) (*model.DashboardRaw, erro
 			return "", baseArgs
 		}
 		baseArgs = append(baseArgs, uid)
-		return fmt.Sprintf(" AND user_id = $%d", len(baseArgs)), baseArgs
+		return fmt.Sprintf(" AND user_id = ?%d", len(baseArgs)), baseArgs
 	}
 
 	out := &model.DashboardRaw{
@@ -249,7 +249,7 @@ func (r *DashboardRepo) GetStats(ctx context.Context) (*model.DashboardRaw, erro
 		var args []any
 		if uid > 0 {
 			args = append(args, uid)
-			uidCond = fmt.Sprintf(" AND mi.user_id = $%d", len(args))
+			uidCond = fmt.Sprintf(" AND mi.user_id = ?%d", len(args))
 		}
 		if err := r.pool.QueryRowContext(ctx,
 			`SELECT COUNT(mi.id)

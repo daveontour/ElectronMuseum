@@ -178,13 +178,13 @@
         <div id="panel-advanced" style="display:none; margin-bottom:16px; padding:14px; background:#0f1922; border:1px solid #2e4068; border-radius:8px;">
             <div style="color:#cdd6e8; font-size:0.88rem; font-weight:600; margin-bottom:8px;">Database</div>
             <div id="adv-current-path" style="color:#8fa4c8; font-size:0.82rem; margin-bottom:10px; word-break:break-all;">(loading&hellip;)</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <div id="adv-db-actions-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <button type="button" id="adv-browse-btn" style="padding:7px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem;">Browse&hellip;</button>
                 <button type="button" id="adv-new-btn"    style="padding:7px 12px; border-radius:6px; border:1px solid #2e4068; background:#0f1922; color:#8fa4c8; cursor:pointer; font-size:0.82rem;">New Database&hellip;</button>
                 <button type="button" id="adv-apply-btn" disabled style="padding:7px 14px; width:148px; border-radius:6px; border:none; background:#3b82f6; color:#fff; cursor:not-allowed; opacity:0.45; font-size:0.82rem; margin-left:auto; text-align:center;">Use This Database</button>
             </div>
 
-            <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2e4068; display:flex; align-items:center; gap:10px;">
+            <div id="adv-log-row" style="margin-top:12px; padding-top:12px; border-top:1px solid #2e4068; display:flex; align-items:center; gap:10px;">
                 <span style="color:#cdd6e8; font-size:0.88rem; font-weight:600; white-space:nowrap;">Log Level</span>
                 <select id="adv-log-level" style="padding:6px 10px; border-radius:6px; border:1px solid #2e4068; background:#19264d; color:#cdd6e8; font-size:0.85rem; cursor:pointer;">
                     <option value="debug">Debug</option>
@@ -195,7 +195,7 @@
                 <button type="button" id="adv-apply-log-btn" disabled style="padding:6px 12px; width:148px; border-radius:6px; border:none; background:#3b82f6; color:#fff; cursor:not-allowed; opacity:0.45; font-size:0.82rem; margin-left:auto; text-align:center;">Apply</button>
             </div>
 
-            <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2e4068;">
+            <div id="adv-ollama-block" style="margin-top:12px; padding-top:12px; border-top:1px solid #2e4068;">
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
                     <span style="color:#cdd6e8; font-size:0.88rem; font-weight:600; white-space:nowrap;">Local AI</span>
                     <span style="color:#8fa4c8; font-size:0.82rem;">Ollama / Gemma4</span>
@@ -289,6 +289,7 @@
     <script>
         const HAS_REGISTERED_USER = {{ has_registered_user }};
         const HAS_VISITOR_KEYS = {{ has_visitor_keys }};
+        const SHOW_LOGIN_ADVANCED = {{ show_login_advanced }};
 
         // Tab switching
         const tabLogin = document.getElementById('tab-login');
@@ -484,10 +485,15 @@
                 btn.innerHTML = '<i class="fas fa-door-open" style="margin-right:6px;"></i>Access Archive';
             }
         });
-        // Advanced database selector (Electron only)
+        // Advanced: full controls in Electron; local browser shows guidance (same SQLITE_PATH as server).
         (function () {
             const trigger = document.getElementById('advanced-trigger');
-            if (!window.electronAPI) { trigger.style.display = 'none'; return; }
+            if (!trigger) return;
+            const hasElectronShell = typeof window.electronAPI !== 'undefined' && window.electronAPI !== null;
+            if (!hasElectronShell && !SHOW_LOGIN_ADVANCED) {
+                trigger.style.display = 'none';
+                return;
+            }
 
             let pendingPath = null;
             let currentDbPath = null;
@@ -512,15 +518,35 @@
 
             const panelAdvanced = document.getElementById('panel-advanced');
             const advancedBtn = document.getElementById('advanced-btn');
+            const advDbActionsRow = document.getElementById('adv-db-actions-row');
+            const advLogRow = document.getElementById('adv-log-row');
+            const advOllamaBlock = document.getElementById('adv-ollama-block');
+
+            function setBrowserOnlyAdvancedUI(browserOnly) {
+                const hide = browserOnly ? 'none' : '';
+                if (advDbActionsRow) advDbActionsRow.style.display = hide;
+                if (advLogRow) advLogRow.style.display = hide;
+                if (advOllamaBlock) advOllamaBlock.style.display = hide;
+            }
 
             async function openAdvancedPanel() {
                 panelAdvanced.style.display = 'block';
                 advancedBtn.setAttribute('aria-expanded', 'true');
-                document.getElementById('adv-current-path').textContent = '(loading…)';
                 statusEl.style.display = 'none';
                 pendingPath = null;
                 setDbBtnEnabled(false);
                 setLogBtnEnabled(false);
+
+                if (!hasElectronShell) {
+                    setBrowserOnlyAdvancedUI(true);
+                    document.getElementById('adv-current-path').textContent =
+                        'This sign-in page is open in a web browser. Database path and log level are controlled by the server process (SQLITE_PATH, LOG_LEVEL in .env or your environment). Restart the Go server after changing them. Use the Digital Museum desktop app for file pickers and hot restart from this panel.';
+                    originalLogLevel = (logSel.value || 'warn').toLowerCase();
+                    return;
+                }
+
+                setBrowserOnlyAdvancedUI(false);
+                document.getElementById('adv-current-path').textContent = '(loading…)';
                 const [p, lvl] = await Promise.all([
                     window.electronAPI.getDbPath(),
                     window.electronAPI.getLogLevel(),

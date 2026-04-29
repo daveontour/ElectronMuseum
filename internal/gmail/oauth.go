@@ -59,7 +59,7 @@ func LoadToken(ctx context.Context, pool *sql.DB) (*oauth2.Token, error) {
 
 // DeleteToken removes the stored OAuth2 token.
 func DeleteToken(ctx context.Context, pool *sql.DB) error {
-	_, err := pool.ExecContext(ctx, `DELETE FROM app_configuration WHERE key = $1`, tokenConfigKey)
+	_, err := pool.ExecContext(ctx, `DELETE FROM app_configuration WHERE key = ?1`, tokenConfigKey)
 	return err
 }
 
@@ -75,7 +75,7 @@ func LoadState(ctx context.Context, pool *sql.DB) (string, error) {
 
 // DeleteState removes the stored CSRF state.
 func DeleteState(ctx context.Context, pool *sql.DB) error {
-	_, err := pool.ExecContext(ctx, `DELETE FROM app_configuration WHERE key = $1`, stateConfigKey)
+	_, err := pool.ExecContext(ctx, `DELETE FROM app_configuration WHERE key = ?1`, stateConfigKey)
 	return err
 }
 
@@ -86,7 +86,7 @@ func upsertConfig(ctx context.Context, pool *sql.DB, key, value string) error {
 	// (uq_app_config_global), so ON CONFLICT must specify the same predicate.
 	_, err := pool.ExecContext(ctx,
 		`INSERT INTO app_configuration (key, value, user_id)
-		 VALUES ($1, $2, NULL)
+		 VALUES (?1, ?2, NULL)
 		 ON CONFLICT (key) WHERE user_id IS NULL
 		 DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
 		key, value,
@@ -97,7 +97,7 @@ func upsertConfig(ctx context.Context, pool *sql.DB, key, value string) error {
 func getConfig(ctx context.Context, pool *sql.DB, key string) (string, error) {
 	var v *string
 	err := pool.QueryRowContext(ctx,
-		`SELECT value FROM app_configuration WHERE key = $1`, key,
+		`SELECT value FROM app_configuration WHERE key = ?1`, key,
 	).Scan(&v)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

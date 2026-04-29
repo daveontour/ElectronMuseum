@@ -47,25 +47,25 @@ func (r *DocumentRepo) List(ctx context.Context, search, category, tag, contentT
 		args = append(args, "%"+search+"%")
 		idx := len(args)
 		conds = append(conds, fmt.Sprintf(
-			`(filename LIKE $%d OR title LIKE $%d OR description LIKE $%d OR author LIKE $%d)`,
+			`(filename LIKE ?%d OR title LIKE ?%d OR description LIKE ?%d OR author LIKE ?%d)`,
 			idx, idx, idx, idx,
 		))
 	}
 	if category != "" {
 		args = append(args, "%"+category+"%")
-		conds = append(conds, fmt.Sprintf("categories LIKE $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("categories LIKE ?%d", len(args)))
 	}
 	if tag != "" {
 		args = append(args, "%"+tag+"%")
-		conds = append(conds, fmt.Sprintf("tags LIKE $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("tags LIKE ?%d", len(args)))
 	}
 	if availableForTask != nil {
 		args = append(args, *availableForTask)
-		conds = append(conds, fmt.Sprintf("available_for_task = $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("available_for_task = ?%d", len(args)))
 	}
 	if contentType != "" {
 		args = append(args, "%"+contentType+"%")
-		conds = append(conds, fmt.Sprintf("content_type LIKE $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("content_type LIKE ?%d", len(args)))
 	}
 	if len(conds) > 0 {
 		q += " AND " + joinAnd(conds)
@@ -131,7 +131,7 @@ func (r *DocumentRepo) ListForSystemPromptInclusion(ctx context.Context) ([]mode
 // GetByID returns a document's metadata (no blob data). Returns nil if not found or is_sensitive.
 func (r *DocumentRepo) GetByID(ctx context.Context, id int64) (*model.ReferenceDocument, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT ` + documentCols + ` FROM reference_documents WHERE id = $1 AND is_sensitive = FALSE`
+	q := `SELECT ` + documentCols + ` FROM reference_documents WHERE id = ?1 AND is_sensitive = FALSE`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	d, err := scanDocument(r.pool.QueryRowContext(ctx, q, args...))
@@ -147,7 +147,7 @@ func (r *DocumentRepo) GetByID(ctx context.Context, id int64) (*model.ReferenceD
 // GetData returns the raw file bytes and whether the data is encrypted.
 func (r *DocumentRepo) GetData(ctx context.Context, id int64) ([]byte, bool, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT data, is_encrypted FROM reference_documents WHERE id = $1`
+	q := `SELECT data, is_encrypted FROM reference_documents WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	var data []byte
@@ -173,7 +173,7 @@ func (r *DocumentRepo) Create(ctx context.Context,
 		`INSERT INTO reference_documents
 		 (filename, title, description, author, content_type, size, data,
 		  tags, categories, notes, available_for_task, include_in_system_prompt, is_private, is_sensitive, is_encrypted, user_id)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+		 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
 		 RETURNING `+documentCols,
 		filename, title, description, author, contentType, size, data,
 		tags, categories, notes, availableForTask, includeInSystemPrompt, isPrivate, isSensitive, isEncrypted, uidVal(uid),
@@ -192,16 +192,16 @@ func (r *DocumentRepo) Update(ctx context.Context, id int64,
 ) (*model.ReferenceDocument, error) {
 	uid := uidFromCtx(ctx)
 	q := `UPDATE reference_documents SET
-	      title            = COALESCE($1, title),
-	      description      = COALESCE($2, description),
-	      author           = COALESCE($3, author),
-	      tags             = COALESCE($4, tags),
-	      categories       = COALESCE($5, categories),
-	      notes            = COALESCE($6, notes),
-	      available_for_task = COALESCE($7, available_for_task),
-	      include_in_system_prompt = COALESCE($8, include_in_system_prompt),
+	      title            = COALESCE(?1, title),
+	      description      = COALESCE(?2, description),
+	      author           = COALESCE(?3, author),
+	      tags             = COALESCE(?4, tags),
+	      categories       = COALESCE(?5, categories),
+	      notes            = COALESCE(?6, notes),
+	      available_for_task = COALESCE(?7, available_for_task),
+	      include_in_system_prompt = COALESCE(?8, include_in_system_prompt),
 	      updated_at       = CURRENT_TIMESTAMP
-	      WHERE id = $9`
+	      WHERE id = ?9`
 	args := []any{title, description, author, tags, categories, notes, availableForTask, includeInSystemPrompt, id}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` RETURNING ` + documentCols
@@ -218,7 +218,7 @@ func (r *DocumentRepo) Update(ctx context.Context, id int64,
 // UpdateData replaces the binary content and encryption state of a document.
 func (r *DocumentRepo) UpdateData(ctx context.Context, id int64, data []byte, isEncrypted bool) error {
 	uid := uidFromCtx(ctx)
-	q := `UPDATE reference_documents SET data=$1, is_encrypted=$2, updated_at=CURRENT_TIMESTAMP WHERE id=$3`
+	q := `UPDATE reference_documents SET data=?1, is_encrypted=?2, updated_at=CURRENT_TIMESTAMP WHERE id=?3`
 	args := []any{data, isEncrypted, id}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)
@@ -228,7 +228,7 @@ func (r *DocumentRepo) UpdateData(ctx context.Context, id int64, data []byte, is
 // Delete removes a reference document.
 func (r *DocumentRepo) Delete(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM reference_documents WHERE id = $1`
+	q := `DELETE FROM reference_documents WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)
@@ -261,7 +261,7 @@ func (r *DocumentRepo) ListSensitive(ctx context.Context) ([]*model.ReferenceDoc
 // GetSensitiveByID returns a single sensitive record by ID, or nil if not found / not sensitive.
 func (r *DocumentRepo) GetSensitiveByID(ctx context.Context, id int64) (*model.ReferenceDocument, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT ` + documentCols + ` FROM reference_documents WHERE id = $1 AND is_sensitive = TRUE`
+	q := `SELECT ` + documentCols + ` FROM reference_documents WHERE id = ?1 AND is_sensitive = TRUE`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	d, err := scanDocument(r.pool.QueryRowContext(ctx, q, args...))

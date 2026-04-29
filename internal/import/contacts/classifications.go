@@ -137,10 +137,10 @@ func ApplyClassificationsToContacts(ctx context.Context, db *sql.DB, classificat
 		args := make([]interface{}, len(ids)+1)
 		args[0] = relType
 		for i, id := range ids {
-			placeholders[i] = fmt.Sprintf("$%d", i+2)
+			placeholders[i] = fmt.Sprintf("?%d", i+2)
 			args[i+1] = id
 		}
-		query := fmt.Sprintf("UPDATE contacts SET rel_type = $1 WHERE id IN (%s)", strings.Join(placeholders, ","))
+		query := fmt.Sprintf("UPDATE contacts SET rel_type = ?1 WHERE id IN (%s)", strings.Join(placeholders, ","))
 		_, err = db.ExecContext(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("update rel_type=%s: %w", relType, err)

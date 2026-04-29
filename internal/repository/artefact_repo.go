@@ -45,18 +45,18 @@ func (r *ArtefactRepo) ListSummaries(ctx context.Context, search, tags string) (
 		args = append(args, "%"+search+"%")
 		idx := len(args)
 		conds = append(conds, fmt.Sprintf(
-			`(a.name LIKE $%d OR a.description LIKE $%d OR a.tags LIKE $%d OR a.story LIKE $%d)`,
+			`(a.name LIKE ?%d OR a.description LIKE ?%d OR a.tags LIKE ?%d OR a.story LIKE ?%d)`,
 			idx, idx, idx, idx,
 		))
 	}
 	if tags != "" {
 		args = append(args, "%"+tags+"%")
 		idx := len(args)
-		conds = append(conds, fmt.Sprintf("a.tags LIKE $%d", idx))
+		conds = append(conds, fmt.Sprintf("a.tags LIKE ?%d", idx))
 	}
 	if uid > 0 {
 		args = append(args, uid)
-		conds = append(conds, fmt.Sprintf("a.user_id = $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("a.user_id = ?%d", len(args)))
 	}
 	if len(conds) > 0 {
 		q += " WHERE " + joinAnd(conds)
@@ -90,7 +90,7 @@ func (r *ArtefactRepo) ListSummaries(ctx context.Context, search, tags string) (
 func (r *ArtefactRepo) GetByID(ctx context.Context, id int64) (*model.Artefact, error) {
 	uid := uidFromCtx(ctx)
 	q := `SELECT id, name, description, tags, story, created_at, updated_at
-	      FROM artefacts WHERE id = $1`
+	      FROM artefacts WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	var a model.Artefact
@@ -113,7 +113,7 @@ func (r *ArtefactRepo) GetMediaItems(ctx context.Context, artefactID int64) ([]*
 		 FROM artefact_media am
 		 JOIN media_items mi ON mi.id = am.media_item_id
 		 JOIN media_blobs mb ON mb.id = mi.media_blob_id
-		 WHERE am.artefact_id = $1
+		 WHERE am.artefact_id = ?1
 		 ORDER BY am.sort_order`, artefactID)
 	if err != nil {
 		return nil, fmt.Errorf("GetMediaItems %d: %w", artefactID, err)
@@ -153,7 +153,7 @@ func (r *ArtefactRepo) Create(ctx context.Context, name string, description, tag
 	var a model.Artefact
 	err := r.pool.QueryRowContext(ctx,
 		`INSERT INTO artefacts (name, description, tags, story, user_id)
-		 VALUES ($1, $2, $3, $4, $5)
+		 VALUES (?1, ?2, ?3, ?4, ?5)
 		 RETURNING id, name, description, tags, story, created_at, updated_at`,
 		name, description, tags, story, uidVal(uid),
 	).Scan(&a.ID, &a.Name, &a.Description, &a.Tags, &a.Story, &a.CreatedAt, &a.UpdatedAt)
@@ -167,12 +167,12 @@ func (r *ArtefactRepo) Create(ctx context.Context, name string, description, tag
 func (r *ArtefactRepo) Update(ctx context.Context, id int64, name *string, description, tags, story *string) (*model.Artefact, error) {
 	uid := uidFromCtx(ctx)
 	q := `UPDATE artefacts
-	      SET name        = COALESCE($1, name),
-	          description = COALESCE($2, description),
-	          tags        = COALESCE($3, tags),
-	          story       = COALESCE($4, story),
+	      SET name        = COALESCE(?1, name),
+	          description = COALESCE(?2, description),
+	          tags        = COALESCE(?3, tags),
+	          story       = COALESCE(?4, story),
 	          updated_at  = CURRENT_TIMESTAMP
-	      WHERE id = $5`
+	      WHERE id = ?5`
 	args := []any{name, description, tags, story, id}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` RETURNING id, name, description, tags, story, created_at, updated_at`
@@ -191,7 +191,7 @@ func (r *ArtefactRepo) Update(ctx context.Context, id int64, name *string, descr
 // TouchUpdatedAt sets updated_at = CURRENT_TIMESTAMP on an artefact.
 func (r *ArtefactRepo) TouchUpdatedAt(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)
-	q := `UPDATE artefacts SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`
+	q := `UPDATE artefacts SET updated_at = CURRENT_TIMESTAMP WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)
@@ -201,7 +201,7 @@ func (r *ArtefactRepo) TouchUpdatedAt(ctx context.Context, id int64) error {
 // Delete removes an artefact. Caller is responsible for cleaning up owned media first.
 func (r *ArtefactRepo) Delete(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM artefacts WHERE id = $1`
+	q := `DELETE FROM artefacts WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)
@@ -214,7 +214,7 @@ func (r *ArtefactRepo) Delete(ctx context.Context, id int64) error {
 func (r *ArtefactRepo) MediaLinkExists(ctx context.Context, artefactID, mediaItemID int64) (bool, error) {
 	var n int
 	err := r.pool.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM artefact_media WHERE artefact_id=$1 AND media_item_id=$2`,
+		`SELECT COUNT(*) FROM artefact_media WHERE artefact_id=?1 AND media_item_id=?2`,
 		artefactID, mediaItemID,
 	).Scan(&n)
 	return n > 0, err
@@ -224,7 +224,7 @@ func (r *ArtefactRepo) MediaLinkExists(ctx context.Context, artefactID, mediaIte
 func (r *ArtefactRepo) MediaLinkCount(ctx context.Context, artefactID int64) (int, error) {
 	var n int
 	err := r.pool.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM artefact_media WHERE artefact_id=$1`, artefactID,
+		`SELECT COUNT(*) FROM artefact_media WHERE artefact_id=?1`, artefactID,
 	).Scan(&n)
 	return n, err
 }
@@ -233,7 +233,7 @@ func (r *ArtefactRepo) MediaLinkCount(ctx context.Context, artefactID int64) (in
 func (r *ArtefactRepo) LinkMedia(ctx context.Context, artefactID, mediaItemID int64, sortOrder int) error {
 	_, err := r.pool.ExecContext(ctx,
 		`INSERT INTO artefact_media (artefact_id, media_item_id, sort_order)
-		 VALUES ($1, $2, $3)`,
+		 VALUES (?1, ?2, ?3)`,
 		artefactID, mediaItemID, sortOrder)
 	return err
 }
@@ -241,7 +241,7 @@ func (r *ArtefactRepo) LinkMedia(ctx context.Context, artefactID, mediaItemID in
 // UnlinkMedia removes a junction row.
 func (r *ArtefactRepo) UnlinkMedia(ctx context.Context, artefactID, mediaItemID int64) error {
 	_, err := r.pool.ExecContext(ctx,
-		`DELETE FROM artefact_media WHERE artefact_id=$1 AND media_item_id=$2`,
+		`DELETE FROM artefact_media WHERE artefact_id=?1 AND media_item_id=?2`,
 		artefactID, mediaItemID)
 	return err
 }
@@ -250,7 +250,7 @@ func (r *ArtefactRepo) UnlinkMedia(ctx context.Context, artefactID, mediaItemID 
 func (r *ArtefactRepo) OtherArtefactLinkCount(ctx context.Context, mediaItemID, excludeArtefactID int64) (int, error) {
 	var n int
 	err := r.pool.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM artefact_media WHERE media_item_id=$1 AND artefact_id!=$2`,
+		`SELECT COUNT(*) FROM artefact_media WHERE media_item_id=?1 AND artefact_id!=?2`,
 		mediaItemID, excludeArtefactID,
 	).Scan(&n)
 	return n, err
@@ -262,7 +262,7 @@ func (r *ArtefactRepo) OtherArtefactLinkCount(ctx context.Context, mediaItemID, 
 func (r *ArtefactRepo) InsertMediaBlob(ctx context.Context, imageData, thumbnailData []byte) (int64, error) {
 	var id int64
 	err := r.pool.QueryRowContext(ctx,
-		`INSERT INTO media_blobs (image_data, thumbnail_data) VALUES ($1, $2) RETURNING id`,
+		`INSERT INTO media_blobs (image_data, thumbnail_data) VALUES (?1, ?2) RETURNING id`,
 		imageData, thumbnailData,
 	).Scan(&id)
 	if err != nil {
@@ -277,7 +277,7 @@ func (r *ArtefactRepo) InsertMediaItem(ctx context.Context, blobID int64, title,
 	var id int64
 	err := r.pool.QueryRowContext(ctx,
 		`INSERT INTO media_items (media_blob_id, title, media_type, source, source_reference, processed, user_id)
-		 VALUES ($1, $2, $3, $4, $5, TRUE, $6) RETURNING id`,
+		 VALUES (?1, ?2, ?3, ?4, ?5, TRUE, ?6) RETURNING id`,
 		blobID, title, mediaType, source, sourceRef, uidVal(uid),
 	).Scan(&id)
 	if err != nil {
@@ -289,7 +289,7 @@ func (r *ArtefactRepo) InsertMediaItem(ctx context.Context, blobID int64, title,
 // GetMediaItemSource returns the source field of a media_items row.
 func (r *ArtefactRepo) GetMediaItemSource(ctx context.Context, mediaItemID int64) (string, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT COALESCE(source, '') FROM media_items WHERE id=$1`
+	q := `SELECT COALESCE(source, '') FROM media_items WHERE id=?1`
 	args := []any{mediaItemID}
 	q, args = addUIDFilter(q, args, uid)
 	var source string
@@ -306,7 +306,7 @@ func (r *ArtefactRepo) GetMediaItemSource(ctx context.Context, mediaItemID int64
 // GetMediaItemBlobID returns the media_blob_id for a given media_items row.
 func (r *ArtefactRepo) GetMediaItemBlobID(ctx context.Context, mediaItemID int64) (*int64, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT media_blob_id FROM media_items WHERE id=$1`
+	q := `SELECT media_blob_id FROM media_items WHERE id=?1`
 	args := []any{mediaItemID}
 	q, args = addUIDFilter(q, args, uid)
 	var blobID *int64
@@ -323,7 +323,7 @@ func (r *ArtefactRepo) GetMediaItemBlobID(ctx context.Context, mediaItemID int64
 // DeleteMediaItem deletes a media_items row.
 func (r *ArtefactRepo) DeleteMediaItem(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM media_items WHERE id=$1`
+	q := `DELETE FROM media_items WHERE id=?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)
@@ -332,7 +332,7 @@ func (r *ArtefactRepo) DeleteMediaItem(ctx context.Context, id int64) error {
 
 // DeleteMediaBlob deletes a media_blobs row.
 func (r *ArtefactRepo) DeleteMediaBlob(ctx context.Context, id int64) error {
-	_, err := r.pool.ExecContext(ctx, `DELETE FROM media_blobs WHERE id=$1`, id)
+	_, err := r.pool.ExecContext(ctx, `DELETE FROM media_blobs WHERE id=?1`, id)
 	return err
 }
 
@@ -343,7 +343,7 @@ func (r *ArtefactRepo) GetPrimaryBlob(ctx context.Context, artefactID int64) ([]
 	      FROM artefact_media am
 	      JOIN media_items mi ON mi.id = am.media_item_id
 	      JOIN media_blobs mb ON mb.id = mi.media_blob_id
-	      WHERE am.artefact_id = $1`
+	      WHERE am.artefact_id = ?1`
 	args := []any{artefactID}
 	// Use qualified alias — artefact_media, media_items, and media_blobs all have user_id
 	q, args = addUIDFilterQualified(q, args, uid, "mi")
@@ -414,7 +414,7 @@ func (r *ArtefactRepo) ExportAll(ctx context.Context) ([]*ArtefactExportRow, err
 			`SELECT am.sort_order, mi.media_type, mi.title, mi.source, mi.source_reference
 			 FROM artefact_media am
 			 JOIN media_items mi ON mi.id = am.media_item_id
-			 WHERE am.artefact_id = $1
+			 WHERE am.artefact_id = ?1
 			 ORDER BY am.sort_order`, row.Artefact.ID)
 		if err != nil {
 			return nil, err
@@ -438,7 +438,7 @@ func (r *ArtefactRepo) ExportAll(ctx context.Context) ([]*ArtefactExportRow, err
 // FindMediaBySrcRef looks up a media_items.id by source + source_reference.
 func (r *ArtefactRepo) FindMediaBySrcRef(ctx context.Context, source, sourceRef string) (int64, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT id FROM media_items WHERE source=$1 AND source_reference=$2`
+	q := `SELECT id FROM media_items WHERE source=?1 AND source_reference=?2`
 	args := []any{source, sourceRef}
 	q, args = addUIDFilter(q, args, uid)
 	q += " LIMIT 1"
@@ -460,12 +460,12 @@ func (r *ArtefactRepo) GetOrphanArtefactMediaIDs(ctx context.Context, artefactID
 		`SELECT am.media_item_id
 		 FROM artefact_media am
 		 JOIN media_items mi ON mi.id = am.media_item_id
-		 WHERE am.artefact_id = $1
+		 WHERE am.artefact_id = ?1
 		   AND mi.source = 'artefact'
 		   AND NOT EXISTS (
 		       SELECT 1 FROM artefact_media am2
 		       WHERE am2.media_item_id = am.media_item_id
-		         AND am2.artefact_id != $1
+		         AND am2.artefact_id != ?1
 		   )`, artefactID)
 	if err != nil {
 		return nil, err

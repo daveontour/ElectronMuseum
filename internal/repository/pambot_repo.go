@@ -89,7 +89,7 @@ func (r *PamBotRepo) GetOrCreateSession(ctx context.Context) (*PamBotSession, er
 
 	// Create a new session
 	err = r.pool.QueryRowContext(ctx,
-		`INSERT INTO pam_bot_sessions (user_id) VALUES ($1)
+		`INSERT INTO pam_bot_sessions (user_id) VALUES (?1)
 		 RETURNING id, user_id, started_at, last_interaction_at, interaction_count,
 		           latest_summary, latest_analysis, latest_summary_at,
 		           last_facebook_post_id, last_facebook_album_id`,
@@ -122,7 +122,7 @@ func (r *PamBotRepo) GetRecentSubjects(ctx context.Context, limit int) ([]PamBot
 	args := []any{}
 	q, args = addUIDFilter(q, args, uid)
 	args = append(args, limit)
-	q += fmt.Sprintf(" ORDER BY last_discussed_at DESC LIMIT $%d", len(args))
+	q += fmt.Sprintf(" ORDER BY last_discussed_at DESC LIMIT ?%d", len(args))
 
 	rows, err := r.pool.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -145,8 +145,8 @@ func (r *PamBotRepo) GetRecentSubjects(ctx context.Context, limit int) ([]PamBot
 func (r *PamBotRepo) GetRecentTurns(ctx context.Context, sessionID, limit int) ([]appai.ConvTurn, error) {
 	rows, err := r.pool.QueryContext(ctx,
 		`SELECT user_action, bot_message FROM pam_bot_turns
-		 WHERE session_id = $1
-		 ORDER BY turn_number DESC LIMIT $2`,
+		 WHERE session_id = ?1
+		 ORDER BY turn_number DESC LIMIT ?2`,
 		sessionID, limit,
 	)
 	if err != nil {
@@ -178,8 +178,8 @@ func (r *PamBotRepo) GetRecentTurnsRaw(ctx context.Context, sessionID, limit int
 		`SELECT turn_number, COALESCE(subject_tag,''), COALESCE(subject_category,''),
 		        bot_message, COALESCE(user_action,'')
 		 FROM pam_bot_turns
-		 WHERE session_id = $1
-		 ORDER BY turn_number DESC LIMIT $2`,
+		 WHERE session_id = ?1
+		 ORDER BY turn_number DESC LIMIT ?2`,
 		sessionID, limit,
 	)
 	if err != nil {
@@ -217,7 +217,7 @@ func (r *PamBotRepo) SaveTurn(ctx context.Context, sessionID, turnNumber int, su
 	}
 	_, err := r.pool.ExecContext(ctx,
 		`INSERT INTO pam_bot_turns (user_id, session_id, turn_number, subject_tag, subject_category, bot_message, user_action)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		 VALUES (?1,?2,?3,?4,?5,?6,?7)`,
 		uid, sessionID, turnNumber, tagPtr, catPtr, botMessage, userAction,
 	)
 	if err != nil {
@@ -235,7 +235,7 @@ func (r *PamBotRepo) UpsertSubject(ctx context.Context, subjectTag, subjectCateg
 	}
 	_, err := r.pool.ExecContext(ctx,
 		`INSERT INTO pam_bot_subjects (user_id, subject_tag, subject_category, last_discussed_at, discuss_count)
-		 VALUES ($1, $2, $3, CURRENT_TIMESTAMP, 1)
+		 VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP, 1)
 		 ON CONFLICT (user_id, subject_tag)
 		 DO UPDATE SET last_discussed_at = CURRENT_TIMESTAMP,
 		               discuss_count = pam_bot_subjects.discuss_count + 1,
@@ -253,7 +253,7 @@ func (r *PamBotRepo) IncrementInteractionCount(ctx context.Context, sessionID in
 	_, err := r.pool.ExecContext(ctx,
 		`UPDATE pam_bot_sessions
 		 SET interaction_count = interaction_count + 1, last_interaction_at = CURRENT_TIMESTAMP
-		 WHERE id = $1`,
+		 WHERE id = ?1`,
 		sessionID,
 	)
 	if err != nil {
@@ -266,8 +266,8 @@ func (r *PamBotRepo) IncrementInteractionCount(ctx context.Context, sessionID in
 func (r *PamBotRepo) UpdateSessionSummary(ctx context.Context, sessionID int, summary, analysis string) error {
 	_, err := r.pool.ExecContext(ctx,
 		`UPDATE pam_bot_sessions
-		 SET latest_summary = $1, latest_analysis = $2, latest_summary_at = CURRENT_TIMESTAMP
-		 WHERE id = $3`,
+		 SET latest_summary = ?1, latest_analysis = ?2, latest_summary_at = CURRENT_TIMESTAMP
+		 WHERE id = ?3`,
 		summary, analysis, sessionID,
 	)
 	if err != nil {
@@ -287,7 +287,7 @@ func (r *PamBotRepo) UpdateSessionFacebookContext(ctx context.Context, sessionID
 		albumPtr = &albumID
 	}
 	_, err := r.pool.ExecContext(ctx,
-		`UPDATE pam_bot_sessions SET last_facebook_post_id = $2, last_facebook_album_id = $3 WHERE id = $1`,
+		`UPDATE pam_bot_sessions SET last_facebook_post_id = ?2, last_facebook_album_id = ?3 WHERE id = ?1`,
 		sessionID, postPtr, albumPtr,
 	)
 	if err != nil {

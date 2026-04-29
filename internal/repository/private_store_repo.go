@@ -56,7 +56,7 @@ func (r *PrivateStoreRepo) GetAll(ctx context.Context) ([]privateStoreRow, error
 // GetByKey returns a single row by key, or nil if not found.
 func (r *PrivateStoreRepo) GetByKey(ctx context.Context, key string) (*privateStoreRow, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT id, key, encrypted_value, created_at, updated_at FROM private_store WHERE key = $1`
+	q := `SELECT id, key, encrypted_value, created_at, updated_at FROM private_store WHERE key = ?1`
 	args := []any{key}
 	q, args = addUIDFilter(q, args, uid)
 	var row privateStoreRow
@@ -76,7 +76,7 @@ func (r *PrivateStoreRepo) Create(ctx context.Context, key string, encValue []by
 	uid := uidFromCtx(ctx)
 	var id int64
 	err := r.pool.QueryRowContext(ctx,
-		`INSERT INTO private_store (key, encrypted_value, user_id) VALUES ($1, $2, $3) RETURNING id`,
+		`INSERT INTO private_store (key, encrypted_value, user_id) VALUES (?1, ?2, ?3) RETURNING id`,
 		key, encValue, uidVal(uid),
 	).Scan(&id)
 	if err != nil {
@@ -89,7 +89,7 @@ func (r *PrivateStoreRepo) Create(ctx context.Context, key string, encValue []by
 func (r *PrivateStoreRepo) Upsert(ctx context.Context, key string, encValue []byte) error {
 	uid := uidFromCtx(ctx)
 	_, err := r.pool.ExecContext(ctx, `
-		INSERT INTO private_store (key, encrypted_value, user_id) VALUES ($1, $2, $3)
+		INSERT INTO private_store (key, encrypted_value, user_id) VALUES (?1, ?2, ?3)
 		ON CONFLICT (key) DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value, updated_at = CURRENT_TIMESTAMP`,
 		key, encValue, uidVal(uid))
 	if err != nil {
@@ -101,7 +101,7 @@ func (r *PrivateStoreRepo) Upsert(ctx context.Context, key string, encValue []by
 // Update replaces the encrypted value for an existing key.
 func (r *PrivateStoreRepo) Update(ctx context.Context, key string, encValue []byte) error {
 	uid := uidFromCtx(ctx)
-	q := `UPDATE private_store SET encrypted_value = $1, updated_at = CURRENT_TIMESTAMP WHERE key = $2`
+	q := `UPDATE private_store SET encrypted_value = ?1, updated_at = CURRENT_TIMESTAMP WHERE key = ?2`
 	args := []any{encValue, key}
 	q, args = addUIDFilter(q, args, uid)
 	tag, err := r.pool.ExecContext(ctx, q, args...)
@@ -117,7 +117,7 @@ func (r *PrivateStoreRepo) Update(ctx context.Context, key string, encValue []by
 // Delete removes a row by key.
 func (r *PrivateStoreRepo) Delete(ctx context.Context, key string) error {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM private_store WHERE key = $1`
+	q := `DELETE FROM private_store WHERE key = ?1`
 	args := []any{key}
 	q, args = addUIDFilter(q, args, uid)
 	tag, err := r.pool.ExecContext(ctx, q, args...)

@@ -6,7 +6,7 @@ import (
 
 func TestInt64IN(t *testing.T) {
 	cond, args, next := Int64IN("id", []int64{10, 20}, 1)
-	if cond != "id IN ($1,$2)" {
+	if cond != "id IN (?1,?2)" {
 		t.Fatalf("cond: %q", cond)
 	}
 	if len(args) != 2 || args[0].(int64) != 10 || args[1].(int64) != 20 {
@@ -23,7 +23,7 @@ func TestInt64IN(t *testing.T) {
 
 func TestStringIN(t *testing.T) {
 	cond, args, next := StringIN("ref", []string{"a", "b"}, 1)
-	if cond != "ref IN ($1,$2)" {
+	if cond != "ref IN (?1,?2)" {
 		t.Fatalf("cond: %q", cond)
 	}
 	if len(args) != 2 {

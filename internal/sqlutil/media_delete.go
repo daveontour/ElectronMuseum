@@ -23,11 +23,11 @@ func DeleteMediaItemsByUserAndSourceTx(ctx context.Context, tx *sql.Tx, userID i
 	}
 	if _, err = tx.ExecContext(ctx, `
 		INSERT INTO `+mediaItemsPurgeTempTable+` (blob_id)
-		SELECT DISTINCT media_blob_id FROM media_items WHERE user_id = $1 AND source = $2
+		SELECT DISTINCT media_blob_id FROM media_items WHERE user_id = ?1 AND source = ?2
 	`, userID, source); err != nil {
 		return 0, fmt.Errorf("stage blob ids for source=%s: %w", source, err)
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM media_items WHERE user_id = $1 AND source = $2`, userID, source); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM media_items WHERE user_id = ?1 AND source = ?2`, userID, source); err != nil {
 		return 0, fmt.Errorf("delete media_items source=%s: %w", source, err)
 	}
 	tag, err := tx.ExecContext(ctx, `DELETE FROM media_blobs WHERE id IN (SELECT blob_id FROM `+mediaItemsPurgeTempTable+`)`)

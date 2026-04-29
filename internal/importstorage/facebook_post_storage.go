@@ -37,7 +37,7 @@ func NewFacebookPostStorage(pool *sql.DB) *FacebookPostStorage {
 func (s *FacebookPostStorage) FindPostByTimestampAndTitle(ctx context.Context, ts *time.Time, title string) (int64, bool, error) {
 	var postID int64
 	err := s.pool.QueryRowContext(ctx,
-		`SELECT id FROM facebook_posts WHERE timestamp = $1 AND title = $2 LIMIT 1`,
+		`SELECT id FROM facebook_posts WHERE timestamp = ?1 AND title = ?2 LIMIT 1`,
 		ts, title,
 	).Scan(&postID)
 	if err != nil {
@@ -68,7 +68,7 @@ func (s *FacebookPostStorage) SaveOrUpdatePost(
 	var postID int64
 	err = s.pool.QueryRowContext(ctx,
 		`INSERT INTO facebook_posts (timestamp, title, post_text, external_url, post_type, user_id, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id`,
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id`,
 		ts,
 		nullIfEmpty(title),
 		nullIfEmpty(postText),
@@ -101,12 +101,12 @@ func (s *FacebookPostStorage) SavePostImagesBatch(ctx context.Context, items []B
 		var blobID int64
 		if len(item.ImageData) > 0 {
 			err = tx.QueryRowContext(ctx,
-				`INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES ($1, $2, $3) RETURNING id`,
+				`INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES (?1, ?2, ?3) RETURNING id`,
 				item.ImageData, nil, uidVal(uid),
 			).Scan(&blobID)
 		} else {
 			err = tx.QueryRowContext(ctx,
-				`INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES ($1, $2, $3) RETURNING id`,
+				`INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES (?1, ?2, ?3) RETURNING id`,
 				nil, nil, uidVal(uid),
 			).Scan(&blobID)
 		}
@@ -133,7 +133,7 @@ func (s *FacebookPostStorage) SavePostImagesBatch(ctx context.Context, items []B
 			media_type, year, month, latitude, longitude, altitude, has_gps,
 			processed, available_for_task, rating, is_personal, is_business,
 			is_social, is_promotional, is_spam, is_important, user_id, created_at, updated_at, is_referenced
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, FALSE)
+		) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, FALSE)
 		RETURNING id`,
 			blobID,
 			nullIfEmpty(item.PostTitle),
@@ -153,7 +153,7 @@ func (s *FacebookPostStorage) SavePostImagesBatch(ctx context.Context, items []B
 		}
 
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO post_media (post_id, media_item_id) VALUES ($1, $2)`,
+			`INSERT INTO post_media (post_id, media_item_id) VALUES (?1, ?2)`,
 			item.PostID, mediaItemID,
 		)
 		if err != nil {

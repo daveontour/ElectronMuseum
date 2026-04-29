@@ -49,7 +49,7 @@ func (r *CompleteProfileRepo) ListProfileEntries(ctx context.Context) ([]Profile
 // EnqueuePendingGeneration inserts or updates a row so the name appears immediately while generation runs.
 func (r *CompleteProfileRepo) EnqueuePendingGeneration(ctx context.Context, name string) error {
 	uid := uidFromCtx(ctx)
-	q := `UPDATE complete_profiles SET generation_pending = TRUE, profile = '', updated_at = CURRENT_TIMESTAMP WHERE name = $1`
+	q := `UPDATE complete_profiles SET generation_pending = TRUE, profile = '', updated_at = CURRENT_TIMESTAMP WHERE name = ?1`
 	args := []any{name}
 	q, args = addUIDFilter(q, args, uid)
 	res, err := r.pool.ExecContext(ctx, q, args...)
@@ -60,7 +60,7 @@ func (r *CompleteProfileRepo) EnqueuePendingGeneration(ctx context.Context, name
 		return nil
 	}
 	_, err = r.pool.ExecContext(ctx,
-		`INSERT INTO complete_profiles (name, profile, user_id, generation_pending) VALUES ($1, '', $2, TRUE)`,
+		`INSERT INTO complete_profiles (name, profile, user_id, generation_pending) VALUES (?1, '', ?2, TRUE)`,
 		name, uidVal(uid),
 	)
 	if err != nil {
@@ -80,7 +80,7 @@ func (r *CompleteProfileRepo) MarkGenerationFailed(ctx context.Context, name str
 		}
 		msg = "Profile generation failed: " + t
 	}
-	q := `UPDATE complete_profiles SET generation_pending = FALSE, profile = $2, updated_at = CURRENT_TIMESTAMP WHERE name = $1`
+	q := `UPDATE complete_profiles SET generation_pending = FALSE, profile = ?2, updated_at = CURRENT_TIMESTAMP WHERE name = ?1`
 	args := []any{name, msg}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)
@@ -94,7 +94,7 @@ func (r *CompleteProfileRepo) MarkGenerationFailed(ctx context.Context, name str
 // If no row exists, returns found=false.
 func (r *CompleteProfileRepo) GetByName(ctx context.Context, name string) (found bool, profile *string, pending bool, err error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT profile, generation_pending FROM complete_profiles WHERE name = $1`
+	q := `SELECT profile, generation_pending FROM complete_profiles WHERE name = ?1`
 	args := []any{name}
 	q, args = addUIDFilter(q, args, uid)
 	var prof *string
@@ -112,7 +112,7 @@ func (r *CompleteProfileRepo) GetByName(ctx context.Context, name string) (found
 // Upsert creates or updates a complete profile by name and clears generation_pending.
 func (r *CompleteProfileRepo) Upsert(ctx context.Context, name, profile string) error {
 	uid := uidFromCtx(ctx)
-	q := `UPDATE complete_profiles SET profile = $2, generation_pending = FALSE, updated_at = CURRENT_TIMESTAMP WHERE name = $1`
+	q := `UPDATE complete_profiles SET profile = ?2, generation_pending = FALSE, updated_at = CURRENT_TIMESTAMP WHERE name = ?1`
 	args := []any{name, profile}
 	q, args = addUIDFilter(q, args, uid)
 	res, err := r.pool.ExecContext(ctx, q, args...)
@@ -123,7 +123,7 @@ func (r *CompleteProfileRepo) Upsert(ctx context.Context, name, profile string) 
 		return nil
 	}
 	_, err = r.pool.ExecContext(ctx,
-		`INSERT INTO complete_profiles (name, profile, user_id, generation_pending) VALUES ($1, $2, $3, FALSE)`,
+		`INSERT INTO complete_profiles (name, profile, user_id, generation_pending) VALUES (?1, ?2, ?3, FALSE)`,
 		name, profile, uidVal(uid),
 	)
 	if err != nil {
@@ -135,7 +135,7 @@ func (r *CompleteProfileRepo) Upsert(ctx context.Context, name, profile string) 
 // DeleteByName deletes a complete profile by name. Returns true if a row was deleted.
 func (r *CompleteProfileRepo) DeleteByName(ctx context.Context, name string) (bool, error) {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM complete_profiles WHERE name = $1`
+	q := `DELETE FROM complete_profiles WHERE name = ?1`
 	args := []any{name}
 	q, args = addUIDFilter(q, args, uid)
 	res, err := r.pool.ExecContext(ctx, q, args...)

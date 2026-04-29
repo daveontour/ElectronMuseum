@@ -111,7 +111,7 @@ func (r *ConfigRepo) Upsert(ctx context.Context, key string, value *string, isMa
 	}
 	c, err := scanConfig(r.pool.QueryRowContext(ctx,
 		`INSERT INTO app_configuration (key, value, is_mandatory, description, user_id)
-		 VALUES ($1, $2, $3, $4, $5)
+		 VALUES (?1, ?2, ?3, ?4, ?5)
 		 `+conflictClause+`
 		   value        = EXCLUDED.value,
 		   is_mandatory = COALESCE(EXCLUDED.is_mandatory, app_configuration.is_mandatory),
@@ -129,7 +129,7 @@ func (r *ConfigRepo) Upsert(ctx context.Context, key string, value *string, isMa
 // Delete removes a configuration key. Returns false if not found.
 func (r *ConfigRepo) Delete(ctx context.Context, key string) (bool, error) {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM app_configuration WHERE key = $1`
+	q := `DELETE FROM app_configuration WHERE key = ?1`
 	args := []any{key}
 	q, args = addUIDFilter(q, args, uid)
 	tag, err := r.pool.ExecContext(ctx, q, args...)
@@ -172,7 +172,7 @@ func (r *ConfigRepo) SeedFromEnv(ctx context.Context) (int, error) {
 		if ex, found := have[kk.Key]; found {
 			// Backfill description if missing
 			if ex.desc == nil && kk.Description != "" {
-				uq := `UPDATE app_configuration SET description=$1 WHERE key=$2 AND description IS NULL`
+				uq := `UPDATE app_configuration SET description=?1 WHERE key=?2 AND description IS NULL`
 				uargs := []any{kk.Description, kk.Key}
 				uq, uargs = addUIDFilter(uq, uargs, uid)
 				_, err := r.pool.ExecContext(ctx, uq, uargs...)
@@ -196,7 +196,7 @@ func (r *ConfigRepo) SeedFromEnv(ctx context.Context) (int, error) {
 		}
 		_, err := r.pool.ExecContext(ctx,
 			`INSERT INTO app_configuration (key, value, is_mandatory, description, user_id)
-			 VALUES ($1, $2, $3, $4, $5)
+			 VALUES (?1, ?2, ?3, ?4, ?5)
 			 `+doNothing,
 			kk.Key, value, kk.IsMandatory, desc, uidVal(uid))
 		if err != nil {

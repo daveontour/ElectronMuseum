@@ -35,24 +35,24 @@ type Email struct {
 // EmailMetadataResponse is the JSON shape returned by the metadata, search, and label endpoints.
 // It matches the Python EmailMetadataResponse Pydantic model exactly.
 type EmailMetadataResponse struct {
-	ID            int64      `json:"id"`
-	UID           string     `json:"uid"`
-	Folder        string     `json:"folder"`
-	Subject       *string    `json:"subject"`
-	FromAddress   *string    `json:"from_address"`
-	ToAddresses   *string    `json:"to_addresses"`
-	CCAddresses   *string    `json:"cc_addresses"`
-	BCCAddresses  *string    `json:"bcc_addresses"`
+	ID            int64              `json:"id"`
+	UID           string             `json:"uid"`
+	Folder        string             `json:"folder"`
+	Subject       *string            `json:"subject"`
+	FromAddress   *string            `json:"from_address"`
+	ToAddresses   *string            `json:"to_addresses"`
+	CCAddresses   *string            `json:"cc_addresses"`
+	BCCAddresses  *string            `json:"bcc_addresses"`
 	Date          sqlutil.NullDBTime `json:"date"`
-	Snippet       *string          `json:"snippet"`
-	AttachmentIDs []int64          `json:"attachment_ids"`
-	CreatedAt     sqlutil.DBTime   `json:"created_at"`
-	UpdatedAt     sqlutil.DBTime   `json:"updated_at"`
-	IsPersonal    bool       `json:"is_personal"`
-	IsBusiness    bool       `json:"is_business"`
-	IsImportant   bool       `json:"is_important"`
-	UseByAI       bool       `json:"use_by_ai"`
-	Source        *string    `json:"source,omitempty"`
+	Snippet       *string            `json:"snippet"`
+	AttachmentIDs []int64            `json:"attachment_ids"`
+	CreatedAt     sqlutil.DBTime     `json:"created_at"`
+	UpdatedAt     sqlutil.DBTime     `json:"updated_at"`
+	IsPersonal    bool               `json:"is_personal"`
+	IsBusiness    bool               `json:"is_business"`
+	IsImportant   bool               `json:"is_important"`
+	UseByAI       bool               `json:"use_by_ai"`
+	Source        *string            `json:"source,omitempty"`
 }
 
 // EmailSearchParams holds the optional filters for GET /emails/search.

@@ -342,7 +342,7 @@ func (s *MessageStorage) SaveMessagesBatch(ctx context.Context, messages []Messa
 		for _, msg := range messages {
 			if msg.MessageData.ChatSession != nil && msg.MessageData.MessageDate != nil &&
 				msg.MessageData.SenderID != nil && msg.MessageData.Type != nil {
-				placeholders = append(placeholders, fmt.Sprintf("($%d, $%d, $%d, $%d)",
+				placeholders = append(placeholders, fmt.Sprintf("(?%d, ?%d, ?%d, ?%d)",
 					argIndex, argIndex+1, argIndex+2, argIndex+3))
 				args = append(args, *msg.MessageData.ChatSession, *msg.MessageData.MessageDate,
 					*msg.MessageData.SenderID, *msg.MessageData.Type)
@@ -502,7 +502,7 @@ func (s *MessageStorage) batchInsertMessages(ctx context.Context, tx *sql.Tx, me
 	argIndex := 1
 
 	for _, msg := range messages {
-		placeholder := fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+		placeholder := fmt.Sprintf("(?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
 			argIndex, argIndex+1, argIndex+2, argIndex+3, argIndex+4, argIndex+5, argIndex+6, argIndex+7,
 			argIndex+8, argIndex+9, argIndex+10, argIndex+11, argIndex+12, argIndex+13, argIndex+14, argIndex+15)
 		placeholders = append(placeholders, placeholder)

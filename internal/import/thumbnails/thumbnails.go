@@ -225,7 +225,7 @@ func processMediaItem(ctx context.Context, pool *sql.DB, processor *Processor, w
 				*work.SourceReference, work.MediaItemID, err)}
 		}
 	} else {
-		loadImageQuery := `SELECT image_data FROM media_blobs WHERE id = $1`
+		loadImageQuery := `SELECT image_data FROM media_blobs WHERE id = ?1`
 		err := pool.QueryRowContext(ctx, loadImageQuery, work.BlobID).Scan(&imageData)
 		if err != nil {
 			return processResult{Success: false, Error: fmt.Errorf("failed to load image data for blob_id=%d: %w",
@@ -250,7 +250,7 @@ func processMediaItem(ctx context.Context, pool *sql.DB, processor *Processor, w
 	defer tx.Rollback()
 
 	if thumbData != nil {
-		updateBlobQuery := `UPDATE media_blobs SET thumbnail_data = $1 WHERE id = $2`
+		updateBlobQuery := `UPDATE media_blobs SET thumbnail_data = ?1 WHERE id = ?2`
 		_, err = tx.ExecContext(ctx, updateBlobQuery, thumbData, work.BlobID)
 		if err != nil {
 			return processResult{Success: false, Error: fmt.Errorf("failed to update thumbnail: %w", err)}
@@ -259,14 +259,14 @@ func processMediaItem(ctx context.Context, pool *sql.DB, processor *Processor, w
 
 	updateItemQuery := `UPDATE media_items 
 		SET processed = true, 
-			description = COALESCE(NULLIF($1, ''), description),
-			year = COALESCE($2, year),
-			month = COALESCE($3, month),
-			latitude = COALESCE($4, latitude),
-			longitude = COALESCE($5, longitude),
-			has_gps = COALESCE($6, has_gps),
+			description = COALESCE(NULLIF(?1, ''), description),
+			year = COALESCE(?2, year),
+			month = COALESCE(?3, month),
+			latitude = COALESCE(?4, latitude),
+			longitude = COALESCE(?5, longitude),
+			has_gps = COALESCE(?6, has_gps),
 			updated_at = CURRENT_TIMESTAMP
-		WHERE id = $7`
+		WHERE id = ?7`
 
 	var description *string
 	var year, month *int

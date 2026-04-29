@@ -387,6 +387,7 @@ const DOM = {
     newImageGallerySelectedCount: document.getElementById('new-image-gallery-selected-count'),
     newImageGalleryBulkTags: document.getElementById('new-image-gallery-bulk-tags'),
     newImageGalleryApplyTagsBtn: document.getElementById('new-image-gallery-apply-tags-btn'),
+    newImageGalleryAIClassificationBtn: document.getElementById('new-image-gallery-ai-classification-btn'),
     newImageGalleryDeleteSelectedBtn: document.getElementById('new-image-gallery-delete-selected-btn'),
     newImageGalleryClearSelectionBtn: document.getElementById('new-image-gallery-clear-selection-btn'),
     // New Image Gallery Detail Modal Elements

@@ -53,7 +53,7 @@ func (r *InterestRepo) List(ctx context.Context) ([]*model.Interest, error) {
 // GetByID returns a single interest.
 func (r *InterestRepo) GetByID(ctx context.Context, id int64) (*model.Interest, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT id, name, created_at, updated_at FROM interests WHERE id = $1`
+	q := `SELECT id, name, created_at, updated_at FROM interests WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	i, err := scanInterest(r.pool.QueryRowContext(ctx, q, args...))
@@ -69,7 +69,7 @@ func (r *InterestRepo) GetByID(ctx context.Context, id int64) (*model.Interest, 
 // GetByName returns an interest by exact name (for uniqueness check).
 func (r *InterestRepo) GetByName(ctx context.Context, name string) (*model.Interest, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT id, name, created_at, updated_at FROM interests WHERE name = $1`
+	q := `SELECT id, name, created_at, updated_at FROM interests WHERE name = ?1`
 	args := []any{name}
 	q, args = addUIDFilter(q, args, uid)
 	i, err := scanInterest(r.pool.QueryRowContext(ctx, q, args...))
@@ -85,7 +85,7 @@ func (r *InterestRepo) GetByName(ctx context.Context, name string) (*model.Inter
 // NameExistsExcluding returns true if another row with name exists (excluding given ID).
 func (r *InterestRepo) NameExistsExcluding(ctx context.Context, name string, excludeID int64) (bool, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT COUNT(*) FROM interests WHERE name=$1 AND id!=$2`
+	q := `SELECT COUNT(*) FROM interests WHERE name=?1 AND id!=?2`
 	args := []any{name, excludeID}
 	q, args = addUIDFilter(q, args, uid)
 	var n int
@@ -97,7 +97,7 @@ func (r *InterestRepo) NameExistsExcluding(ctx context.Context, name string, exc
 func (r *InterestRepo) Create(ctx context.Context, name string) (*model.Interest, error) {
 	uid := uidFromCtx(ctx)
 	i, err := scanInterest(r.pool.QueryRowContext(ctx,
-		`INSERT INTO interests (name, user_id) VALUES ($1, $2)
+		`INSERT INTO interests (name, user_id) VALUES (?1, ?2)
 		 RETURNING id, name, created_at, updated_at`, name, uidVal(uid)))
 	if err != nil {
 		return nil, fmt.Errorf("CreateInterest: %w", err)
@@ -108,7 +108,7 @@ func (r *InterestRepo) Create(ctx context.Context, name string) (*model.Interest
 // Update modifies an interest name.
 func (r *InterestRepo) Update(ctx context.Context, id int64, name string) (*model.Interest, error) {
 	uid := uidFromCtx(ctx)
-	q := `UPDATE interests SET name=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2`
+	q := `UPDATE interests SET name=?1, updated_at=CURRENT_TIMESTAMP WHERE id=?2`
 	args := []any{name, id}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` RETURNING id, name, created_at, updated_at`
@@ -125,7 +125,7 @@ func (r *InterestRepo) Update(ctx context.Context, id int64, name string) (*mode
 // Delete removes an interest.
 func (r *InterestRepo) Delete(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM interests WHERE id = $1`
+	q := `DELETE FROM interests WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)

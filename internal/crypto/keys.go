@@ -80,7 +80,7 @@ func randomDEK() ([]byte, error) {
 
 func deleteKeyringRowsForUser(ctx context.Context, exec sqlExecuter, uid int64) error {
 	if uid > 0 {
-		_, err := exec.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE user_id = $1`, uid)
+		_, err := exec.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE user_id = ?1`, uid)
 		return err
 	}
 	_, err := exec.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE user_id IS NULL`)
@@ -99,7 +99,7 @@ func scanMasterEncryptedDEK(ctx context.Context, q sqlRowQuerier, uid int64) ([]
 	var err error
 	if uid > 0 {
 		err = q.QueryRowContext(ctx,
-			`SELECT encrypted_dek FROM sensitive_keyring WHERE is_master = TRUE AND user_id = $1 LIMIT 1`,
+			`SELECT encrypted_dek FROM sensitive_keyring WHERE is_master = TRUE AND user_id = ?1 LIMIT 1`,
 			uid).Scan(&enc)
 	} else {
 		err = q.QueryRowContext(ctx,
@@ -165,11 +165,11 @@ func InitSensitiveKeyring(ctx context.Context, db *sql.DB, masterPassword, peppe
 	}
 	if uid > 0 {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO sensitive_keyring (encrypted_dek, encrypted_master_dek, is_master, user_id) VALUES ($1, NULL, TRUE, $2)`,
+			`INSERT INTO sensitive_keyring (encrypted_dek, encrypted_master_dek, is_master, user_id) VALUES (?1, NULL, TRUE, ?2)`,
 			blob, uid)
 	} else {
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO sensitive_keyring (encrypted_dek, encrypted_master_dek, is_master, user_id) VALUES ($1, NULL, TRUE, NULL)`,
+			`INSERT INTO sensitive_keyring (encrypted_dek, encrypted_master_dek, is_master, user_id) VALUES (?1, NULL, TRUE, NULL)`,
 			blob)
 	}
 	if err != nil {
@@ -206,7 +206,7 @@ func unlockArchiveDEK(ctx context.Context, db *sql.DB, password, pepper string) 
 	var err error
 	if uid > 0 {
 		rows, err = db.QueryContext(ctx,
-			`SELECT encrypted_dek FROM sensitive_keyring WHERE is_master = FALSE AND user_id = $1`, uid)
+			`SELECT encrypted_dek FROM sensitive_keyring WHERE is_master = FALSE AND user_id = ?1`, uid)
 	} else {
 		rows, err = db.QueryContext(ctx,
 			`SELECT encrypted_dek FROM sensitive_keyring WHERE is_master = FALSE AND user_id IS NULL`)
@@ -271,7 +271,7 @@ func FindVisitorKeyringIDForPassword(ctx context.Context, db *sql.DB, password, 
 	var rows *sql.Rows
 	if uid > 0 {
 		rows, err = db.QueryContext(ctx,
-			`SELECT id, encrypted_dek FROM sensitive_keyring WHERE is_master = FALSE AND user_id = $1`, uid)
+			`SELECT id, encrypted_dek FROM sensitive_keyring WHERE is_master = FALSE AND user_id = ?1`, uid)
 	} else {
 		rows, err = db.QueryContext(ctx,
 			`SELECT id, encrypted_dek FROM sensitive_keyring WHERE is_master = FALSE AND user_id IS NULL`)
@@ -320,11 +320,11 @@ func AddSensitiveKeyringSeatTx(ctx context.Context, tx *sql.Tx, _ *sql.DB, userP
 	var id int64
 	if uid > 0 {
 		err = tx.QueryRowContext(ctx,
-			`INSERT INTO sensitive_keyring (encrypted_dek, encrypted_master_dek, is_master, user_id) VALUES ($1, NULL, FALSE, $2) RETURNING id`,
+			`INSERT INTO sensitive_keyring (encrypted_dek, encrypted_master_dek, is_master, user_id) VALUES (?1, NULL, FALSE, ?2) RETURNING id`,
 			blob, uid).Scan(&id)
 	} else {
 		err = tx.QueryRowContext(ctx,
-			`INSERT INTO sensitive_keyring (encrypted_dek, encrypted_master_dek, is_master, user_id) VALUES ($1, NULL, FALSE, NULL) RETURNING id`,
+			`INSERT INTO sensitive_keyring (encrypted_dek, encrypted_master_dek, is_master, user_id) VALUES (?1, NULL, FALSE, NULL) RETURNING id`,
 			blob).Scan(&id)
 	}
 	if err != nil {
@@ -361,9 +361,9 @@ func DeleteSensitiveKeyringSeat(ctx context.Context, db *sql.DB, userPassword, m
 		return fmt.Errorf("visitor password does not match any seat")
 	}
 	if uid > 0 {
-		_, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE id = $1 AND is_master = FALSE AND user_id = $2`, id, uid)
+		_, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE id = ?1 AND is_master = FALSE AND user_id = ?2`, id, uid)
 	} else {
-		_, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE id = $1 AND is_master = FALSE AND user_id IS NULL`, id)
+		_, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE id = ?1 AND is_master = FALSE AND user_id IS NULL`, id)
 	}
 	return err
 }
@@ -377,7 +377,7 @@ func DeleteAllVisitorKeyringSeats(ctx context.Context, db *sql.DB, masterPasswor
 	var res sql.Result
 	var err error
 	if uid > 0 {
-		res, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE is_master = FALSE AND user_id = $1`, uid)
+		res, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE is_master = FALSE AND user_id = ?1`, uid)
 	} else {
 		res, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE is_master = FALSE AND user_id IS NULL`)
 	}
@@ -398,10 +398,10 @@ func DeleteVisitorKeyringSeatByID(ctx context.Context, db *sql.DB, keyringID int
 	var err error
 	if uid > 0 {
 		err = db.QueryRowContext(ctx,
-			`SELECT is_master FROM sensitive_keyring WHERE id = $1 AND user_id = $2`, keyringID, uid).Scan(&isMaster)
+			`SELECT is_master FROM sensitive_keyring WHERE id = ?1 AND user_id = ?2`, keyringID, uid).Scan(&isMaster)
 	} else {
 		err = db.QueryRowContext(ctx,
-			`SELECT is_master FROM sensitive_keyring WHERE id = $1 AND user_id IS NULL`, keyringID).Scan(&isMaster)
+			`SELECT is_master FROM sensitive_keyring WHERE id = ?1 AND user_id IS NULL`, keyringID).Scan(&isMaster)
 	}
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("keyring seat not found")
@@ -413,9 +413,9 @@ func DeleteVisitorKeyringSeatByID(ctx context.Context, db *sql.DB, keyringID int
 		return fmt.Errorf("cannot remove master seat")
 	}
 	if uid > 0 {
-		_, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE id = $1 AND user_id = $2`, keyringID, uid)
+		_, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE id = ?1 AND user_id = ?2`, keyringID, uid)
 	} else {
-		_, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE id = $1 AND user_id IS NULL`, keyringID)
+		_, err = db.ExecContext(ctx, `DELETE FROM sensitive_keyring WHERE id = ?1 AND user_id IS NULL`, keyringID)
 	}
 	return err
 }
@@ -426,7 +426,7 @@ func SensitiveKeyringSeatCount(ctx context.Context, db *sql.DB) (int, error) {
 	var n int
 	var err error
 	if uid > 0 {
-		err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sensitive_keyring WHERE user_id = $1`, uid).Scan(&n)
+		err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sensitive_keyring WHERE user_id = ?1`, uid).Scan(&n)
 	} else {
 		err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sensitive_keyring WHERE user_id IS NULL`).Scan(&n)
 	}

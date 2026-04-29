@@ -181,7 +181,7 @@ func storeEmail(ctx context.Context, pool *sql.DB, folder string, msg *goImap.Me
 	if newOnly {
 		var exists bool
 		_ = pool.QueryRowContext(ctx,
-			`SELECT EXISTS(SELECT 1 FROM emails WHERE uid=$1 AND folder=$2 AND (user_id=$3 OR ($3 IS NULL AND user_id IS NULL)))`,
+			`SELECT EXISTS(SELECT 1 FROM emails WHERE uid=?1 AND folder=?2 AND (user_id=?3 OR (?3 IS NULL AND user_id IS NULL)))`,
 			emailUID, folder, userIDVal,
 		).Scan(&exists)
 		if exists {
@@ -234,7 +234,7 @@ func storeEmail(ctx context.Context, pool *sql.DB, folder string, msg *goImap.Me
 	// (ON CONFLICT doesn't work with NULL columns in unique constraints).
 	var emailID int64
 	checkErr := tx.QueryRowContext(ctx,
-		`SELECT id FROM emails WHERE uid=$1 AND folder=$2 AND (user_id=$3 OR ($3 IS NULL AND user_id IS NULL)) LIMIT 1`,
+		`SELECT id FROM emails WHERE uid=?1 AND folder=?2 AND (user_id=?3 OR (?3 IS NULL AND user_id IS NULL)) LIMIT 1`,
 		emailUID, folder, userIDVal,
 	).Scan(&emailID)
 
@@ -242,11 +242,11 @@ func storeEmail(ctx context.Context, pool *sql.DB, folder string, msg *goImap.Me
 		// Update existing row.
 		_, err = tx.ExecContext(ctx, `
 			UPDATE emails SET
-				subject=$1, from_address=$2, to_addresses=$3, cc_addresses=$4, bcc_addresses=$5,
-				date=$6, raw_message=$7, plain_text=$8, snippet=$9, has_attachments=$10,
-				source=$11,
+				subject=?1, from_address=?2, to_addresses=?3, cc_addresses=?4, bcc_addresses=?5,
+				date=?6, raw_message=?7, plain_text=?8, snippet=?9, has_attachments=?10,
+				source=?11,
 				updated_at=CURRENT_TIMESTAMP
-			WHERE id=$12`,
+			WHERE id=?12`,
 			ensureUTF8(env.Subject), ensureUTF8(from), ensureUTF8(to), ensureUTF8(cc), ensureUTF8(bcc),
 			date, ptrEnsureUTF8(rawMsg), ptrEnsureUTF8(plainText), ptrEnsureUTF8(snippet), hasAttach,
 			mailSource,
@@ -262,7 +262,7 @@ func storeEmail(ctx context.Context, pool *sql.DB, folder string, msg *goImap.Me
 			                    date, raw_message, plain_text, snippet, has_attachments, user_id, source,
 			                    user_deleted, is_personal, is_business, is_social, is_promotional,
 			                    is_spam, is_important, use_by_ai)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE)
+			VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE)
 			RETURNING id`,
 			emailUID, folder, ensureUTF8(env.Subject), ensureUTF8(from), ensureUTF8(to), ensureUTF8(cc), ensureUTF8(bcc),
 			date, ptrEnsureUTF8(rawMsg), ptrEnsureUTF8(plainText), ptrEnsureUTF8(snippet), hasAttach, userIDVal, mailSource,
@@ -275,7 +275,7 @@ func storeEmail(ctx context.Context, pool *sql.DB, folder string, msg *goImap.Me
 	}
 
 	ref := fmt.Sprintf("%d", emailID)
-	if _, err = tx.ExecContext(ctx, `DELETE FROM media_items WHERE source = 'email_attachment' AND source_reference = $1`, ref); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM media_items WHERE source = 'email_attachment' AND source_reference = ?1`, ref); err != nil {
 		return err
 	}
 
@@ -293,7 +293,7 @@ func storeEmail(ctx context.Context, pool *sql.DB, folder string, msg *goImap.Me
 			mt = mt[:255]
 		}
 		var blobID int64
-		if err = tx.QueryRowContext(ctx, `INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES ($1, NULL, $2) RETURNING id`, att.Data, userIDVal).Scan(&blobID); err != nil {
+		if err = tx.QueryRowContext(ctx, `INSERT INTO media_blobs (image_data, thumbnail_data, user_id) VALUES (?1, NULL, ?2) RETURNING id`, att.Data, userIDVal).Scan(&blobID); err != nil {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, `
@@ -301,7 +301,7 @@ func storeEmail(ctx context.Context, pool *sql.DB, folder string, msg *goImap.Me
 				media_blob_id, title, media_type, source, source_reference, user_id,
 				processed, available_for_task, rating, has_gps, is_referenced,
 				is_personal, is_business, is_social, is_promotional, is_spam, is_important
-			) VALUES ($1, $2, $3, 'email_attachment', $4, $5,
+			) VALUES (?1, ?2, ?3, 'email_attachment', ?4, ?5,
 				FALSE, FALSE, 5, FALSE, FALSE,
 				FALSE, FALSE, FALSE, FALSE, FALSE, FALSE)`,
 			blobID, title, mt, ref, userIDVal); err != nil {

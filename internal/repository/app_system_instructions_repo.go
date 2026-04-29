@@ -46,7 +46,7 @@ func (r *AppSystemInstructionsRepo) Get(ctx context.Context) (*AppSystemInstruct
 func (r *AppSystemInstructionsRepo) UpsertPamBotInstructions(ctx context.Context, instructions string) error {
 	_, err := r.pool.ExecContext(ctx, `
 		INSERT INTO app_system_instructions (id, chat_instructions, core_instructions, question_instructions, pam_bot_instructions, user_id, updated_at)
-		VALUES (1, '', '', '', $1, NULL, CURRENT_TIMESTAMP)
+		VALUES (1, '', '', '', ?1, NULL, CURRENT_TIMESTAMP)
 		ON CONFLICT (id) DO UPDATE SET
 			pam_bot_instructions = EXCLUDED.pam_bot_instructions,
 			updated_at = CURRENT_TIMESTAMP`, instructions)
@@ -60,7 +60,7 @@ func (r *AppSystemInstructionsRepo) UpsertPamBotInstructions(ctx context.Context
 func (r *AppSystemInstructionsRepo) Upsert(ctx context.Context, chat, core, question string) error {
 	_, err := r.pool.ExecContext(ctx, `
 		INSERT INTO app_system_instructions (id, chat_instructions, core_instructions, question_instructions, user_id, updated_at)
-		VALUES (1, $1, $2, $3, NULL, CURRENT_TIMESTAMP)
+		VALUES (1, ?1, ?2, ?3, NULL, CURRENT_TIMESTAMP)
 		ON CONFLICT (id) DO UPDATE SET
 			chat_instructions = EXCLUDED.chat_instructions,
 			core_instructions = EXCLUDED.core_instructions,

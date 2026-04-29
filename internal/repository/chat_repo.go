@@ -26,7 +26,7 @@ func (r *ChatRepo) CreateConversation(ctx context.Context, title, voice string) 
 	var c model.ChatConversation
 	err := r.pool.QueryRowContext(ctx,
 		`INSERT INTO chat_conversations (title, voice, user_id)
-		 VALUES ($1, $2, $3)
+		 VALUES (?1, ?2, ?3)
 		 RETURNING id, title, voice, created_at, updated_at, last_message_at`,
 		title, voice, uidVal(uid),
 	).Scan(&c.ID, &c.Title, &c.Voice, &c.CreatedAt, &c.UpdatedAt, &c.LastMessageAt)
@@ -40,7 +40,7 @@ func (r *ChatRepo) CreateConversation(ctx context.Context, title, voice string) 
 func (r *ChatRepo) GetConversation(ctx context.Context, id int64) (*model.ChatConversation, error) {
 	uid := uidFromCtx(ctx)
 	q := `SELECT id, title, voice, created_at, updated_at, last_message_at
-	      FROM chat_conversations WHERE id = $1`
+	      FROM chat_conversations WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	rows, err := r.pool.QueryContext(ctx, q, args...)
@@ -68,7 +68,7 @@ func (r *ChatRepo) ListConversations(ctx context.Context, limit *int) ([]*model.
 	q += " ORDER BY COALESCE(last_message_at, created_at) DESC"
 	if limit != nil {
 		args = append(args, *limit)
-		q += fmt.Sprintf(" LIMIT $%d", len(args))
+		q += fmt.Sprintf(" LIMIT ?%d", len(args))
 	}
 	rows, err := r.pool.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -90,7 +90,7 @@ func (r *ChatRepo) ListConversations(ctx context.Context, limit *int) ([]*model.
 func (r *ChatRepo) TurnCount(ctx context.Context, conversationID int64) (int64, error) {
 	var n int64
 	err := r.pool.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM chat_turns WHERE conversation_id = $1`, conversationID,
+		`SELECT COUNT(*) FROM chat_turns WHERE conversation_id = ?1`, conversationID,
 	).Scan(&n)
 	return n, err
 }
@@ -121,8 +121,8 @@ func (r *ChatRepo) TurnCountsBatch(ctx context.Context, ids []int64) (map[int64]
 func (r *ChatRepo) UpdateConversation(ctx context.Context, id int64, title, voice *string) (*model.ChatConversation, error) {
 	uid := uidFromCtx(ctx)
 	q := `UPDATE chat_conversations
-	      SET title = COALESCE($1, title), voice = COALESCE($2, voice), updated_at = CURRENT_TIMESTAMP
-	      WHERE id = $3`
+	      SET title = COALESCE(?1, title), voice = COALESCE(?2, voice), updated_at = CURRENT_TIMESTAMP
+	      WHERE id = ?3`
 	args := []any{title, voice, id}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` RETURNING id, title, voice, created_at, updated_at, last_message_at`
@@ -148,8 +148,8 @@ func (r *ChatRepo) ClearConversationTurns(ctx context.Context, conversationID in
 	defer tx.Rollback() //nolint:errcheck
 
 	uid := uidFromCtx(ctx)
-	delQ := `DELETE FROM chat_turns WHERE conversation_id = $1 AND EXISTS (
-		SELECT 1 FROM chat_conversations c WHERE c.id = $1`
+	delQ := `DELETE FROM chat_turns WHERE conversation_id = ?1 AND EXISTS (
+		SELECT 1 FROM chat_conversations c WHERE c.id = ?1`
 	args := []any{conversationID}
 	delQ, args = addUIDFilterQualified(delQ, args, uid, "c")
 	delQ += `)`
@@ -159,7 +159,7 @@ func (r *ChatRepo) ClearConversationTurns(ctx context.Context, conversationID in
 	}
 	n, _ := res.RowsAffected()
 
-	updQ := `UPDATE chat_conversations SET last_message_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1`
+	updQ := `UPDATE chat_conversations SET last_message_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?1`
 	updArgs := []any{conversationID}
 	updQ, updArgs = addUIDFilter(updQ, updArgs, uid)
 	if _, err := tx.ExecContext(ctx, updQ, updArgs...); err != nil {
@@ -174,7 +174,7 @@ func (r *ChatRepo) ClearConversationTurns(ctx context.Context, conversationID in
 // DeleteConversation removes a conversation (cascade deletes turns).
 func (r *ChatRepo) DeleteConversation(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)
-	q := `DELETE FROM chat_conversations WHERE id = $1`
+	q := `DELETE FROM chat_conversations WHERE id = ?1`
 	args := []any{id}
 	q, args = addUIDFilter(q, args, uid)
 	_, err := r.pool.ExecContext(ctx, q, args...)
@@ -187,8 +187,8 @@ func (r *ChatRepo) GetTurns(ctx context.Context, conversationID int64, limit int
 		`SELECT id, conversation_id, turn_number, user_input, response_text, voice, temperature, created_at
 		 FROM (
 		   SELECT id, conversation_id, turn_number, user_input, response_text, voice, temperature, created_at
-		   FROM chat_turns WHERE conversation_id = $1
-		   ORDER BY turn_number DESC LIMIT $2
+		   FROM chat_turns WHERE conversation_id = ?1
+		   ORDER BY turn_number DESC LIMIT ?2
 		 ) sub ORDER BY turn_number ASC`,
 		conversationID, limit)
 	if err != nil {
@@ -217,16 +217,16 @@ func (r *ChatRepo) SaveTurn(ctx context.Context, conversationID int64, userInput
 
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO chat_turns (conversation_id, turn_number, user_input, response_text, voice, temperature)
-		 VALUES ($1,
-		   COALESCE((SELECT MAX(turn_number) FROM chat_turns WHERE conversation_id = $1), 0) + 1,
-		   $2, $3, $4, $5)`,
+		 VALUES (?1,
+		   COALESCE((SELECT MAX(turn_number) FROM chat_turns WHERE conversation_id = ?1), 0) + 1,
+		   ?2, ?3, ?4, ?5)`,
 		conversationID, userInput, responseText, voice, temperature,
 	)
 	if err != nil {
 		return fmt.Errorf("SaveTurn insert: %w", err)
 	}
 	_, err = tx.ExecContext(ctx,
-		`UPDATE chat_conversations SET last_message_at = $1 WHERE id = $2`,
+		`UPDATE chat_conversations SET last_message_at = ?1 WHERE id = ?2`,
 		time.Now(), conversationID)
 	if err != nil {
 		return fmt.Errorf("SaveTurn update: %w", err)

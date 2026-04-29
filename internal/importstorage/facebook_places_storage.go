@@ -31,29 +31,29 @@ func (s *FacebookPlacesStorage) SaveOrUpdateLocation(ctx context.Context, name, 
 	var existingID int64
 
 	if latitude != nil && longitude != nil {
-		err = tx.QueryRowContext(ctx, `SELECT id FROM locations WHERE name = $1
+		err = tx.QueryRowContext(ctx, `SELECT id FROM locations WHERE name = ?1
 			AND latitude IS NOT NULL AND longitude IS NOT NULL
-			AND ABS(latitude - $2) < $4 AND ABS(longitude - $3) < $4
-			AND (user_id = $5 OR ($5 IS NULL AND user_id IS NULL))
+			AND ABS(latitude - ?2) < ?4 AND ABS(longitude - ?3) < ?4
+			AND (user_id = ?5 OR (?5 IS NULL AND user_id IS NULL))
 			LIMIT 1`,
 			name, *latitude, *longitude, coordTolerance, uidVal(uid)).Scan(&existingID)
 	} else {
-		err = tx.QueryRowContext(ctx, `SELECT id FROM locations WHERE name = $1
+		err = tx.QueryRowContext(ctx, `SELECT id FROM locations WHERE name = ?1
 			AND latitude IS NULL AND longitude IS NULL
-			AND (user_id = $2 OR ($2 IS NULL AND user_id IS NULL))
+			AND (user_id = ?2 OR (?2 IS NULL AND user_id IS NULL))
 			LIMIT 1`,
 			name, uidVal(uid)).Scan(&existingID)
 	}
 
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE locations SET
-			address = COALESCE($1, address),
-			latitude = COALESCE($2, latitude),
-			longitude = COALESCE($3, longitude),
-			source = $4,
-			source_reference = COALESCE($5, source_reference),
+			address = COALESCE(?1, address),
+			latitude = COALESCE(?2, latitude),
+			longitude = COALESCE(?3, longitude),
+			source = ?4,
+			source_reference = COALESCE(?5, source_reference),
 			updated_at = CURRENT_TIMESTAMP
-			WHERE id = $6`,
+			WHERE id = ?6`,
 			nullIfEmpty(address), latitude, longitude, source, nullIfEmpty(sourceRef), existingID)
 		if err != nil {
 			return false, fmt.Errorf("failed to update location: %w", err)
@@ -69,7 +69,7 @@ func (s *FacebookPlacesStorage) SaveOrUpdateLocation(ctx context.Context, name, 
 	}
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO locations (name, address, latitude, longitude, source, source_reference, user_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		name, nullIfEmpty(address), latitude, longitude, source, nullIfEmpty(sourceRef), uidVal(uid))
 	if err != nil {
 		return false, fmt.Errorf("failed to insert location: %w", err)

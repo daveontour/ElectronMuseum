@@ -104,6 +104,11 @@ func (s *ImageService) BulkUpdateTags(ctx context.Context, imageIDs []int64, tag
 	return updated, errs
 }
 
+// ListImageIDsMissingTag returns image IDs that do not yet contain the supplied tag.
+func (s *ImageService) ListImageIDsMissingTag(ctx context.Context, tag string) ([]int64, error) {
+	return s.repo.ListImageIDsMissingTag(ctx, tag)
+}
+
 // UpdateMetadata updates description, tags, and/or rating for one image.
 func (s *ImageService) UpdateMetadata(ctx context.Context, id int64, description, tags *string, rating *int) (bool, error) {
 	if rating != nil && (*rating < 1 || *rating > 5) {

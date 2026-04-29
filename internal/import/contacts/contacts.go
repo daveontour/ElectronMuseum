@@ -714,7 +714,7 @@ func writeSocialMediaRelationshipsToDatabase(ctx context.Context, db *sql.DB, it
 			continue
 		}
 		seen[key] = struct{}{}
-		_, err := tx.ExecContext(ctx, `DELETE FROM relationships WHERE source_id = $1 AND target_id = $2 AND type = $3`,
+		_, err := tx.ExecContext(ctx, `DELETE FROM relationships WHERE source_id = ?1 AND target_id = ?2 AND type = ?3`,
 			item.FromID, item.ToID, item.Type)
 		if err != nil {
 			return fmt.Errorf("delete existing relationship: %w", err)
@@ -733,7 +733,7 @@ func writeSocialMediaRelationshipsToDatabase(ctx context.Context, db *sql.DB, it
 			if item.Type == "" || item.Count <= 0 {
 				continue
 			}
-			placeholders = append(placeholders, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)", pos, pos+1, pos+2, pos+3, pos+4, pos+5, pos+6))
+			placeholders = append(placeholders, fmt.Sprintf("(?%d, ?%d, ?%d, ?%d, ?%d, ?%d, ?%d)", pos, pos+1, pos+2, pos+3, pos+4, pos+5, pos+6))
 			args = append(args, item.FromID, item.ToID, item.Type, item.Count, true, false, false)
 			pos += 7
 		}

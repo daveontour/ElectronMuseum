@@ -125,23 +125,23 @@ func (h *DocumentHandler) visitorKeyAdminReadOK(w http.ResponseWriter, r *http.R
 }
 
 type docJSON struct {
-	ID               int64   `json:"id"`
-	Filename         string  `json:"filename"`
-	Title            *string `json:"title"`
-	Description      *string `json:"description"`
-	Author           *string `json:"author"`
-	ContentType      string  `json:"content_type"`
-	Size             int64   `json:"size"`
-	Tags             *string `json:"tags"`
-	Categories       *string `json:"categories"`
-	Notes            *string `json:"notes"`
-	AvailableForTask bool    `json:"available_for_task"`
-	IncludeInSystemPrompt bool `json:"include_in_system_prompt"`
-	IsPrivate        bool    `json:"is_private"`
-	IsSensitive      bool    `json:"is_sensitive"`
-	IsEncrypted      bool    `json:"is_encrypted"`
-	CreatedAt        string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
+	ID                    int64   `json:"id"`
+	Filename              string  `json:"filename"`
+	Title                 *string `json:"title"`
+	Description           *string `json:"description"`
+	Author                *string `json:"author"`
+	ContentType           string  `json:"content_type"`
+	Size                  int64   `json:"size"`
+	Tags                  *string `json:"tags"`
+	Categories            *string `json:"categories"`
+	Notes                 *string `json:"notes"`
+	AvailableForTask      bool    `json:"available_for_task"`
+	IncludeInSystemPrompt bool    `json:"include_in_system_prompt"`
+	IsPrivate             bool    `json:"is_private"`
+	IsSensitive           bool    `json:"is_sensitive"`
+	IsEncrypted           bool    `json:"is_encrypted"`
+	CreatedAt             string  `json:"created_at"`
+	UpdatedAt             string  `json:"updated_at"`
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 			Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 			Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
 			IncludeInSystemPrompt: d.IncludeInSystemPrompt,
-			IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
+			IsPrivate:             d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 			CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 			UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
 		})
@@ -204,7 +204,7 @@ func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 		Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
 		IncludeInSystemPrompt: d.IncludeInSystemPrompt,
-		IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
+		IsPrivate:             d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 		CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 		UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
 	})
@@ -328,7 +328,7 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 			Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
 			IncludeInSystemPrompt: d.IncludeInSystemPrompt,
-			IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
+			IsPrivate:             d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 			CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 			UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
 		})
@@ -401,7 +401,7 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 		Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
 		IncludeInSystemPrompt: d.IncludeInSystemPrompt,
-		IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
+		IsPrivate:             d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 		CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 		UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
 	})
@@ -447,7 +447,7 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Author: d.Author, ContentType: d.ContentType, Size: d.Size, Tags: d.Tags,
 		Categories: d.Categories, Notes: d.Notes, AvailableForTask: d.AvailableForTask,
 		IncludeInSystemPrompt: d.IncludeInSystemPrompt,
-		IsPrivate: d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
+		IsPrivate:             d.IsPrivate, IsSensitive: d.IsSensitive, IsEncrypted: d.IsEncrypted,
 		CreatedAt: d.CreatedAt.Format("2006-01-02T15:04:05.999999"),
 		UpdatedAt: d.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
 	})

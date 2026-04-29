@@ -1341,6 +1341,18 @@
                                     </td>
                                     <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="message_embeddings" title="Deletes all message embedding vectors for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
                                 </tr>
+                                <tr class="data-import-row" data-import="image_ai_gemma_unclassified">
+                                    <td><i class="fas fa-tags"></i> AI Classify Images Missing GemmaClassified Tag</td>
+                                    <td class="data-import-count" data-import-count-key="imported_images">—</td>
+                                    <td class="data-import-last-run" data-import-last-run="image_ai_gemma_unclassified"></td>
+                                    <td class="data-import-actions-td">
+                                        <div class="data-import-action-group">
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="image_ai_gemma_unclassified"><i class="fas fa-play"></i> Classify</button>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                </tr>
                                 <!-- <tr class="data-import-row" data-import="email_embeddings">
                                     <td><i class="fas fa-vector-square"></i> Generate Emails Search Vectors</td>
                                     <td class="data-import-count">—</td>
@@ -2287,6 +2299,9 @@
                                     <div class="new-image-gallery-bulk-actions">
                                         <button id="new-image-gallery-apply-tags-btn" class="modal-btn modal-btn-primary" disabled>
                                             <i class="fas fa-tags"></i> Apply Tags
+                                        </button>
+                                        <button id="new-image-gallery-ai-classification-btn" class="modal-btn modal-btn-secondary" disabled type="button">
+                                            <i class="fas fa-robot"></i> AI Classification
                                         </button>
                                         <button id="new-image-gallery-delete-selected-btn" class="modal-btn modal-btn-danger" disabled>
                                             <i class="fas fa-trash-alt"></i> Delete Selected

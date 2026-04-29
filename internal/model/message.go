@@ -41,11 +41,11 @@ type ChatSessionRow struct {
 
 // ChatSessionInfo is the domain representation of a chat session for the API response.
 type ChatSessionInfo struct {
-	ChatSession     string     `json:"chat_session"`
-	MessageCount    int64      `json:"message_count"`
-	HasAttachments  bool       `json:"has_attachments"`
-	AttachmentCount int64      `json:"attachment_count"`
-	MessageType     string     `json:"message_type"`
+	ChatSession     string             `json:"chat_session"`
+	MessageCount    int64              `json:"message_count"`
+	HasAttachments  bool               `json:"has_attachments"`
+	AttachmentCount int64              `json:"attachment_count"`
+	MessageType     string             `json:"message_type"`
 	LastMessageDate sqlutil.NullDBTime `json:"last_message_date"`
 }
 

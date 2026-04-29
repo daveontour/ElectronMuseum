@@ -26,7 +26,7 @@ func (r *ArchiveShareRepo) GetByID(ctx context.Context, id string) (*model.Archi
 	var policyJSON []byte
 	err := r.pool.QueryRowContext(ctx,
 		`SELECT id, user_id, label, password_hash, expires_at, tool_access_policy, created_at
-		 FROM archive_shares WHERE id = $1`, id,
+		 FROM archive_shares WHERE id = ?1`, id,
 	).Scan(&share.ID, &share.UserID, &share.Label, &passwordHash, &share.ExpiresAt, &policyJSON, &share.CreatedAt)
 	if err != nil {
 		if isNoRows(err) {
@@ -48,7 +48,7 @@ func (r *ArchiveShareRepo) GetByIDWithHash(ctx context.Context, id string) (*mod
 	var policyJSON []byte
 	err := r.pool.QueryRowContext(ctx,
 		`SELECT id, user_id, label, password_hash, expires_at, tool_access_policy, created_at
-		 FROM archive_shares WHERE id = $1`, id,
+		 FROM archive_shares WHERE id = ?1`, id,
 	).Scan(&share.ID, &share.UserID, &share.Label, &passwordHash, &share.ExpiresAt, &policyJSON, &share.CreatedAt)
 	if err != nil {
 		if isNoRows(err) {
@@ -71,7 +71,7 @@ func (r *ArchiveShareRepo) GetByIDWithHash(ctx context.Context, id string) (*mod
 func (r *ArchiveShareRepo) ListByUser(ctx context.Context, userID int64) ([]*model.ArchiveShare, error) {
 	rows, err := r.pool.QueryContext(ctx,
 		`SELECT id, user_id, label, password_hash, expires_at, tool_access_policy, created_at
-		 FROM archive_shares WHERE user_id = $1 ORDER BY created_at DESC`, userID)
+		 FROM archive_shares WHERE user_id = ?1 ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (r *ArchiveShareRepo) Create(ctx context.Context, id string, userID int64, 
 	var policyJSON []byte
 	err := r.pool.QueryRowContext(ctx,
 		`INSERT INTO archive_shares (id, user_id, label, password_hash, expires_at, tool_access_policy)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
 		 RETURNING id, user_id, label, password_hash, expires_at, tool_access_policy, created_at`,
 		id, userID, label, passwordHash, expiresAt, toolPolicy,
 	).Scan(&share.ID, &share.UserID, &share.Label, &ph, &share.ExpiresAt, &policyJSON, &share.CreatedAt)
@@ -117,7 +117,7 @@ func (r *ArchiveShareRepo) Create(ctx context.Context, id string, userID int64, 
 // Delete removes a share token, scoped to the owning user.
 func (r *ArchiveShareRepo) Delete(ctx context.Context, id string, userID int64) error {
 	tag, err := r.pool.ExecContext(ctx,
-		`DELETE FROM archive_shares WHERE id = $1 AND user_id = $2`, id, userID)
+		`DELETE FROM archive_shares WHERE id = ?1 AND user_id = ?2`, id, userID)
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func (r *ArchiveShareRepo) Delete(ctx context.Context, id string, userID int64) 
 func (r *ArchiveShareRepo) GetOwnerDisplayName(ctx context.Context, userID int64) (string, error) {
 	var name *string
 	err := r.pool.QueryRowContext(ctx,
-		`SELECT display_name FROM users WHERE id = $1`, userID).Scan(&name)
+		`SELECT display_name FROM users WHERE id = ?1`, userID).Scan(&name)
 	if err != nil {
 		if isNoRows(err) {
 			return "", nil

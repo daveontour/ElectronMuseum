@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -61,6 +62,21 @@ func (h *TemplateHandler) RegisterRoutes(r chi.Router) {
 	r.Get("/s/{token}", h.GetSharePage)
 }
 
+// loginHostShowsAdvancedPanel is true for loopback hosts so dev servers (e.g. go run on
+// localhost) still offer the Advanced entry without requiring DEPLOYMENT_NATURE=local.
+func loginHostShowsAdvancedPanel(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return false
+	}
+	h := host
+	if hostname, _, err := net.SplitHostPort(host); err == nil {
+		h = strings.ToLower(hostname)
+	}
+	h = strings.Trim(h, "[]")
+	return h == "localhost" || h == "127.0.0.1" || h == "::1"
+}
+
 // GetLogin handles GET /login → serves login.html.
 func (h *TemplateHandler) GetLogin(w http.ResponseWriter, r *http.Request) {
 	content, err := h.readFile(h.templatesDir, "login.html")
@@ -86,9 +102,11 @@ func (h *TemplateHandler) GetLogin(w http.ResponseWriter, r *http.Request) {
 			hasVisitorKeys = visitorKeysExist
 		}
 	}
+	showLoginAdvanced := h.deploymentNatureLocal || loginHostShowsAdvancedPanel(r.Host)
 	content = renderJinja(content, map[string]string{}, map[string]string{
 		"has_registered_user": fmt.Sprintf("%t", hasRegisteredUser),
 		"has_visitor_keys":    fmt.Sprintf("%t", hasVisitorKeys),
+		"show_login_advanced": fmt.Sprintf("%t", showLoginAdvanced),
 	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(content))
