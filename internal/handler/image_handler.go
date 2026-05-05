@@ -11,11 +11,13 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
+	"io"
 	"math"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/daveontour/aimuseum/internal/appctx"
 	"github.com/daveontour/aimuseum/internal/importer"
@@ -465,7 +467,9 @@ func (h *ImageHandler) BulkUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 // ImageAIClassificationStart starts a background stub job that processes the given image IDs.
-// POST /image/ai-classification  body: { "ids": [1,2,3] }
+// POST /image/ai-classification  body: { "ids": [1,2,3], "workers": 4 }
+// Optional "workers" (0–32) is RunPod worker count; one additional worker always runs local Ollama as primary.
+// Overrides IMAGE_AI_CLASSIFICATION_WORKERS (RunPod count) when set.
 func (h *ImageHandler) ImageAIClassificationStart(w http.ResponseWriter, r *http.Request) {
 	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
 		return
@@ -475,7 +479,8 @@ func (h *ImageHandler) ImageAIClassificationStart(w http.ResponseWriter, r *http
 		return
 	}
 	var req struct {
-		IDs []int64 `json:"ids"`
+		IDs     []int64 `json:"ids"`
+		Workers *int    `json:"workers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -505,7 +510,11 @@ func (h *ImageHandler) ImageAIClassificationStart(w http.ResponseWriter, r *http
 	})
 	imageAIClassificationJob.Broadcast("status", map[string]any{"status_line": fmt.Sprintf("Starting AI classification for %d image(s)...", len(idsCopy))})
 
-	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, idsCopy)
+	workerArg := 0
+	if req.Workers != nil {
+		workerArg = clampRunPodImageAIWorkers(*req.Workers)
+	}
+	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, idsCopy, workerArg)
 
 	writeJSON(w, map[string]any{"message": "Image AI classification started", "status": "started", "count": len(idsCopy)})
 }
@@ -545,7 +554,7 @@ func (h *ImageHandler) ImageAIClassificationGemmaUnclassifiedStart(w http.Respon
 		"status_line": fmt.Sprintf("Starting AI classification for %d unclassified image(s)...", len(ids)),
 	})
 
-	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, append([]int64(nil), ids...))
+	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, append([]int64(nil), ids...), 0)
 
 	writeJSON(w, map[string]any{
 		"message": "Image AI classification job started for unclassified images",
@@ -665,130 +674,423 @@ func convertImageBytesToJPEGIfNeeded(data []byte, contentType string) ([]byte, e
 	return buf.Bytes(), nil
 }
 
-func runImageAIClassificationStub(svc *service.ImageService, job *importer.ImportJob, uid int64, imageIDs []int64) {
+const (
+	imageAIClassificationDefaultWorkers = 4
+	imageAIClassificationMaxWorkers     = 32
+)
+
+// clampRunPodImageAIWorkers bounds RunPod-side parallelism (0 = RunPod workers disabled; local-only pool still runs).
+func clampRunPodImageAIWorkers(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > imageAIClassificationMaxWorkers {
+		return imageAIClassificationMaxWorkers
+	}
+	return n
+}
+
+// imageAIClassificationWorkerCountFromEnv returns IMAGE_AI_CLASSIFICATION_WORKERS (RunPod worker count) or the default (clamped).
+func imageAIClassificationWorkerCountFromEnv() int {
+	s := strings.TrimSpace(os.Getenv("IMAGE_AI_CLASSIFICATION_WORKERS"))
+	if s == "" {
+		return imageAIClassificationDefaultWorkers
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return imageAIClassificationDefaultWorkers
+	}
+	return clampRunPodImageAIWorkers(n)
+}
+
+const (
+	imageAIWorkerPoolRunPod = "RunPod"
+	imageAIWorkerPoolLocal  = "Local"
+)
+
+// imageAIClassifyOutcome is the result of classifying one image (workers send this; the coordinator broadcasts).
+type imageAIClassifyOutcome struct {
+	id          int64
+	classified  bool
+	keywordTags string
+	errMsg      string
+	workerPool  string // owning goroutine pool: RunPod or Local
+	workerNum   int    // 1-based index within that pool
+	successVia  string // backend that produced keywords when classified: RunPod or Local; empty on failure
+}
+
+// imageAIOutcomeWorkerUIPrefix returns a short tag for status_line / SSE UI (e.g. "[RunPod-2]" or "[RunPod-2->Local]").
+func imageAIOutcomeWorkerUIPrefix(o imageAIClassifyOutcome) string {
+	if o.workerPool == "" || o.workerNum < 1 {
+		return "[worker]"
+	}
+	tag := fmt.Sprintf("%s-%d", o.workerPool, o.workerNum)
+	if o.classified && o.successVia != "" && o.successVia != o.workerPool {
+		return fmt.Sprintf("[%s->%s]", tag, o.successVia)
+	}
+	return "[" + tag + "]"
+}
+
+// classifyImageAIOne loads an image, runs Ollama keyword classification, and updates tags. It does not touch job state.
+func classifyImageAIOne(ctx context.Context, svc *service.ImageService, id int64) imageAIClassifyOutcome {
+	content, err := svc.GetImageContent(ctx, id, "metadata", false)
+	if err != nil || content == nil || len(content.Data) == 0 {
+		msg := fmt.Sprintf("load image %d: %v", id, err)
+		if content == nil && err == nil {
+			msg = fmt.Sprintf("load image %d: not found", id)
+		}
+		return imageAIClassifyOutcome{id: id, errMsg: msg}
+	}
+
+	jpegBytes, err := convertImageBytesToJPEGIfNeeded(content.Data, content.ContentType)
+	if err != nil {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("jpeg convert image %d: %v", id, err)}
+	}
+
+	encodedB64 := base64.StdEncoding.EncodeToString(jpegBytes)
+	keywordTags, llmErr := classifyImageKeywordsWithOllama(ctx, encodedB64)
+	if llmErr != nil {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("classify image %d: %v", id, llmErr)}
+	}
+	if strings.TrimSpace(keywordTags) == "" {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("classify image %d: model returned no keywords", id)}
+	}
+
+	tagsForUpdate := keywordTags + ", GemmaClassified"
+	n, tagErrs := svc.BulkUpdateTags(ctx, []int64{id}, tagsForUpdate)
+	if n == 0 || len(tagErrs) > 0 {
+		msg := fmt.Sprintf("tag update image %d failed", id)
+		if len(tagErrs) > 0 {
+			msg = fmt.Sprintf("tag update image %d: %s", id, strings.Join(tagErrs, "; "))
+		}
+		return imageAIClassifyOutcome{id: id, errMsg: msg}
+	}
+
+	return imageAIClassifyOutcome{id: id, classified: true, keywordTags: keywordTags}
+}
+
+// runPodImageClassifyRunsyncURL returns the RunPod serverless runsync URL from the environment.
+// Set RUNPOD_IMAGE_CLASSIFY_URL to a full URL (e.g. https://api.runpod.ai/v2/xxx/runsync), or set
+// RUNPOD_IMAGE_CLASSIFY_ENDPOINT_ID to the endpoint id only (https://api.runpod.ai/v2/{id}/runsync is built).
+func runPodImageClassifyRunsyncURL() (string, error) {
+	raw := strings.TrimSpace(os.Getenv("RUNPOD_IMAGE_CLASSIFY_URL"))
+	if raw != "" {
+		u := strings.TrimRight(raw, "/")
+		if !strings.HasSuffix(u, "/run") && !strings.HasSuffix(u, "/runsync") {
+			u += "/runsync"
+		}
+		return u, nil
+	}
+	id := strings.TrimSpace(os.Getenv("RUNPOD_IMAGE_CLASSIFY_ENDPOINT_ID"))
+	if id == "" {
+		return "", fmt.Errorf("set RUNPOD_IMAGE_CLASSIFY_URL or RUNPOD_IMAGE_CLASSIFY_ENDPOINT_ID")
+	}
+	return "https://api.runpod.ai/v2/" + id + "/runsync", nil
+}
+
+// extractRunPodAssistantContentForKeywords parses a RunPod runsync JSON body and returns the
+// assistant message.content string (expected to be a JSON array of keywords), matching runpod_image_classify.py.
+func extractRunPodAssistantContentForKeywords(result map[string]any) (string, error) {
+	if result == nil {
+		return "", fmt.Errorf("response is not a JSON object")
+	}
+	if errVal, ok := result["error"]; ok && errVal != nil {
+		return "", fmt.Errorf("runpod error: %v", errVal)
+	}
+	outRaw, ok := result["output"]
+	if !ok || outRaw == nil {
+		return "", fmt.Errorf("no output in response")
+	}
+	if outMap, ok := outRaw.(map[string]any); ok {
+		if errVal, ok := outMap["error"]; ok && errVal != nil {
+			return "", fmt.Errorf("runpod output error: %v", errVal)
+		}
+		return "", fmt.Errorf("unexpected output shape (object)")
+	}
+	outList, ok := outRaw.([]any)
+	if !ok || len(outList) == 0 {
+		return "", fmt.Errorf("unexpected or empty output")
+	}
+	for i := len(outList) - 1; i >= 0; i-- {
+		item, ok := outList[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		if errVal, ok := item["error"]; ok && errVal != nil {
+			return "", fmt.Errorf("runpod output item error: %v", errVal)
+		}
+		msg, ok := item["message"].(map[string]any)
+		if !ok {
+			continue
+		}
+		c, ok := msg["content"].(string)
+		if ok && strings.TrimSpace(c) != "" {
+			return strings.TrimSpace(c), nil
+		}
+	}
+	return "", fmt.Errorf("no assistant message.content found in output")
+}
+
+// classifyImageKeywordsWithRunPod POSTs base64 JPEG bytes (no data: prefix) to RunPod serverless
+// with input key imageClassifyRequest, same contract as internal/handler/runpod_image_classify.py.
+func classifyImageKeywordsWithRunPod(ctx context.Context, encodedImageB64 string) (string, error) {
+	apiKey := strings.TrimSpace(os.Getenv("RUNPOD_API_KEY"))
+	if apiKey == "" {
+		return "", fmt.Errorf("RUNPOD_API_KEY is not set")
+	}
+	url, err := runPodImageClassifyRunsyncURL()
+	if err != nil {
+		return "", err
+	}
+	body := map[string]any{
+		"input": map[string]any{
+			"imageClassifyRequest": encodedImageB64,
+		},
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("marshal runpod request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("build runpod request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("call runpod: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read runpod response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("runpod API status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	var result map[string]any
+	if len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return "", fmt.Errorf("decode runpod response: %w", err)
+		}
+	} else {
+		result = map[string]any{}
+	}
+	rawContent, err := extractRunPodAssistantContentForKeywords(result)
+	if err != nil {
+		return "", err
+	}
+	keywords, err := parseKeywordJSONArray(rawContent)
+	if err != nil {
+		return "", fmt.Errorf("parse runpod keyword content: %w", err)
+	}
+	return strings.Join(keywords, ", "), nil
+}
+
+// classifyImageAIOneRunPod is like classifyImageAIOne but sends the JPEG to RunPod (imageClassifyRequest / runsync)
+// instead of calling local Ollama. Requires RUNPOD_API_KEY and RUNPOD_IMAGE_CLASSIFY_URL or RUNPOD_IMAGE_CLASSIFY_ENDPOINT_ID.
+func classifyImageAIOneRunPod(ctx context.Context, svc *service.ImageService, id int64) imageAIClassifyOutcome {
+	content, err := svc.GetImageContent(ctx, id, "metadata", false)
+	if err != nil || content == nil || len(content.Data) == 0 {
+		msg := fmt.Sprintf("load image %d: %v", id, err)
+		if content == nil && err == nil {
+			msg = fmt.Sprintf("load image %d: not found", id)
+		}
+		return imageAIClassifyOutcome{id: id, errMsg: msg}
+	}
+
+	jpegBytes, err := convertImageBytesToJPEGIfNeeded(content.Data, content.ContentType)
+	if err != nil {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("jpeg convert image %d: %v", id, err)}
+	}
+
+	encodedB64 := base64.StdEncoding.EncodeToString(jpegBytes)
+	keywordTags, llmErr := classifyImageKeywordsWithRunPod(ctx, encodedB64)
+	if llmErr != nil {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("classify image %d: %v", id, llmErr)}
+	}
+	if strings.TrimSpace(keywordTags) == "" {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("classify image %d: model returned no keywords", id)}
+	}
+
+	tagsForUpdate := keywordTags + ", GemmaClassified"
+	n, tagErrs := svc.BulkUpdateTags(ctx, []int64{id}, tagsForUpdate)
+	if n == 0 || len(tagErrs) > 0 {
+		msg := fmt.Sprintf("tag update image %d failed", id)
+		if len(tagErrs) > 0 {
+			msg = fmt.Sprintf("tag update image %d: %s", id, strings.Join(tagErrs, "; "))
+		}
+		return imageAIClassifyOutcome{id: id, errMsg: msg}
+	}
+
+	return imageAIClassifyOutcome{id: id, classified: true, keywordTags: keywordTags}
+}
+
+// classifyImageAIOneRunPodWithLocalFallback tries RunPod first; on failure, classifies with local Ollama once.
+func classifyImageAIOneRunPodWithLocalFallback(ctx context.Context, svc *service.ImageService, id int64, workerPool string, workerNum int) imageAIClassifyOutcome {
+	out := classifyImageAIOneRunPod(ctx, svc, id)
+	out.workerPool = workerPool
+	out.workerNum = workerNum
+	if out.classified {
+		out.successVia = imageAIWorkerPoolRunPod
+		return out
+	}
+	fb := classifyImageAIOne(ctx, svc, id)
+	if fb.classified {
+		return imageAIClassifyOutcome{
+			id: id, classified: true, keywordTags: fb.keywordTags,
+			workerPool: workerPool, workerNum: workerNum,
+			successVia: imageAIWorkerPoolLocal,
+		}
+	}
+	out.successVia = ""
+	out.errMsg = fmt.Sprintf("%s; fallback (local): %s", out.errMsg, fb.errMsg)
+	return out
+}
+
+// classifyImageAIOneWithRunPodFallback tries local Ollama first; on failure, classifies via RunPod once.
+func classifyImageAIOneWithRunPodFallback(ctx context.Context, svc *service.ImageService, id int64, workerPool string, workerNum int) imageAIClassifyOutcome {
+	out := classifyImageAIOne(ctx, svc, id)
+	out.workerPool = workerPool
+	out.workerNum = workerNum
+	if out.classified {
+		out.successVia = imageAIWorkerPoolLocal
+		return out
+	}
+	fb := classifyImageAIOneRunPod(ctx, svc, id)
+	if fb.classified {
+		return imageAIClassifyOutcome{
+			id: id, classified: true, keywordTags: fb.keywordTags,
+			workerPool: workerPool, workerNum: workerNum,
+			successVia: imageAIWorkerPoolRunPod,
+		}
+	}
+	out.successVia = ""
+	out.errMsg = fmt.Sprintf("%s; fallback (RunPod): %s", out.errMsg, fb.errMsg)
+	return out
+}
+
+func runImageAIClassificationStub(svc *service.ImageService, job *importer.ImportJob, uid int64, imageIDs []int64, workers int) {
 	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
 	defer job.Finish()
 
+	var runPodWorkers int
+	if workers <= 0 {
+		runPodWorkers = imageAIClassificationWorkerCountFromEnv()
+	} else {
+		runPodWorkers = clampRunPodImageAIWorkers(workers)
+	}
+
+	poolSlots := runPodWorkers + 1 // +1 fixed local-primary worker
+
 	total := len(imageIDs)
 	classified, errorsCount := 0, 0
+	queueStatusLine := fmt.Sprintf("AI classification: %d image(s) queued [Local 1]", total)
+	if runPodWorkers > 0 {
+		queueStatusLine = fmt.Sprintf("AI classification: %d image(s) queued [RunPod 1-%d] [Local 1]", total, runPodWorkers)
+	}
 	job.UpdateState(map[string]any{
 		"total":       total,
 		"processed":   0,
 		"classified":  classified,
 		"errors":      errorsCount,
 		"status":      "in_progress",
-		"status_line": fmt.Sprintf("AI classification: %d image(s) queued", total),
+		"status_line": queueStatusLine,
 	})
 	job.Broadcast("progress", job.GetState())
 
-	for i, id := range imageIDs {
-		if job.IsCancelled() {
+	if total == 0 {
+		job.UpdateState(map[string]any{
+			"status":      "completed",
+			"status_line": "Image AI classification complete: 0 images",
+			"processed":   0,
+			"classified":  0,
+			"errors":      0,
+		})
+		job.Broadcast("completed", job.GetState())
+		return
+	}
+
+	workCh := make(chan int64, poolSlots)
+	resCh := make(chan imageAIClassifyOutcome, poolSlots)
+
+	var wg sync.WaitGroup
+	for w := 1; w <= runPodWorkers; w++ {
+		workerNum := w
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for id := range workCh {
+				resCh <- classifyImageAIOneRunPodWithLocalFallback(ctx, svc, id, imageAIWorkerPoolRunPod, workerNum)
+			}
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for id := range workCh {
+			resCh <- classifyImageAIOneWithRunPodFallback(ctx, svc, id, imageAIWorkerPoolLocal, 1)
+		}
+	}()
+
+	go func() {
+		defer close(workCh)
+		for _, id := range imageIDs {
+			if job.IsCancelled() {
+				return
+			}
+			workCh <- id
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+		close(resCh)
+	}()
+
+	processed := 0
+	for out := range resCh {
+		processed++
+		wp := imageAIOutcomeWorkerUIPrefix(out)
+		if out.classified {
+			classified++
 			job.UpdateState(map[string]any{
-				"status":      "cancelled",
-				"status_line": "Image AI classification cancelled.",
-				"processed":   i,
+				"processed":   processed,
 				"classified":  classified,
 				"errors":      errorsCount,
+				"status_line": fmt.Sprintf("%s Processed %d/%d (image id %d, %d AI keywords)", wp, processed, total, out.id, countNonEmptyCSV(out.keywordTags)),
 			})
-			job.Broadcast("cancelled", job.GetState())
-			return
-		}
-
-		content, err := svc.GetImageContent(ctx, id, "metadata", false)
-		if err != nil || content == nil || len(content.Data) == 0 {
+		} else {
 			errorsCount++
-			msg := fmt.Sprintf("load image %d: %v", id, err)
-			if content == nil && err == nil {
-				msg = fmt.Sprintf("load image %d: not found", id)
-			}
 			job.UpdateState(map[string]any{
-				"processed":     i + 1,
+				"processed":     processed,
 				"classified":    classified,
 				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Processed %d/%d — %s", i+1, total, msg),
-				"error_message": msg,
+				"status_line":   fmt.Sprintf("%s Processed %d/%d — %s", wp, processed, total, out.errMsg),
+				"error_message": out.errMsg,
 			})
-			job.Broadcast("progress", job.GetState())
-			continue
 		}
+		job.Broadcast("progress", job.GetState())
+	}
 
-		jpegBytes, err := convertImageBytesToJPEGIfNeeded(content.Data, content.ContentType)
-		if err != nil {
-			errorsCount++
-			msg := fmt.Sprintf("jpeg convert image %d: %v", id, err)
-			job.UpdateState(map[string]any{
-				"processed":     i + 1,
-				"classified":    classified,
-				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Processed %d/%d — %s", i+1, total, msg),
-				"error_message": msg,
-			})
-			job.Broadcast("progress", job.GetState())
-			continue
-		}
-
-		encodedB64 := base64.StdEncoding.EncodeToString(jpegBytes)
-		keywordTags, llmErr := classifyImageKeywordsWithOllama(ctx, encodedB64)
-		if llmErr != nil {
-			errorsCount++
-			msg := fmt.Sprintf("classify image %d: %v", id, llmErr)
-			job.UpdateState(map[string]any{
-				"processed":     i + 1,
-				"classified":    classified,
-				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Processed %d/%d - %s", i+1, total, msg),
-				"error_message": msg,
-			})
-			job.Broadcast("progress", job.GetState())
-			continue
-		}
-		if strings.TrimSpace(keywordTags) == "" {
-			errorsCount++
-			msg := fmt.Sprintf("classify image %d: model returned no keywords", id)
-			job.UpdateState(map[string]any{
-				"processed":     i + 1,
-				"classified":    classified,
-				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Processed %d/%d - %s", i+1, total, msg),
-				"error_message": msg,
-			})
-			job.Broadcast("progress", job.GetState())
-			continue
-		}
-
-		tagsForUpdate := keywordTags + ", GemmaClassified"
-		n, tagErrs := svc.BulkUpdateTags(ctx, []int64{id}, tagsForUpdate)
-		if n == 0 || len(tagErrs) > 0 {
-			errorsCount++
-			msg := fmt.Sprintf("tag update image %d failed", id)
-			if len(tagErrs) > 0 {
-				msg = fmt.Sprintf("tag update image %d: %s", id, strings.Join(tagErrs, "; "))
-			}
-			job.UpdateState(map[string]any{
-				"processed":     i + 1,
-				"classified":    classified,
-				"errors":        errorsCount,
-				"status_line":   fmt.Sprintf("Processed %d/%d — %s", i+1, total, msg),
-				"error_message": msg,
-			})
-			job.Broadcast("progress", job.GetState())
-			continue
-		}
-
-		classified++
+	if job.IsCancelled() {
 		job.UpdateState(map[string]any{
-			"processed":   i + 1,
+			"status":      "cancelled",
+			"status_line": "Image AI classification cancelled.",
+			"processed":   processed,
 			"classified":  classified,
 			"errors":      errorsCount,
-			"status_line": fmt.Sprintf("Processed %d/%d (image id %d, %d AI keywords)", i+1, total, id, countNonEmptyCSV(keywordTags)),
 		})
-		job.Broadcast("progress", job.GetState())
+		job.Broadcast("cancelled", job.GetState())
+		return
 	}
 
 	job.UpdateState(map[string]any{
 		"status":      "completed",
 		"status_line": fmt.Sprintf("Image AI classification complete: %d classified, %d errors (of %d)", classified, errorsCount, total),
-		"processed":   total,
+		"processed":   processed,
 		"classified":  classified,
 		"errors":      errorsCount,
 	})
