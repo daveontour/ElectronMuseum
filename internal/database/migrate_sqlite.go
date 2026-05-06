@@ -144,7 +144,7 @@ func ensureSQLiteVecEmbeddingTables(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("sqlite-vec not available (vec_version): %w", err)
 	}
 
-	tables := []string{"email_embeddings", "message_embeddings"}
+	tables := []string{"email_embeddings", "message_embeddings", "media_tag_embeddings"}
 	for _, table := range tables {
 		var exists int
 		if err := db.QueryRowContext(ctx,

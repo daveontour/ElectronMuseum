@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -133,6 +134,22 @@ SELECT CAST(MAX(ts) AS TEXT) FROM (
 	result[key] = info
 	key, info = run("image_export", `SELECT CAST(MAX(updated_at) AS TEXT) FROM media_items WHERE user_id = ?1`, uidArg...)
 	result[key] = info
+
+	var (
+		embTS     *string
+		embResult string
+		embMsg    string
+	)
+	if err := h.pool.QueryRowContext(ctx,
+		`SELECT CAST(last_run_at AS TEXT), result, COALESCE(result_message, '') FROM import_control_last_run WHERE import_type = 'image_tag_embeddings' AND user_id = ?1`,
+		uid,
+	).Scan(&embTS, &embResult, &embMsg); err == nil {
+		if embTS != nil && *embTS != "" {
+			result["image_tag_embeddings"] = runInfo{LastRunAt: embTS, Result: embResult, ResultMessage: embMsg}
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		// best-effort: ignore missing row; log only unexpected errors
+	}
 
 	writeJSON(w, result)
 }

@@ -16,12 +16,30 @@ import (
 
 // ImageService coordinates media read operations.
 type ImageService struct {
-	repo *repository.ImageRepo
+	repo     *repository.ImageRepo
+	tagEmbed *MediaTagEmbeddingHelper
 }
 
-// NewImageService creates an ImageService.
-func NewImageService(repo *repository.ImageRepo) *ImageService {
-	return &ImageService{repo: repo}
+// NewImageService creates an ImageService. tagEmbed may be nil (no incremental vec sync).
+func NewImageService(repo *repository.ImageRepo, tagEmbed *MediaTagEmbeddingHelper) *ImageService {
+	return &ImageService{repo: repo, tagEmbed: tagEmbed}
+}
+
+func (s *ImageService) syncMediaTagEmbedding(ctx context.Context, mediaItemID int64) {
+	if s.tagEmbed == nil {
+		return
+	}
+	s.tagEmbed.Sync(ctx, mediaItemID)
+}
+
+// SyncTagEmbedding recomputes the sqlite-vec tag embedding for one image (best-effort).
+func (s *ImageService) SyncTagEmbedding(ctx context.Context, mediaItemID int64) {
+	s.syncMediaTagEmbedding(ctx, mediaItemID)
+}
+
+// ListMediaItemsForTagEmbeddingBackfill lists rows with non-empty tags for backfill jobs.
+func (s *ImageService) ListMediaItemsForTagEmbeddingBackfill(ctx context.Context) ([]repository.MediaTagEmbeddingRow, error) {
+	return s.repo.ListMediaItemsForTagEmbeddingBackfill(ctx)
 }
 
 // Search returns metadata for images matching the given filters.
@@ -97,6 +115,7 @@ func (s *ImageService) BulkUpdateTags(ctx context.Context, imageIDs []int64, tag
 		}
 		if ok {
 			updated++
+			s.syncMediaTagEmbedding(ctx, id)
 		} else {
 			errs = append(errs, fmt.Sprintf("Image %d not found", id))
 		}
@@ -114,7 +133,14 @@ func (s *ImageService) UpdateMetadata(ctx context.Context, id int64, description
 	if rating != nil && (*rating < 1 || *rating > 5) {
 		return false, fmt.Errorf("rating must be between 1 and 5")
 	}
-	return s.repo.UpdateMetadata(ctx, id, description, tags, rating)
+	ok, err := s.repo.UpdateMetadata(ctx, id, description, tags, rating)
+	if err != nil || !ok {
+		return ok, err
+	}
+	if tags != nil {
+		s.syncMediaTagEmbedding(ctx, id)
+	}
+	return true, nil
 }
 
 // BulkDeleteImages deletes multiple images by metadata ID.

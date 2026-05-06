@@ -1341,6 +1341,18 @@
                                     </td>
                                     <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="message_embeddings" title="Deletes all message embedding vectors for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
                                 </tr>
+                                <tr class="data-import-row" data-import="image_tag_embeddings">
+                                    <td><i class="fas fa-tags"></i> Build Image Tag Similarity Embeddings</td>
+                                    <td class="data-import-count">—</td>
+                                    <td class="data-import-last-run" data-import-last-run="image_tag_embeddings"></td>
+                                    <td class="data-import-actions-td">
+                                        <div class="data-import-action-group">
+                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="image_tag_embeddings"><i class="fas fa-play"></i> Run</button>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                        </div>
+                                    </td>
+                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="media_tag_embeddings" title="Deletes all image tag embedding vectors for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
+                                </tr>
                                 <tr class="data-import-row" data-import="image_ai_gemma_unclassified">
                                     <td><i class="fas fa-tags"></i> AI Classify Images Missing GemmaClassified Tag</td>
                                     <td class="data-import-count" data-import-count-key="imported_images">—</td>
@@ -2238,6 +2250,11 @@
                                     <input type="text" id="new-image-gallery-tags" placeholder="Tags..." class="new-image-gallery-input email-gallery-input" list="new-image-gallery-tags-list">
                                     <datalist id="new-image-gallery-tags-list"></datalist>
                                 </div>
+                                <div class="new-image-gallery-search-row email-gallery-search-row">
+                                    <input type="text" id="new-image-gallery-similar-tags" placeholder="Similar by tags (local AI)..." class="new-image-gallery-input email-gallery-input" disabled aria-describedby="new-image-gallery-similar-hint">
+                                    <button type="button" id="new-image-gallery-similar-btn" class="modal-btn modal-btn-secondary" disabled>Similar</button>
+                                    <span id="new-image-gallery-similar-hint" style="font-size:0.85em;color:#888;">Requires local embedding model</span>
+                                </div>
                                 <div class="new-image-gallery-filter-row email-gallery-filter-row">
                                     <input type="text" id="new-image-gallery-author" placeholder="Author..." class="new-image-gallery-input email-gallery-input">
                                     <select id="new-image-gallery-source" class="new-image-gallery-select email-gallery-select" aria-label="Source">
@@ -2334,7 +2351,10 @@
                     <!-- Metadata Section -->
                     <div class="new-image-gallery-detail-metadata-section">
                         <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 1em; gap: 0.5em;">
-                            <div style="display: flex; gap: 0.5em;">
+                            <div style="display: flex; gap: 0.5em; flex-wrap: wrap;">
+                                <button type="button" id="new-image-detail-find-similar-btn" class="modal-btn modal-btn-secondary" title="Search the gallery for images with similar tags (local AI)">
+                                    <i class="fas fa-search"></i> Find Similar
+                                </button>
                                 <button id="new-image-gallery-save-btn" class="modal-btn" style="display: none;" disabled>
                                     <i class="fas fa-save"></i> Save Changes
                                 </button>

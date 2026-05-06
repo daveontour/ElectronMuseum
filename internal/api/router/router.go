@@ -43,6 +43,9 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 
 	sessionMasterStore := keystore.NewSessionMasterStore(cfg.Server.SessionCookieSecure)
 
+	localAIProvider := appai.NewLocalAIProvider(cfg.AI.LocalAIBaseURL, cfg.AI.LocalAIAPIKey, cfg.AI.LocalAIModelName)
+	embeddingSvc := service.NewEmbeddingService(localAIProvider, cfg.AI.LocalAIEmbeddingModel)
+
 	// ── Emails ─────────────────────────────────────────────────────────────────
 	emailRepo := repository.NewEmailRepo(pool)
 	emailSvc := service.NewEmailService(emailRepo)
@@ -73,8 +76,9 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 
 	// ── Images & media ─────────────────────────────────────────────────────────
 	imageRepo := repository.NewImageRepo(pool)
-	imageSvc := service.NewImageService(imageRepo)
-	imageHandler := handler.NewImageHandler(imageSvc, sessionMasterStore, pool)
+	tagEmbedHelper := service.NewMediaTagEmbeddingHelper(pool, imageRepo, embeddingSvc)
+	imageSvc := service.NewImageService(imageRepo, tagEmbedHelper)
+	imageHandler := handler.NewImageHandler(imageSvc, sessionMasterStore, pool, embeddingSvc)
 	imageHandler.RegisterRoutes(r)
 
 	// ── Messages ────────────────────────────────────────────────────────────────
@@ -161,10 +165,6 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 	attachmentSvc := service.NewAttachmentService(attachmentRepo)
 	attachmentHandler := handler.NewAttachmentHandler(attachmentSvc, cfg.App.AssetStaticDir, sessionMasterStore, sensitiveSvc, authSvc)
 	attachmentHandler.RegisterRoutes(r)
-
-	// ── Embeddings (local AI) ─────────────────────────────────────────────────
-	localAIProvider := appai.NewLocalAIProvider(cfg.AI.LocalAIBaseURL, cfg.AI.LocalAIAPIKey, cfg.AI.LocalAIModelName)
-	embeddingSvc := service.NewEmbeddingService(localAIProvider, cfg.AI.LocalAIEmbeddingModel)
 
 	// ── Import jobs ───────────────────────────────────────────────────────────
 	importerHandler := handler.NewImporterHandler(handler.ImporterHandlerDeps{

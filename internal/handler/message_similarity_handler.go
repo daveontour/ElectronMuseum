@@ -66,7 +66,7 @@ func (h *MessageSimilarityHandler) Search(w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 	uid := appctx.UserIDFromCtx(ctx)
-	vec, err := h.embeddingSvc.EmbedTextWithModel(ctx, queryText, "embeddinggemma:latest")
+	vec, err := h.embeddingSvc.EmbedText(ctx, queryText)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("embedding failed: %v", err))
 		return
@@ -185,7 +185,7 @@ func (h *MessageSimilarityHandler) SearchUnique(w http.ResponseWriter, r *http.R
 
 	ctx := r.Context()
 	uid := appctx.UserIDFromCtx(ctx)
-	vec, err := h.embeddingSvc.EmbedTextWithModel(ctx, queryText, "embeddinggemma:latest")
+	vec, err := h.embeddingSvc.EmbedText(ctx, queryText)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("embedding failed: %v", err))
 		return

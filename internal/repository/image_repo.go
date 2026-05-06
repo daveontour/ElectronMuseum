@@ -255,6 +255,36 @@ func (r *ImageRepo) GetAllTagStrings(ctx context.Context) ([]string, error) {
 	return all, rows.Err()
 }
 
+// MediaTagEmbeddingRow is id + tags for tag-embedding backfill jobs.
+type MediaTagEmbeddingRow struct {
+	ID   int64
+	Tags *string
+}
+
+// ListMediaItemsForTagEmbeddingBackfill returns media_items rows that have non-empty tags (user-scoped).
+func (r *ImageRepo) ListMediaItemsForTagEmbeddingBackfill(ctx context.Context) ([]MediaTagEmbeddingRow, error) {
+	uid := uidFromCtx(ctx)
+	q := `SELECT id, tags FROM media_items WHERE tags IS NOT NULL AND TRIM(tags) != ''`
+	args := []any{}
+	q, args = addUIDFilter(q, args, uid)
+	q += ` ORDER BY id ASC`
+	rows, err := r.pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ListMediaItemsForTagEmbeddingBackfill: %w", err)
+	}
+	defer rows.Close()
+
+	var out []MediaTagEmbeddingRow
+	for rows.Next() {
+		var row MediaTagEmbeddingRow
+		if err := rows.Scan(&row.ID, &row.Tags); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // ListImageIDsMissingTag returns image media_items IDs that do not contain the given tag.
 // Matching is case-insensitive and treats NULL/empty tags as missing.
 func (r *ImageRepo) ListImageIDsMissingTag(ctx context.Context, tag string) ([]int64, error) {
@@ -484,6 +514,7 @@ func (r *ImageRepo) DeleteByMetadataID(ctx context.Context, id int64) (bool, err
 		}
 		return false, fmt.Errorf("DeleteByMetadataID: %w", err)
 	}
+	_, _ = r.pool.ExecContext(ctx, `DELETE FROM media_tag_embeddings WHERE rowid = ?1`, id)
 	dq := `DELETE FROM media_items WHERE id = ?1`
 	dargs := []any{id}
 	dq, dargs = addUIDFilter(dq, dargs, uid)
@@ -546,6 +577,9 @@ func (r *ImageRepo) DeleteByIDRange(ctx context.Context, all bool, startID, endI
 	}
 	if len(ids) == 0 {
 		return 0, nil
+	}
+	for _, mid := range ids {
+		_, _ = r.pool.ExecContext(ctx, `DELETE FROM media_tag_embeddings WHERE rowid = ?`, mid)
 	}
 	miCond, miArgs, _ := sqlutil.Int64IN("id", ids, 1)
 	delMI := fmt.Sprintf(`DELETE FROM media_items WHERE %s`, miCond)

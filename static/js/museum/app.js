@@ -1532,7 +1532,7 @@ const App = (() => {
                 const response = await fetch('/api/import-control-last-run');
                 if (!response.ok) return;
                 const data = await response.json();
-                const importTypes = ['email_processing', 'imap_processing', 'filesystem', 'imported_images', 'filesystem_reference', 'reference_import', 'email_embeddings', 'message_embeddings', 'message_context_embeddings', 'image_export', 'contacts', 'image_ai_gemma_unclassified', 'zip_whatsapp', 'zip_instagram', 'zip_imessage', 'zip_facebook', 'upload_photos', 'upload_zip'];
+                const importTypes = ['email_processing', 'imap_processing', 'filesystem', 'imported_images', 'filesystem_reference', 'reference_import', 'email_embeddings', 'message_embeddings', 'message_context_embeddings', 'image_tag_embeddings', 'image_export', 'contacts', 'image_ai_gemma_unclassified', 'zip_whatsapp', 'zip_instagram', 'zip_imessage', 'zip_facebook', 'upload_photos', 'upload_zip'];
                 for (const importType of importTypes) {
                     const els = document.querySelectorAll(`[data-import-last-run="${importType}"]`);
                     const info = data[importType];
@@ -2046,7 +2046,8 @@ const App = (() => {
                 message_context_embeddings: 'Message Context Embeddings',
                 image_export: 'Export Images',
                 contacts: 'ProcessContacts',
-                image_ai_gemma_unclassified: 'Image AI Classification'
+                image_ai_gemma_unclassified: 'Image AI Classification',
+                image_tag_embeddings: 'Image Tag Embeddings'
             };
             return SHORT[importType] || importType;
         }
@@ -2398,7 +2399,8 @@ const App = (() => {
             image_export: '/images/export/cancel',
             thumbnails: '/images/process-thumbnails/cancel',
             contacts: '/contacts/extract/cancel',
-            image_ai_gemma_unclassified: '/image/ai-classification/cancel'
+            image_ai_gemma_unclassified: '/image/ai-classification/cancel',
+            image_tag_embeddings: '/images/tag-embeddings/backfill/cancel'
         };
 
         function setImportStatus(text, isError = false) {
@@ -2594,6 +2596,9 @@ const App = (() => {
                     return data.status_line || 'Processing contacts...';
                 case 'image_ai_gemma_unclassified':
                     return data.status_line || 'Classifying untagged images...';
+                case 'image_tag_embeddings':
+                    if (data.status_line) return data.status_line;
+                    return `Image tag embeddings: ${data.processed || 0}/${data.total || 0} | ${data.embedded || 0} embedded, ${data.skipped_unchanged || 0} skipped (unchanged), ${data.skipped || 0} skipped (empty), ${data.errors || 0} errors`;
                 default:
                     return JSON.stringify(data).substring(0, 100);
             }
@@ -2684,6 +2689,7 @@ const App = (() => {
             thumbnails_async: { needsInput: false, title: 'Image Processing (Async)', run: async () => { const r = await fetch('/images/process-thumbnails/async', { method: 'POST' }); return r; }, stream: null },
             contacts: { needsInput: false, title: 'Contacts Merge', run: async () => { const r = await fetch('/contacts/extract', { method: 'POST' }); return r; }, stream: '/contacts/extract/stream' },
             image_ai_gemma_unclassified: { needsInput: false, title: 'AI classify images missing GemmaClassified tag', run: async () => { const r = await fetch('/image/ai-classification/missing-gemma-classified', { method: 'POST' }); return r; }, stream: '/image/ai-classification/stream' },
+            image_tag_embeddings: { needsInput: false, title: 'Build image tag similarity embeddings', run: async (vals) => { const body = { reprocess_all: !!(vals && vals.reprocess_all) }; const r = await fetch('/images/tag-embeddings/backfill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }, stream: '/images/tag-embeddings/backfill/stream' },
             imap_processing: { needsInput: true, title: 'IMAP Import', run: async (vals) => { const body = { host: vals.host, port: vals.port, username: vals.username, password: vals.password, use_ssl: vals.use_ssl !== false, all_folders: vals.all_folders || false, folders: vals.folders && vals.folders.length ? vals.folders : (vals.all_folders ? [] : ['INBOX']), new_only: vals.new_only || false, exclude_folders: vals.exclude_folders || [] }; return await fetch('/imap/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }, stream: '/imap/process/stream' }
         };
 
@@ -3272,6 +3278,18 @@ const App = (() => {
                 showEmailProcessingModal((vals) => runImport(importType, vals));
             } else if (importType === 'imap_processing') {
                 showImapModal((vals) => runImport(importType, vals));
+            } else if (importType === 'image_tag_embeddings') {
+                let reprocessAll = false;
+                if (window.AppDialogs && typeof window.AppDialogs.showAppConfirm === 'function') {
+                    reprocessAll = await window.AppDialogs.showAppConfirm(
+                        'Image tag embeddings',
+                        'Do you want to reprocess all tagged images?\n\n' +
+                            'Reprocess all: refresh every embedding via local AI (slower).\n' +
+                            'Skip unchanged: only embed images where tags changed or no embedding exists yet.',
+                        { confirmLabel: 'Reprocess all', cancelLabel: 'Skip unchanged' }
+                    );
+                }
+                await runImport(importType, { reprocess_all: !!reprocessAll });
             } else {
                 await showImportModal(importType, (vals) => runImport(importType, vals));
             }
@@ -3434,7 +3452,7 @@ const App = (() => {
         })();
 
         async function checkInitialImportStatus() {
-            const types = ['upload_zip','email_processing','imap_processing','filesystem','reference_import','email_embeddings','message_embeddings','message_context_embeddings','image_export','thumbnails','contacts','image_ai_gemma_unclassified'];
+            const types = ['upload_zip','email_processing','imap_processing','filesystem','reference_import','email_embeddings','message_embeddings','message_context_embeddings','image_tag_embeddings','image_export','thumbnails','contacts','image_ai_gemma_unclassified'];
             const statusEndpoints = {
                 upload_zip: '/import/upload/status',
                 email_processing: '/gmail/process/status',
@@ -3447,7 +3465,8 @@ const App = (() => {
                 image_export: '/images/export/status',
                 thumbnails: '/images/process-thumbnails/status',
                 contacts: '/contacts/extract/status',
-                image_ai_gemma_unclassified: '/image/ai-classification/status'
+                image_ai_gemma_unclassified: '/image/ai-classification/status',
+                image_tag_embeddings: '/images/tag-embeddings/backfill/status'
             };
             for (const t of types) {
                 try {

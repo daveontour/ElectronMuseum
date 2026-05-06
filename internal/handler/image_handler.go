@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/daveontour/aimuseum/internal/appctx"
 	"github.com/daveontour/aimuseum/internal/importer"
 	"github.com/daveontour/aimuseum/internal/keystore"
@@ -35,16 +36,22 @@ var imageAIClassificationJob = importer.NewImportJob("Image AI classification", 
 	"total": 0, "processed": 0,
 })
 
+var imageTagEmbeddingJob = importer.NewImportJob("Image tag embeddings", map[string]any{
+	"status": "idle", "status_line": nil, "error_message": nil,
+	"total": 0, "processed": 0,
+})
+
 // ImageHandler handles all /images/*, /getLocations, and /facebook/albums/* read endpoints.
 type ImageHandler struct {
 	svc          *service.ImageService
 	sessionStore *keystore.SessionMasterStore
 	pool         *sql.DB
+	embeddingSvc *service.EmbeddingService
 }
 
-// NewImageHandler creates an ImageHandler.
-func NewImageHandler(svc *service.ImageService, sessionStore *keystore.SessionMasterStore, pool *sql.DB) *ImageHandler {
-	return &ImageHandler{svc: svc, sessionStore: sessionStore, pool: pool}
+// NewImageHandler creates an ImageHandler. embeddingSvc may be nil (similarity search and tag embed jobs unavailable).
+func NewImageHandler(svc *service.ImageService, sessionStore *keystore.SessionMasterStore, pool *sql.DB, embeddingSvc *service.EmbeddingService) *ImageHandler {
+	return &ImageHandler{svc: svc, sessionStore: sessionStore, pool: pool, embeddingSvc: embeddingSvc}
 }
 
 // RegisterRoutes mounts all image routes onto r.
@@ -55,6 +62,12 @@ func (h *ImageHandler) RegisterRoutes(r chi.Router) {
 	r.Get("/image/ai-classification/stream", h.ImageAIClassificationStream)
 	r.Post("/image/ai-classification/cancel", h.ImageAIClassificationCancel)
 	r.Get("/image/ai-classification/status", h.ImageAIClassificationStatus)
+
+	r.Post("/images/tag-embeddings/backfill", h.ImageTagEmbeddingsBackfillStart)
+	r.Get("/images/tag-embeddings/backfill/stream", h.ImageTagEmbeddingsBackfillStream)
+	r.Post("/images/tag-embeddings/backfill/cancel", h.ImageTagEmbeddingsBackfillCancel)
+	r.Get("/images/tag-embeddings/backfill/status", h.ImageTagEmbeddingsBackfillStatus)
+	r.Post("/images/similar-by-tags", h.SimilarByTagsSearch)
 
 	r.Get("/images/search", h.Search)
 	r.Get("/images/years", h.GetYears)
@@ -1095,6 +1108,288 @@ func runImageAIClassificationStub(svc *service.ImageService, job *importer.Impor
 		"errors":      errorsCount,
 	})
 	job.Broadcast("completed", job.GetState())
+}
+
+// ── Tag embeddings backfill & similarity search ───────────────────────────────
+
+func (h *ImageHandler) ImageTagEmbeddingsBackfillStart(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	if err := imageTagEmbeddingJob.AssertNotRunning(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not configured")
+		return
+	}
+	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
+		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
+		return
+	}
+	var reqBody struct {
+		ReprocessAll bool `json:"reprocess_all"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&reqBody)
+
+	uid := appctx.UserIDFromCtx(r.Context())
+	imageTagEmbeddingJob.Start()
+	modeLine := "skip unchanged where embedding matches current tags"
+	if reqBody.ReprocessAll {
+		modeLine = "reprocess all tagged images"
+	}
+	imageTagEmbeddingJob.UpdateState(map[string]any{
+		"status": "in_progress", "status_line": "Starting image tag embedding backfill (" + modeLine + ")...",
+		"total": 0, "processed": 0, "embedded": 0, "skipped": 0, "skipped_unchanged": 0, "errors": 0, "error_message": nil,
+		"reprocess_all": reqBody.ReprocessAll,
+	})
+	imageTagEmbeddingJob.Broadcast("status", map[string]any{"status_line": "Starting image tag embedding backfill (" + modeLine + ")..."})
+	go runImageTagEmbeddingBackfill(h.svc, h.pool, imageTagEmbeddingJob, uid, reqBody.ReprocessAll)
+	writeJSON(w, map[string]any{"message": "Image tag embedding backfill started", "status": "started", "reprocess_all": reqBody.ReprocessAll})
+}
+
+func (h *ImageHandler) ImageTagEmbeddingsBackfillStream(w http.ResponseWriter, r *http.Request) {
+	imageTagEmbeddingJob.ServeSSE(w, r)
+}
+
+func (h *ImageHandler) ImageTagEmbeddingsBackfillCancel(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	writeJSON(w, imageTagEmbeddingJob.Cancel())
+}
+
+func (h *ImageHandler) ImageTagEmbeddingsBackfillStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, imageTagEmbeddingJob.Status())
+}
+
+func runImageTagEmbeddingBackfill(svc *service.ImageService, pool *sql.DB, job *importer.ImportJob, uid int64, reprocessAll bool) {
+	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
+	defer job.Finish()
+
+	rows, err := svc.ListMediaItemsForTagEmbeddingBackfill(ctx)
+	if err != nil {
+		job.UpdateState(map[string]any{
+			"status": "failed", "status_line": fmt.Sprintf("Failed to list images: %v", err),
+			"error_message": err.Error(),
+		})
+		job.Broadcast("failed", job.GetState())
+		return
+	}
+	total := len(rows)
+	job.UpdateState(map[string]any{
+		"total": total, "processed": 0, "embedded": 0, "skipped": 0, "skipped_unchanged": 0, "errors": 0,
+		"status_line": fmt.Sprintf("Tag embeddings: %d image row(s) with tags", total),
+		"reprocess_all": reprocessAll,
+	})
+	job.Broadcast("progress", job.GetState())
+
+	embedded, skipped, skippedUnchanged, errorsCount := 0, 0, 0, 0
+	for i, row := range rows {
+		if job.IsCancelled() {
+			_ = recordImportControlLastRun(ctx, pool, uid, "image_tag_embeddings", "cancelled", "cancelled")
+			job.UpdateState(map[string]any{
+				"status": "cancelled", "status_line": "Image tag embedding backfill cancelled.",
+				"processed": i, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
+			})
+			job.Broadcast("cancelled", job.GetState())
+			return
+		}
+		tagStr := ""
+		if row.Tags != nil {
+			tagStr = *row.Tags
+		}
+		norm := service.NormalizeTagsForEmbedding(tagStr)
+		if norm == "" {
+			skipped++
+			job.UpdateState(map[string]any{
+				"processed": i + 1, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
+				"status_line": fmt.Sprintf("Processed %d/%d (skipped empty tags after normalize)", i+1, total),
+			})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		if !reprocessAll {
+			match, sigErr := service.MediaTagEmbeddingSignatureMatches(ctx, pool, row.ID, norm)
+			if sigErr != nil {
+				errorsCount++
+				job.UpdateState(map[string]any{
+					"processed": i + 1, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
+					"status_line": fmt.Sprintf("Processed %d/%d — signature check id %d: %v", i+1, total, row.ID, sigErr),
+					"error_message": sigErr.Error(),
+				})
+				job.Broadcast("progress", job.GetState())
+				continue
+			}
+			if match {
+				skippedUnchanged++
+				job.UpdateState(map[string]any{
+					"processed": i + 1, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
+					"status_line": fmt.Sprintf("Processed %d/%d (skipped unchanged, image id %d)", i+1, total, row.ID),
+				})
+				job.Broadcast("progress", job.GetState())
+				continue
+			}
+		}
+		svc.SyncTagEmbedding(ctx, row.ID)
+		embedded++
+		job.UpdateState(map[string]any{
+			"processed": i + 1, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
+			"status_line": fmt.Sprintf("Processed %d/%d (embedded image id %d)", i+1, total, row.ID),
+		})
+		job.Broadcast("progress", job.GetState())
+	}
+
+	if job.IsCancelled() {
+		return
+	}
+	_ = recordImportControlLastRun(ctx, pool, uid, "image_tag_embeddings", "completed", "")
+	job.UpdateState(map[string]any{
+		"status":      "completed",
+		"status_line": fmt.Sprintf("Tag embedding backfill complete: %d embedded, %d skipped (empty tags), %d skipped (unchanged), %d errors", embedded, skipped, skippedUnchanged, errorsCount),
+		"processed":   total, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
+	})
+	job.Broadcast("completed", job.GetState())
+}
+
+// SimilarByTagsSearch POST /images/similar-by-tags — embed normalized query locally and return nearest images for this user.
+func (h *ImageHandler) SimilarByTagsSearch(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not configured")
+		return
+	}
+	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
+		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+		N    int    `json:"n"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	norm := service.NormalizeTagsForEmbedding(req.Text)
+	if norm == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	if req.N <= 0 {
+		req.N = 10
+	}
+	if req.N > 50 {
+		req.N = 50
+	}
+
+	ctx := r.Context()
+	uid := appctx.UserIDFromCtx(ctx)
+	if uid == 0 {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	vec, err := h.embeddingSvc.EmbedText(ctx, norm)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("embedding failed: %v", err))
+		return
+	}
+	vecBlob, err := sqlite_vec.SerializeFloat32(vec)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("serialize embedding: %v", err))
+		return
+	}
+
+	kCandidate := req.N * 25
+	if kCandidate < 80 {
+		kCandidate = 80
+	}
+	if kCandidate > 500 {
+		kCandidate = 500
+	}
+
+	rows, err := h.pool.QueryContext(ctx, `
+		SELECT rowid, int_ids, distance
+		FROM media_tag_embeddings
+		WHERE embedding MATCH ? AND k = ?
+		ORDER BY distance ASC
+	`, vecBlob, kCandidate)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("vector search failed: %v", err))
+		return
+	}
+
+	type cand struct {
+		id       int64
+		distance any
+	}
+	var candidates []cand
+	for rows.Next() {
+		var rowID int64
+		var intIDs string
+		var distance any
+		if err := rows.Scan(&rowID, &intIDs, &distance); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("scan: %v", err))
+			return
+		}
+		candidates = append(candidates, cand{id: rowID, distance: distance})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("iterate: %v", err))
+		return
+	}
+	_ = rows.Close()
+
+	results := make([]map[string]any, 0, req.N)
+	for _, c := range candidates {
+		if len(results) >= req.N {
+			break
+		}
+		var own int
+		if scanErr := h.pool.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM media_items WHERE id = ? AND COALESCE(user_id, 0) = ?`,
+			c.id, uid,
+		).Scan(&own); scanErr != nil || own == 0 {
+			continue
+		}
+		meta, err := h.svc.GetMetadata(ctx, c.id)
+		if err != nil || meta == nil {
+			continue
+		}
+		m := map[string]any{
+			"id":                 meta.ID,
+			"media_blob_id":      meta.MediaBlobID,
+			"description":        meta.Description,
+			"title":              meta.Title,
+			"author":             meta.Author,
+			"tags":               meta.Tags,
+			"categories":         meta.Categories,
+			"notes":              meta.Notes,
+			"available_for_task": meta.AvailableForTask,
+			"media_type":         meta.MediaType,
+			"processed":          meta.Processed,
+			"created_at":         meta.CreatedAt,
+			"updated_at":         meta.UpdatedAt,
+			"year":               meta.Year,
+			"month":              meta.Month,
+			"latitude":           meta.Latitude,
+			"longitude":          meta.Longitude,
+			"altitude":           meta.Altitude,
+			"rating":             meta.Rating,
+			"has_gps":            meta.HasGPS,
+			"google_maps_url":    meta.GoogleMapsURL,
+			"region":             meta.Region,
+			"source":             meta.Source,
+			"source_reference":   meta.SourceReference,
+			"distance":           c.distance,
+		}
+		results = append(results, m)
+	}
+
+	writeJSON(w, map[string]any{"results": results, "count": len(results), "query_normalized": norm})
 }
 
 func (h *ImageHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {

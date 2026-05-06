@@ -564,6 +564,9 @@ Modals.NewImageGallery = (() => {
             DOM.closeNewImageGalleryModalBtn.addEventListener('click', close);
             DOM.newImageGallerySearchBtn.addEventListener('click', _handleSearch);
             DOM.newImageGalleryClearBtn.addEventListener('click', _handleClear);
+            if (DOM.newImageGallerySimilarBtn) {
+                DOM.newImageGallerySimilarBtn.addEventListener('click', () => { void _handleSimilarByTags(); });
+            }
             
             // Add event listeners for filter changes with debouncing
             const filterInputs = [
@@ -753,7 +756,28 @@ Modals.NewImageGallery = (() => {
             _updateSelectionUI();
             _updatePickModeBanner();
             await _updateThumbnailProcessingBanner();
+            await _refreshSimilarEmbedAvailability();
             _renderThumbnailGrid();
+        }
+
+        async function _refreshSimilarEmbedAvailability() {
+            try {
+                const r = await fetch('/api/embed/availability');
+                const d = await r.json().catch(() => ({}));
+                const ok = !!(d && d.available);
+                if (DOM.newImageGallerySimilarTags) {
+                    DOM.newImageGallerySimilarTags.disabled = !ok;
+                    DOM.newImageGallerySimilarTags.title = ok ? '' : 'Configure LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL';
+                }
+                if (DOM.newImageGallerySimilarBtn) {
+                    DOM.newImageGallerySimilarBtn.disabled = !ok;
+                }
+                if (DOM.newImageGallerySimilarHint) {
+                    DOM.newImageGallerySimilarHint.textContent = ok ? 'Normalized tags, local embedding model' : 'Embedding API unavailable — check local AI settings';
+                }
+            } catch (e) {
+                console.warn('embed availability check failed', e);
+            }
         }
 
         async function openPickMode(callback) {
@@ -1018,6 +1042,7 @@ Modals.NewImageGallery = (() => {
                 (DOM.newImageGalleryTitle && DOM.newImageGalleryTitle.value.trim()) ||
                 (DOM.newImageGalleryDescription && DOM.newImageGalleryDescription.value.trim()) ||
                 (DOM.newImageGalleryTags && DOM.newImageGalleryTags.value.trim()) ||
+                (DOM.newImageGallerySimilarTags && DOM.newImageGallerySimilarTags.value.trim()) ||
                 (DOM.newImageGalleryAuthor && DOM.newImageGalleryAuthor.value.trim()) ||
                 (DOM.newImageGallerySource && (DOM.newImageGallerySource.value || '').trim()) ||
                 (DOM.newImageGalleryYearFilter && DOM.newImageGalleryYearFilter.value && DOM.newImageGalleryYearFilter.value !== '0') ||
@@ -1411,10 +1436,85 @@ Modals.NewImageGallery = (() => {
             _loadImageData();
         }
 
+        async function _runSimilarByTagsQuery(q) {
+            const r = await fetch('/images/similar-by-tags', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: q, n: 24 }),
+                credentials: 'same-origin'
+            });
+            if (!r.ok) {
+                const t = await r.text();
+                throw new Error(t || r.statusText);
+            }
+            const data = await r.json();
+            imageData = Array.isArray(data.results) ? data.results : [];
+            _renderThumbnailGrid();
+        }
+
+        async function _handleSimilarByTags() {
+            const q = DOM.newImageGallerySimilarTags && DOM.newImageGallerySimilarTags.value
+                ? DOM.newImageGallerySimilarTags.value.trim()
+                : '';
+            if (!q) {
+                if (window.AppDialogs) await AppDialogs.showAppAlert('Similar by tags', 'Enter text to match against stored image tags (e.g. beach, sunset).');
+                return;
+            }
+            try {
+                await _runSimilarByTagsQuery(q);
+            } catch (err) {
+                console.error('similar-by-tags', err);
+                if (window.AppDialogs) await AppDialogs.showAppAlert('Similar by tags', err.message || 'Request failed');
+                imageData = [];
+                _renderThumbnailGrid();
+            }
+        }
+
+        /**
+         * Run tag-embedding similarity search and show hits in the main Images gallery.
+         * Opens the gallery if needed, closes the Image Details modal when done.
+         */
+        async function showSimilarByTagsFromDetail(tagsText) {
+            const q = String(tagsText || '').trim();
+            if (!q) {
+                if (window.AppDialogs) await AppDialogs.showAppAlert('Find Similar', 'Add tags to this image first, or enter tags in the Tags field.');
+                return;
+            }
+            const galleryEl = DOM.newImageGalleryModal;
+            const wasOpen = galleryEl && galleryEl.style.display === 'flex';
+            if (!wasOpen) {
+                await open();
+            } else {
+                await _refreshSimilarEmbedAvailability();
+            }
+            if (DOM.newImageGallerySimilarTags) {
+                DOM.newImageGallerySimilarTags.value = q;
+            }
+            selectedImageIndex = -1;
+            selectedImageIds.clear();
+            selectMode = false;
+            if (DOM.newImageGallerySelectMode) {
+                DOM.newImageGallerySelectMode.checked = false;
+            }
+            _updateSelectionUI();
+            try {
+                await _runSimilarByTagsQuery(q);
+                if (Modals.ImageDetailModal && typeof Modals.ImageDetailModal.close === 'function') {
+                    Modals.ImageDetailModal.close();
+                }
+            } catch (err) {
+                console.error('similar-by-tags', err);
+                if (window.AppDialogs) await AppDialogs.showAppAlert('Find Similar', err.message || 'Request failed');
+                imageData = [];
+                _renderThumbnailGrid();
+            }
+        }
+
         function _handleClear() {
             if (DOM.newImageGalleryTitle) DOM.newImageGalleryTitle.value = '';
             if (DOM.newImageGalleryDescription) DOM.newImageGalleryDescription.value = '';
             if (DOM.newImageGalleryTags) DOM.newImageGalleryTags.value = '';
+            if (DOM.newImageGallerySimilarTags) DOM.newImageGallerySimilarTags.value = '';
             if (DOM.newImageGalleryAuthor) DOM.newImageGalleryAuthor.value = '';
             if (DOM.newImageGallerySource) DOM.newImageGallerySource.value = '';
             if (DOM.newImageGalleryYearFilter) DOM.newImageGalleryYearFilter.value = 0;
@@ -1432,7 +1532,7 @@ Modals.NewImageGallery = (() => {
         }
 
 
-        return { init, open, close, openTaggedImages, openImagesFromDate, openPickMode };
+        return { init, open, close, openTaggedImages, openImagesFromDate, openPickMode, showSimilarByTagsFromDetail };
 })();
 
 
@@ -1919,6 +2019,22 @@ Modals.ImageDetailModal = (() => {
                 DOM.newImageGalleryDetailModal.addEventListener('click', (e) => {
                     if (e.target === DOM.newImageGalleryDetailModal) {
                         close();
+                    }
+                });
+            }
+
+            if (DOM.newImageDetailFindSimilarBtn) {
+                DOM.newImageDetailFindSimilarBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const fromField = DOM.newImageDetailTagsEdit && DOM.newImageDetailTagsEdit.value
+                        ? DOM.newImageDetailTagsEdit.value.trim()
+                        : '';
+                    const fromImage = currentImageInModal && currentImageInModal.tags
+                        ? String(currentImageInModal.tags).trim()
+                        : '';
+                    const tags = fromField || fromImage;
+                    if (Modals.NewImageGallery && typeof Modals.NewImageGallery.showSimilarByTagsFromDetail === 'function') {
+                        await Modals.NewImageGallery.showSimilarByTagsFromDetail(tags);
                     }
                 });
             }
