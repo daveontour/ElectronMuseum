@@ -641,6 +641,9 @@
                         <button type="button" class="config-tab-button config-sidebar-requires-master" data-tab="tools-access">
                             <i class="fas fa-wrench"></i> Tools Access
                         </button>
+                        <button type="button" class="config-tab-button" data-tab="background-jobs">
+                            <i class="fas fa-tasks"></i> Background Jobs
+                        </button>
                     </div>
                     <div class="config-content">
                 <div class="config-tab-content active" id="settings-tab">
@@ -1017,6 +1020,38 @@
                         <div style="margin-top:16px;">
                             <button type="button" id="llm-tools-access-save" class="modal-btn modal-btn-primary">Save</button>
                         </div>
+                    </section>
+                </div>
+                <div class="config-tab-content" id="background-jobs-tab">
+                    <section class="section-config">
+                        <h1>Background Jobs</h1>
+                        <p style="color:#666; margin-bottom:12px; line-height:1.45;">
+                            Schedule maintenance jobs that keep your archive's thumbnails, embeddings, and AI tags up to date.
+                            <br/>
+                            <strong>Auto-start at boot</strong> runs the job once when the server starts.
+                            <strong>Restart on complete</strong> re-runs it after each completion.
+                            <strong>Interval</strong> is the wait between completion and next run.
+                        </p>
+                    </section>
+                    <section class="config-section">
+                        <div id="background-jobs-status" style="display:none; margin-bottom:10px; padding:8px 12px; border-radius:4px;"></div>
+                        <div style="overflow-x:auto;">
+                            <table class="sensitive-data-table" id="background-jobs-table" style="width:100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align:left;">Job</th>
+                                        <th style="text-align:center;" title="Run automatically when the server starts">Auto-start at boot</th>
+                                        <th style="text-align:center;" title="Re-run after each completion">Restart on complete</th>
+                                        <th style="text-align:center;" title="Wait between completion and next run">Interval (s)</th>
+                                        <th style="text-align:left;">Last run</th>
+                                        <th style="text-align:left;">Status</th>
+                                        <th style="text-align:center; width:140px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="background-jobs-tbody"></tbody>
+                            </table>
+                        </div>
+                        <p id="background-jobs-empty" style="display:none; color:#666; font-size:0.9em;">No background jobs registered.</p>
                     </section>
                 </div>
                 <div class="config-tab-content" id="manage-contacts-tab">
@@ -2226,20 +2261,11 @@
                     <div class="new-image-gallery-master-pane">
                         <div class="new-image-gallery-search-section email-gallery-search-section">
                             <div class="new-image-metadata-filters email-metadata-filters">
-                                <!-- <div id="new-image-gallery-bulk-edit-section" style="display: none; padding: 1em; background-color: #e8f4f8; border-radius: 4px; margin-top: 1em;">
-                                    <div style="margin-bottom: 0.5em; font-weight: 600; color: #233366;">
-                                        <span id="new-image-gallery-selected-count">0</span> image(s) selected
-                                    </div>
-                                    <div style="display: flex; gap: 0.5em; align-items: center;">
-                                        <input type="text" id="new-image-gallery-bulk-tags" placeholder="Enter tags to apply..." class="new-image-gallery-input" style="flex: 1;">
-                                        <button id="new-image-gallery-apply-tags-btn" class="modal-btn modal-btn-primary" disabled>
-                                            <i class="fas fa-tags"></i> Apply Tags
-                                        </button>
-                                        <button id="new-image-gallery-clear-selection-btn" class="modal-btn modal-btn-secondary">
-                                            <i class="fas fa-times"></i> Clear Selection
-                                        </button>
-                                    </div>
-                                </div> -->
+                                <div class="new-image-gallery-search-row email-gallery-search-row" style="display: flex; align-items: center; gap: 0.45rem;">
+                                    <input type="text" id="new-image-gallery-similar-tags" placeholder="Enter any text to search for matching images" class="new-image-gallery-input email-gallery-input" disabled aria-describedby="new-image-gallery-similar-hint" style="flex: 1 1 auto; min-width: 0;">
+                                    <input type="number" id="new-image-gallery-similar-n" class="new-image-gallery-input email-gallery-input" value="25" min="1" max="50" step="1" style="flex: 0 0 auto; width: 6rem;">
+                                    <button type="button" id="new-image-gallery-similar-btn" class="modal-btn modal-btn-secondary" disabled>AI Search</button>
+                                </div>
                                 <div class="new-image-gallery-search-row email-gallery-search-row">
                                     <input type="text" id="new-image-gallery-title" placeholder="Title..." class="new-image-gallery-input email-gallery-input">
                                 </div>
@@ -2249,11 +2275,6 @@
                                 <div class="new-image-gallery-search-row email-gallery-search-row">
                                     <input type="text" id="new-image-gallery-tags" placeholder="Tags..." class="new-image-gallery-input email-gallery-input" list="new-image-gallery-tags-list">
                                     <datalist id="new-image-gallery-tags-list"></datalist>
-                                </div>
-                                <div class="new-image-gallery-search-row email-gallery-search-row">
-                                    <input type="text" id="new-image-gallery-similar-tags" placeholder="Similar by tags (local AI)..." class="new-image-gallery-input email-gallery-input" disabled aria-describedby="new-image-gallery-similar-hint">
-                                    <button type="button" id="new-image-gallery-similar-btn" class="modal-btn modal-btn-secondary" disabled>Similar</button>
-                                    <span id="new-image-gallery-similar-hint" style="font-size:0.85em;color:#888;">Requires local embedding model</span>
                                 </div>
                                 <div class="new-image-gallery-filter-row email-gallery-filter-row">
                                     <input type="text" id="new-image-gallery-author" placeholder="Author..." class="new-image-gallery-input email-gallery-input">
@@ -2276,9 +2297,9 @@
                                     <select id="new-image-gallery-month-filter" class="new-image-gallery-select email-gallery-select"></select>
                                 </div>
                                 <div class="new-image-gallery-filter-row email-gallery-filter-row">
-                                    <input type="number" id="new-image-gallery-rating" placeholder="Rating (1-5)" min="1" max="5" class="new-image-gallery-input email-gallery-input">
+                                    <!-- <input type="number" id="new-image-gallery-rating" placeholder="Rating (1-5)" min="1" max="5" class="new-image-gallery-input email-gallery-input">
                                     <input type="number" id="new-image-gallery-rating-min" placeholder="Min Rating" min="1" max="5" class="new-image-gallery-input email-gallery-input">
-                                    <input type="number" id="new-image-gallery-rating-max" placeholder="Max Rating" min="1" max="5" class="new-image-gallery-input email-gallery-input">
+                                    <input type="number" id="new-image-gallery-rating-max" placeholder="Max Rating" min="1" max="5" class="new-image-gallery-input email-gallery-input"> -->
                                     <label class="new-image-gallery-checkbox-label email-gallery-checkbox-label">
                                         <input type="checkbox" id="new-image-gallery-has-gps">
                                         Has GPS

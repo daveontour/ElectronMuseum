@@ -2883,6 +2883,280 @@ Modals.LLMToolsAccess = (() => {
 })();
 
 
+Modals.BackgroundJobs = (() => {
+    let pollTimer = null;
+    let saveTimer = null;
+    let cachedJobs = [];
+
+    function _status(msg, isErr) {
+        const el = document.getElementById('background-jobs-status');
+        if (!el) return;
+        if (!msg) {
+            el.style.display = 'none';
+            el.textContent = '';
+            return;
+        }
+        el.textContent = msg;
+        el.style.display = 'block';
+        el.style.color = isErr ? '#dc3545' : '#1a7f37';
+        el.style.backgroundColor = isErr ? 'rgba(220,53,69,0.1)' : 'rgba(26,127,55,0.1)';
+    }
+
+    function _formatLocal(ts) {
+        if (!ts) return '—';
+        try {
+            const d = new Date(ts);
+            if (isNaN(d.getTime())) return '—';
+            return d.toLocaleString();
+        } catch (e) {
+            return String(ts);
+        }
+    }
+
+    function _renderRow(job) {
+        const tr = document.createElement('tr');
+        tr.dataset.name = job.name;
+
+        const tdName = document.createElement('td');
+        tdName.style.maxWidth = '320px';
+        const strong = document.createElement('strong');
+        strong.textContent = job.title || job.name;
+        tdName.appendChild(strong);
+        if (job.description) {
+            const small = document.createElement('div');
+            small.style.fontSize = '0.85em';
+            small.style.color = '#666';
+            small.style.marginTop = '2px';
+            small.textContent = job.description;
+            tdName.appendChild(small);
+        }
+        tr.appendChild(tdName);
+
+        const tdAuto = document.createElement('td');
+        tdAuto.style.textAlign = 'center';
+        const autoChk = document.createElement('input');
+        autoChk.type = 'checkbox';
+        autoChk.className = 'bg-job-chk';
+        autoChk.dataset.field = 'auto_start';
+        autoChk.checked = !!job.auto_start;
+        autoChk.addEventListener('change', () => _saveRow(tr));
+        tdAuto.appendChild(autoChk);
+        tr.appendChild(tdAuto);
+
+        const tdRestart = document.createElement('td');
+        tdRestart.style.textAlign = 'center';
+        const restartChk = document.createElement('input');
+        restartChk.type = 'checkbox';
+        restartChk.className = 'bg-job-chk';
+        restartChk.dataset.field = 'restart_on_complete';
+        restartChk.checked = !!job.restart_on_complete;
+        restartChk.addEventListener('change', () => _saveRow(tr));
+        tdRestart.appendChild(restartChk);
+        tr.appendChild(tdRestart);
+
+        const tdInterval = document.createElement('td');
+        tdInterval.style.textAlign = 'center';
+        const intervalInp = document.createElement('input');
+        intervalInp.type = 'number';
+        intervalInp.min = '30';
+        intervalInp.step = '30';
+        intervalInp.style.width = '7rem';
+        intervalInp.dataset.field = 'interval_seconds';
+        intervalInp.value = String(job.interval_seconds || job.default_interval_seconds || 3600);
+        intervalInp.addEventListener('change', () => _saveRow(tr));
+        intervalInp.addEventListener('blur', () => _saveRow(tr));
+        tdInterval.appendChild(intervalInp);
+        tr.appendChild(tdInterval);
+
+        const tdLast = document.createElement('td');
+        tdLast.style.fontSize = '0.85em';
+        const lastLine = document.createElement('div');
+        lastLine.textContent = _formatLocal(job.last_run_at);
+        tdLast.appendChild(lastLine);
+        if (job.last_run_result) {
+            const resLine = document.createElement('div');
+            resLine.style.color = job.last_run_result === 'error' ? '#dc3545' :
+                                  job.last_run_result === 'cancelled' ? '#856404' :
+                                  job.last_run_result === 'running' ? '#0c63e4' : '#1a7f37';
+            resLine.textContent = job.last_run_result;
+            tdLast.appendChild(resLine);
+        }
+        tr.appendChild(tdLast);
+
+        const tdStatus = document.createElement('td');
+        tdStatus.style.fontSize = '0.85em';
+        if (job.in_progress) {
+            const dot = document.createElement('span');
+            dot.style.display = 'inline-block';
+            dot.style.width = '8px';
+            dot.style.height = '8px';
+            dot.style.borderRadius = '50%';
+            dot.style.background = '#0c63e4';
+            dot.style.marginRight = '6px';
+            tdStatus.appendChild(dot);
+        }
+        const statusText = document.createElement('span');
+        statusText.textContent = job.status_line || (job.in_progress ? 'running' : 'idle');
+        tdStatus.appendChild(statusText);
+        tr.appendChild(tdStatus);
+
+        const tdActions = document.createElement('td');
+        tdActions.style.textAlign = 'center';
+        const startBtn = document.createElement('button');
+        startBtn.type = 'button';
+        startBtn.className = 'modal-btn modal-btn-primary';
+        startBtn.style.marginRight = '4px';
+        startBtn.textContent = 'Start';
+        startBtn.disabled = !!job.in_progress;
+        startBtn.addEventListener('click', () => _startJob(job.name));
+        tdActions.appendChild(startBtn);
+        const stopBtn = document.createElement('button');
+        stopBtn.type = 'button';
+        stopBtn.className = 'modal-btn modal-btn-secondary';
+        stopBtn.textContent = 'Stop';
+        stopBtn.disabled = !job.in_progress;
+        stopBtn.addEventListener('click', () => _stopJob(job.name));
+        tdActions.appendChild(stopBtn);
+        tr.appendChild(tdActions);
+
+        return tr;
+    }
+
+    function _render(jobs) {
+        cachedJobs = Array.isArray(jobs) ? jobs : [];
+        const tbody = document.getElementById('background-jobs-tbody');
+        const empty = document.getElementById('background-jobs-empty');
+        if (!tbody) return;
+        tbody.replaceChildren();
+        if (!cachedJobs.length) {
+            if (empty) empty.style.display = 'block';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+        for (const job of cachedJobs) {
+            tbody.appendChild(_renderRow(job));
+        }
+    }
+
+    async function load() {
+        _status('', false);
+        try {
+            const res = await fetch('/api/background-jobs', { credentials: 'same-origin' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                _status(data.detail || 'Could not load background jobs.', true);
+                return;
+            }
+            _render(data.jobs || []);
+            _ensurePolling();
+        } catch (e) {
+            _status(e.message || 'Load failed', true);
+        }
+    }
+
+    function _ensurePolling() {
+        const modal = document.getElementById('config-modal-overlay');
+        const tab = document.getElementById('background-jobs-tab');
+        if (!modal || !tab) return;
+        if (pollTimer) return;
+        pollTimer = setInterval(() => {
+            const visible = modal.style.display !== 'none' && tab.classList.contains('active');
+            if (!visible) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                return;
+            }
+            void _refreshOnly();
+        }, 5000);
+    }
+
+    async function _refreshOnly() {
+        try {
+            const res = await fetch('/api/background-jobs', { credentials: 'same-origin' });
+            if (!res.ok) return;
+            const data = await res.json();
+            _render(data.jobs || []);
+        } catch (_) { /* ignore polling errors */ }
+    }
+
+    function _saveRow(tr) {
+        if (!tr) return;
+        const name = tr.dataset.name;
+        if (!name) return;
+        const auto = tr.querySelector('input[data-field="auto_start"]');
+        const restart = tr.querySelector('input[data-field="restart_on_complete"]');
+        const interval = tr.querySelector('input[data-field="interval_seconds"]');
+        const body = {
+            auto_start: !!(auto && auto.checked),
+            restart_on_complete: !!(restart && restart.checked),
+            interval_seconds: Math.max(30, parseInt(interval && interval.value, 10) || 3600)
+        };
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(async () => {
+            try {
+                const res = await fetch('/api/background-jobs/' + encodeURIComponent(name), {
+                    method: 'PUT',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    _status(data.detail || 'Save failed for ' + name, true);
+                    return;
+                }
+                _status('Saved ' + name, false);
+                setTimeout(() => _status('', false), 2000);
+            } catch (e) {
+                _status(e.message || 'Save failed', true);
+            }
+        }, 250);
+    }
+
+    async function _startJob(name) {
+        _status('', false);
+        try {
+            const res = await fetch('/api/background-jobs/' + encodeURIComponent(name) + '/start', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                _status(data.detail || 'Could not start ' + name, true);
+                return;
+            }
+            await _refreshOnly();
+        } catch (e) {
+            _status(e.message || 'Start failed', true);
+        }
+    }
+
+    async function _stopJob(name) {
+        _status('', false);
+        try {
+            const res = await fetch('/api/background-jobs/' + encodeURIComponent(name) + '/stop', {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                _status(data.detail || 'Could not stop ' + name, true);
+                return;
+            }
+            await _refreshOnly();
+        } catch (e) {
+            _status(e.message || 'Stop failed', true);
+        }
+    }
+
+    function init() {
+        // Nothing to wire eagerly — load() handles row creation and listeners.
+    }
+
+    return { init, load };
+})();
+
+
 Modals.initAll = () => {
         Modals.Suggestions.init();
         Modals.FBAlbums.init();
@@ -2910,6 +3184,7 @@ Modals.initAll = () => {
         Modals.SensitiveData.init();
         Modals.ManageKeys.init();
         if (Modals.LLMToolsAccess && Modals.LLMToolsAccess.init) Modals.LLMToolsAccess.init();
+        if (Modals.BackgroundJobs && Modals.BackgroundJobs.init) Modals.BackgroundJobs.init();
         Modals.Profiles.init();
         if (Modals.EmailMatches && Modals.EmailMatches.init) Modals.EmailMatches.init();
         if (Modals.EmailClassifications && Modals.EmailClassifications.init) Modals.EmailClassifications.init();

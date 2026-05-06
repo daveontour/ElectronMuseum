@@ -257,14 +257,19 @@ func (r *ImageRepo) GetAllTagStrings(ctx context.Context) ([]string, error) {
 
 // MediaTagEmbeddingRow is id + tags for tag-embedding backfill jobs.
 type MediaTagEmbeddingRow struct {
-	ID   int64
-	Tags *string
+	ID                    int64
+	Tags                  *string
+	RequireClassification bool
 }
 
 // ListMediaItemsForTagEmbeddingBackfill returns media_items rows that have non-empty tags (user-scoped).
-func (r *ImageRepo) ListMediaItemsForTagEmbeddingBackfill(ctx context.Context) ([]MediaTagEmbeddingRow, error) {
+// When onlyRequireClassification is true, only rows with require_classification=true are returned.
+func (r *ImageRepo) ListMediaItemsForTagEmbeddingBackfill(ctx context.Context, onlyRequireClassification bool) ([]MediaTagEmbeddingRow, error) {
 	uid := uidFromCtx(ctx)
-	q := `SELECT id, tags FROM media_items WHERE tags IS NOT NULL AND TRIM(tags) != ''`
+	q := `SELECT id, tags, require_classification FROM media_items WHERE tags IS NOT NULL AND TRIM(tags) != ''`
+	if onlyRequireClassification {
+		q += ` AND require_classification = TRUE`
+	}
 	args := []any{}
 	q, args = addUIDFilter(q, args, uid)
 	q += ` ORDER BY id ASC`
@@ -277,12 +282,42 @@ func (r *ImageRepo) ListMediaItemsForTagEmbeddingBackfill(ctx context.Context) (
 	var out []MediaTagEmbeddingRow
 	for rows.Next() {
 		var row MediaTagEmbeddingRow
-		if err := rows.Scan(&row.ID, &row.Tags); err != nil {
+		if err := rows.Scan(&row.ID, &row.Tags, &row.RequireClassification); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
 	}
 	return out, rows.Err()
+}
+
+// ListImageIDsRequireClassification returns image media_items IDs flagged for
+// classification (require_classification=true).
+func (r *ImageRepo) ListImageIDsRequireClassification(ctx context.Context) ([]int64, error) {
+	uid := uidFromCtx(ctx)
+	q := `
+		SELECT id
+		FROM media_items
+		WHERE media_type LIKE 'image/%'
+		  AND require_classification = TRUE`
+	args := []any{}
+	q, args = addUIDFilter(q, args, uid)
+	q += " ORDER BY id ASC"
+
+	rows, err := r.pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ListImageIDsRequireClassification: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // ListImageIDsMissingTag returns image media_items IDs that do not contain the given tag.
@@ -411,7 +446,7 @@ func (r *ImageRepo) UpdateTags(ctx context.Context, id int64, newTags string) (b
 	if existing != nil && strings.TrimSpace(*existing) != "" {
 		merged = strings.TrimSpace(*existing) + ", " + strings.TrimSpace(newTags)
 	}
-	uq := `UPDATE media_items SET tags = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1`
+	uq := `UPDATE media_items SET tags = ?2, require_classification = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = ?1`
 	uargs := []any{id, merged}
 	//uq, uargs = addUIDFilter(uq, uargs, uid)
 
@@ -481,6 +516,7 @@ func (r *ImageRepo) UpdateMetadata(ctx context.Context, id int64, description, t
 		setParts = append(setParts, fmt.Sprintf("tags = ?%d", n))
 		args = append(args, *tags)
 		n++
+		setParts = append(setParts, "require_classification = TRUE")
 	}
 	if rating != nil {
 		setParts = append(setParts, fmt.Sprintf("rating = ?%d", n))
@@ -496,6 +532,21 @@ func (r *ImageRepo) UpdateMetadata(ctx context.Context, id int64, description, t
 	res, err := r.pool.ExecContext(ctx, sql, args...)
 	if err != nil {
 		return false, fmt.Errorf("UpdateMetadata: %w", err)
+	}
+	return rowsAffectedOrZero(res) > 0, nil
+}
+
+// SetRequireClassification sets media_items.require_classification for one item.
+func (r *ImageRepo) SetRequireClassification(ctx context.Context, id int64, require bool) (bool, error) {
+	uid := uidFromCtx(ctx)
+	q := `UPDATE media_items
+	      SET require_classification = ?2, updated_at = CURRENT_TIMESTAMP
+	      WHERE id = ?1`
+	args := []any{id, require}
+	q, args = addUIDFilterDollar(q, args, uid)
+	res, err := r.pool.ExecContext(ctx, q, args...)
+	if err != nil {
+		return false, fmt.Errorf("SetRequireClassification: %w", err)
 	}
 	return rowsAffectedOrZero(res) > 0, nil
 }

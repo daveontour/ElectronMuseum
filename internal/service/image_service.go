@@ -38,8 +38,9 @@ func (s *ImageService) SyncTagEmbedding(ctx context.Context, mediaItemID int64) 
 }
 
 // ListMediaItemsForTagEmbeddingBackfill lists rows with non-empty tags for backfill jobs.
-func (s *ImageService) ListMediaItemsForTagEmbeddingBackfill(ctx context.Context) ([]repository.MediaTagEmbeddingRow, error) {
-	return s.repo.ListMediaItemsForTagEmbeddingBackfill(ctx)
+// When onlyRequireClassification is true, only rows flagged require_classification=true are returned.
+func (s *ImageService) ListMediaItemsForTagEmbeddingBackfill(ctx context.Context, onlyRequireClassification bool) ([]repository.MediaTagEmbeddingRow, error) {
+	return s.repo.ListMediaItemsForTagEmbeddingBackfill(ctx, onlyRequireClassification)
 }
 
 // Search returns metadata for images matching the given filters.
@@ -126,6 +127,16 @@ func (s *ImageService) BulkUpdateTags(ctx context.Context, imageIDs []int64, tag
 // ListImageIDsMissingTag returns image IDs that do not yet contain the supplied tag.
 func (s *ImageService) ListImageIDsMissingTag(ctx context.Context, tag string) ([]int64, error) {
 	return s.repo.ListImageIDsMissingTag(ctx, tag)
+}
+
+// ListImageIDsRequireClassification returns image IDs flagged for (re)classification.
+func (s *ImageService) ListImageIDsRequireClassification(ctx context.Context) ([]int64, error) {
+	return s.repo.ListImageIDsRequireClassification(ctx)
+}
+
+// SetRequireClassification sets media_items.require_classification for one item.
+func (s *ImageService) SetRequireClassification(ctx context.Context, id int64, require bool) (bool, error) {
+	return s.repo.SetRequireClassification(ctx, id, require)
 }
 
 // UpdateMetadata updates description, tags, and/or rating for one image.

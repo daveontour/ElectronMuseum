@@ -772,6 +772,9 @@ Modals.NewImageGallery = (() => {
                 if (DOM.newImageGallerySimilarBtn) {
                     DOM.newImageGallerySimilarBtn.disabled = !ok;
                 }
+                if (DOM.newImageGallerySimilarN) {
+                    DOM.newImageGallerySimilarN.disabled = false;
+                }
                 if (DOM.newImageGallerySimilarHint) {
                     DOM.newImageGallerySimilarHint.textContent = ok ? 'Normalized tags, local embedding model' : 'Embedding API unavailable — check local AI settings';
                 }
@@ -1437,10 +1440,15 @@ Modals.NewImageGallery = (() => {
         }
 
         async function _runSimilarByTagsQuery(q) {
+            const defaultN = 25;
+            const parsedN = DOM.newImageGallerySimilarN && DOM.newImageGallerySimilarN.value
+                ? parseInt(DOM.newImageGallerySimilarN.value, 10)
+                : NaN;
+            const n = (!Number.isFinite(parsedN) || parsedN <= 0) ? defaultN : parsedN;
             const r = await fetch('/images/similar-by-tags', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: q, n: 24 }),
+                body: JSON.stringify({ text: q, n }),
                 credentials: 'same-origin'
             });
             if (!r.ok) {
@@ -1515,6 +1523,7 @@ Modals.NewImageGallery = (() => {
             if (DOM.newImageGalleryDescription) DOM.newImageGalleryDescription.value = '';
             if (DOM.newImageGalleryTags) DOM.newImageGalleryTags.value = '';
             if (DOM.newImageGallerySimilarTags) DOM.newImageGallerySimilarTags.value = '';
+            if (DOM.newImageGallerySimilarN) DOM.newImageGallerySimilarN.value = 25;
             if (DOM.newImageGalleryAuthor) DOM.newImageGalleryAuthor.value = '';
             if (DOM.newImageGallerySource) DOM.newImageGallerySource.value = '';
             if (DOM.newImageGalleryYearFilter) DOM.newImageGalleryYearFilter.value = 0;

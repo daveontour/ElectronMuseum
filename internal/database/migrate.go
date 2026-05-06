@@ -142,6 +142,7 @@ func schemaDDL() []string {
 			is_spam            BOOLEAN NOT NULL DEFAULT FALSE,
 			is_important       BOOLEAN NOT NULL DEFAULT FALSE,
 			use_by_ai          BOOLEAN DEFAULT FALSE,
+			require_classification BOOLEAN NOT NULL DEFAULT FALSE,
 			is_referenced      BOOLEAN NOT NULL DEFAULT FALSE,
 			source             VARCHAR(255),
 			source_reference   TEXT,
@@ -755,6 +756,32 @@ func schemaDDL() []string {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_interview_turns_interview_turn ON interview_turns (interview_id, turn_number)`,
 		`CREATE INDEX IF NOT EXISTS idx_interview_turns_user_id        ON interview_turns (user_id)`,
+
+		// ── background_jobs ──────────────────────────────────────────────────
+		// Per-user scheduling state for the maintenance jobs exposed in the
+		// Configuration > Background Jobs panel. One row per (user_id, job_name).
+		`CREATE TABLE IF NOT EXISTS background_jobs (
+			id                  SERIAL PRIMARY KEY,
+			job_name            VARCHAR(100) NOT NULL,
+			auto_start          BOOLEAN      NOT NULL DEFAULT FALSE,
+			restart_on_complete BOOLEAN      NOT NULL DEFAULT FALSE,
+			interval_seconds    INTEGER      NOT NULL DEFAULT 3600,
+			last_run_at         TIMESTAMP,
+			last_run_result     VARCHAR(50),
+			last_run_message    TEXT,
+			next_due_at         TIMESTAMP,
+			created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			user_id             BIGINT REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_background_jobs_user_id     ON background_jobs (user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_background_jobs_next_due_at ON background_jobs (next_due_at)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_background_jobs_user_name
+			ON background_jobs (user_id, job_name)
+			WHERE user_id IS NOT NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_background_jobs_global_name
+			ON background_jobs (job_name)
+			WHERE user_id IS NULL`,
 	}
 }
 
@@ -786,6 +813,7 @@ func rlsDDL() []string {
 		"sensitive_keyring", "visitor_key_hints", "visitor_key_hint_reference_documents", "visitor_key_hint_sensitive_reference_documents",
 		"private_store", "master_keys",
 		"app_configuration",
+		"background_jobs",
 	}
 
 	var stmts []string

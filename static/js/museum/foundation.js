@@ -373,6 +373,7 @@ const DOM = {
     newImageGalleryTags: document.getElementById('new-image-gallery-tags'),
     newImageGallerySimilarTags: document.getElementById('new-image-gallery-similar-tags'),
     newImageGallerySimilarBtn: document.getElementById('new-image-gallery-similar-btn'),
+    newImageGallerySimilarN: document.getElementById('new-image-gallery-similar-n'),
     newImageGallerySimilarHint: document.getElementById('new-image-gallery-similar-hint'),
     newImageGalleryAuthor: document.getElementById('new-image-gallery-author'),
     newImageGallerySource: document.getElementById('new-image-gallery-source'),

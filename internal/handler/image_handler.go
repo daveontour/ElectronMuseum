@@ -532,7 +532,8 @@ func (h *ImageHandler) ImageAIClassificationStart(w http.ResponseWriter, r *http
 	writeJSON(w, map[string]any{"message": "Image AI classification started", "status": "started", "count": len(idsCopy)})
 }
 
-// ImageAIClassificationGemmaUnclassifiedStart starts classification for image rows missing the GemmaClassified tag.
+// ImageAIClassificationGemmaUnclassifiedStart starts classification for image rows
+// flagged require_classification=true.
 func (h *ImageHandler) ImageAIClassificationGemmaUnclassifiedStart(w http.ResponseWriter, r *http.Request) {
 	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
 		return
@@ -546,7 +547,7 @@ func (h *ImageHandler) ImageAIClassificationGemmaUnclassifiedStart(w http.Respon
 		return
 	}
 
-	ids, err := h.svc.ListImageIDsMissingTag(r.Context(), "GemmaClassified")
+	ids, err := h.svc.ListImageIDsRequireClassification(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to build classification list: %v", err))
 		return
@@ -556,7 +557,7 @@ func (h *ImageHandler) ImageAIClassificationGemmaUnclassifiedStart(w http.Respon
 	imageAIClassificationJob.Start()
 	imageAIClassificationJob.UpdateState(map[string]any{
 		"status":        "in_progress",
-		"status_line":   fmt.Sprintf("Starting AI classification for %d unclassified image(s)...", len(ids)),
+		"status_line":   fmt.Sprintf("Starting AI classification for %d queued image(s)...", len(ids)),
 		"total":         len(ids),
 		"processed":     0,
 		"classified":    0,
@@ -564,13 +565,13 @@ func (h *ImageHandler) ImageAIClassificationGemmaUnclassifiedStart(w http.Respon
 		"error_message": nil,
 	})
 	imageAIClassificationJob.Broadcast("status", map[string]any{
-		"status_line": fmt.Sprintf("Starting AI classification for %d unclassified image(s)...", len(ids)),
+		"status_line": fmt.Sprintf("Starting AI classification for %d queued image(s)...", len(ids)),
 	})
 
 	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, append([]int64(nil), ids...), 0)
 
 	writeJSON(w, map[string]any{
-		"message": "Image AI classification job started for unclassified images",
+		"message": "Image AI classification job started for queued images",
 		"status":  "started",
 		"count":   len(ids),
 	})
@@ -778,6 +779,9 @@ func classifyImageAIOne(ctx context.Context, svc *service.ImageService, id int64
 		}
 		return imageAIClassifyOutcome{id: id, errMsg: msg}
 	}
+	if _, err := svc.SetRequireClassification(ctx, id, false); err != nil {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("clear require_classification image %d: %v", id, err)}
+	}
 
 	return imageAIClassifyOutcome{id: id, classified: true, keywordTags: keywordTags}
 }
@@ -936,6 +940,9 @@ func classifyImageAIOneRunPod(ctx context.Context, svc *service.ImageService, id
 			msg = fmt.Sprintf("tag update image %d: %s", id, strings.Join(tagErrs, "; "))
 		}
 		return imageAIClassifyOutcome{id: id, errMsg: msg}
+	}
+	if _, err := svc.SetRequireClassification(ctx, id, false); err != nil {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("clear require_classification image %d: %v", id, err)}
 	}
 
 	return imageAIClassifyOutcome{id: id, classified: true, keywordTags: keywordTags}
@@ -1135,7 +1142,7 @@ func (h *ImageHandler) ImageTagEmbeddingsBackfillStart(w http.ResponseWriter, r 
 
 	uid := appctx.UserIDFromCtx(r.Context())
 	imageTagEmbeddingJob.Start()
-	modeLine := "skip unchanged where embedding matches current tags"
+	modeLine := "only process rows with require_classification=true"
 	if reqBody.ReprocessAll {
 		modeLine = "reprocess all tagged images"
 	}
@@ -1168,7 +1175,7 @@ func runImageTagEmbeddingBackfill(svc *service.ImageService, pool *sql.DB, job *
 	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
 	defer job.Finish()
 
-	rows, err := svc.ListMediaItemsForTagEmbeddingBackfill(ctx)
+	rows, err := svc.ListMediaItemsForTagEmbeddingBackfill(ctx, !reprocessAll)
 	if err != nil {
 		job.UpdateState(map[string]any{
 			"status": "failed", "status_line": fmt.Sprintf("Failed to list images: %v", err),
@@ -1180,7 +1187,7 @@ func runImageTagEmbeddingBackfill(svc *service.ImageService, pool *sql.DB, job *
 	total := len(rows)
 	job.UpdateState(map[string]any{
 		"total": total, "processed": 0, "embedded": 0, "skipped": 0, "skipped_unchanged": 0, "errors": 0,
-		"status_line": fmt.Sprintf("Tag embeddings: %d image row(s) with tags", total),
+		"status_line":   fmt.Sprintf("Tag embeddings: %d image row(s) with tags", total),
 		"reprocess_all": reprocessAll,
 	})
 	job.Broadcast("progress", job.GetState())
@@ -1210,29 +1217,8 @@ func runImageTagEmbeddingBackfill(svc *service.ImageService, pool *sql.DB, job *
 			job.Broadcast("progress", job.GetState())
 			continue
 		}
-		if !reprocessAll {
-			match, sigErr := service.MediaTagEmbeddingSignatureMatches(ctx, pool, row.ID, norm)
-			if sigErr != nil {
-				errorsCount++
-				job.UpdateState(map[string]any{
-					"processed": i + 1, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
-					"status_line": fmt.Sprintf("Processed %d/%d — signature check id %d: %v", i+1, total, row.ID, sigErr),
-					"error_message": sigErr.Error(),
-				})
-				job.Broadcast("progress", job.GetState())
-				continue
-			}
-			if match {
-				skippedUnchanged++
-				job.UpdateState(map[string]any{
-					"processed": i + 1, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
-					"status_line": fmt.Sprintf("Processed %d/%d (skipped unchanged, image id %d)", i+1, total, row.ID),
-				})
-				job.Broadcast("progress", job.GetState())
-				continue
-			}
-		}
 		svc.SyncTagEmbedding(ctx, row.ID)
+		_, _ = svc.SetRequireClassification(ctx, row.ID, false)
 		embedded++
 		job.UpdateState(map[string]any{
 			"processed": i + 1, "embedded": embedded, "skipped": skipped, "skipped_unchanged": skippedUnchanged, "errors": errorsCount,
@@ -1277,7 +1263,7 @@ func (h *ImageHandler) SimilarByTagsSearch(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if req.N <= 0 {
-		req.N = 10
+		req.N = 25
 	}
 	if req.N > 50 {
 		req.N = 50
@@ -1350,7 +1336,7 @@ func (h *ImageHandler) SimilarByTagsSearch(w http.ResponseWriter, r *http.Reques
 		}
 		var own int
 		if scanErr := h.pool.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM media_items WHERE id = ? AND COALESCE(user_id, 0) = ?`,
+			`SELECT COUNT(*) FROM media_items WHERE id = ? AND COALESCE(user_id, 0) = ? AND media_type LIKE 'image/%'`,
 			c.id, uid,
 		).Scan(&own); scanErr != nil || own == 0 {
 			continue

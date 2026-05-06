@@ -159,9 +159,17 @@ func run() error {
 	}
 
 	// ── HTTP server ────────────────────────────────────────────────────────────
-	handler, err := router.New(db.Std, billingDB.Std, cfg)
+	handler, bgJobsScheduler, err := router.New(db.Std, billingDB.Std, cfg)
 	if err != nil {
 		return fmt.Errorf("router: %w", err)
+	}
+
+	// ── Background jobs scheduler ─────────────────────────────────────────────
+	// Runs in a goroutine until the root context is cancelled at shutdown.
+	bgJobsCtx, bgJobsCancel := context.WithCancel(context.Background())
+	defer bgJobsCancel()
+	if bgJobsScheduler != nil {
+		go bgJobsScheduler.Run(bgJobsCtx)
 	}
 
 	srv := &http.Server{
@@ -205,6 +213,8 @@ func run() error {
 
 	<-quit
 	slog.Info("shutdown signal received")
+
+	bgJobsCancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()

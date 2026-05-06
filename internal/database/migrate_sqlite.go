@@ -110,6 +110,9 @@ func MigrateSQLite(ctx context.Context, db *sql.DB) error {
 	if err := addReferenceDocumentsIncludeInSystemPromptColumn(ctx, db); err != nil {
 		return err
 	}
+	if err := addMediaItemsRequireClassificationColumn(ctx, db); err != nil {
+		return err
+	}
 
 	if err := ensureSQLiteVecEmbeddingTables(ctx, db); err != nil {
 		return err
@@ -119,6 +122,35 @@ func MigrateSQLite(ctx context.Context, db *sql.DB) error {
 	}
 
 	slog.Info("sqlite database migration complete")
+	return nil
+}
+
+func addMediaItemsRequireClassificationColumn(ctx context.Context, db *sql.DB) error {
+	var n int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'media_items'`,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("sqlite_master media_items: %w", err)
+	}
+	if n == 0 {
+		return nil
+	}
+	var has int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('media_items') WHERE name = 'require_classification'`,
+	).Scan(&has); err != nil {
+		return fmt.Errorf("pragma_table_info media_items.require_classification: %w", err)
+	}
+	if has > 0 {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE media_items ADD COLUMN require_classification INTEGER NOT NULL DEFAULT 0`); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "duplicate column") && !strings.Contains(msg, "already exists") {
+			return fmt.Errorf("add media_items.require_classification: %w", err)
+		}
+	}
+	slog.Info("sqlite migration: added media_items.require_classification")
 	return nil
 }
 

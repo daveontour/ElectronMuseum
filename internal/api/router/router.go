@@ -13,12 +13,16 @@ import (
 	"github.com/daveontour/aimuseum/internal/middleware"
 	"github.com/daveontour/aimuseum/internal/repository"
 	"github.com/daveontour/aimuseum/internal/service"
+	backgroundjobs "github.com/daveontour/aimuseum/internal/service/background_jobs"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
-// New returns the fully-wired application router.
-func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, error) {
+// New returns the fully-wired application router along with the background-jobs
+// scheduler that the caller is expected to start (e.g. cmd/server/main.go).
+// The scheduler may be nil if construction fails non-fatally; callers should
+// nil-check before launching its goroutine.
+func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *backgroundjobs.Scheduler, error) {
 	r := chi.NewRouter()
 
 	billingRepo := repository.NewBillingRepo(billingPool)
@@ -182,7 +186,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 	// ── Upload-based imports (Tier B ZIP upload, Tier C1 photo batch) ─────────
 	uploadImportHandler := handler.NewUploadImportHandler(pool, subjectConfigRepo, sessionMasterStore, sensitiveSvc, authSvc, cfg.Upload)
 	if err := uploadImportHandler.RegisterRoutes(r); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	embeddingHandler := handler.NewEmbeddingHandler(embeddingSvc)
@@ -249,6 +253,13 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 	llmToolsAccessHandler := handler.NewLLMToolsAccessHandler(privateStoreSvc, sessionMasterStore, authSvc)
 	llmToolsAccessHandler.RegisterRoutes(r)
 
+	// ── Background jobs scheduler (per-user maintenance jobs) ─────────────────
+	backgroundJobsRepo := repository.NewBackgroundJobRepo(pool)
+	backgroundJobsRunner := handler.NewBackgroundJobsRunner(pool, imageSvc, embeddingSvc)
+	backgroundJobsScheduler := backgroundjobs.NewScheduler(backgroundJobsRepo, backgroundJobsRunner, 0)
+	backgroundJobsHandler := handler.NewBackgroundJobsHandler(backgroundJobsRepo, backgroundJobsRunner, backgroundJobsScheduler)
+	backgroundJobsHandler.RegisterRoutes(r)
+
 	// ── Pam Bot (dementia companion) ─────────────────────────────────────────
 	pamBotRepo := repository.NewPamBotRepo(pool)
 	pamBotSvc := service.NewPamBotService(
@@ -272,7 +283,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, e
 	visitorHandler := handler.NewVisitorHandler(visitorSvc, authSvc, sessionMasterStore, cfg.Server.SessionCookieSecure)
 	visitorHandler.RegisterRoutes(r)
 
-	return r, nil
+	return r, backgroundJobsScheduler, nil
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

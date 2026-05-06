@@ -889,6 +889,9 @@ const App = (() => {
                 if (targetTab === 'tools-access') {
                     if (Modals.LLMToolsAccess && Modals.LLMToolsAccess.load) void Modals.LLMToolsAccess.load();
                 }
+                if (targetTab === 'background-jobs') {
+                    if (Modals.BackgroundJobs && Modals.BackgroundJobs.load) void Modals.BackgroundJobs.load();
+                }
                 if (targetTab === 'settings') {
                     if (Modals.UserLLMSettings && Modals.UserLLMSettings.load) void Modals.UserLLMSettings.load();
                     void loadLLMProviderAvailability();
