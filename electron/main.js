@@ -17,6 +17,7 @@ let isQuitting = false;
 let appPort = null;
 let activeDotenv = null;
 let ollamaProcess = null;
+let activeProfileId = null;
 
 // ---------------------------------------------------------------------------
 // Resource path resolution
@@ -250,6 +251,49 @@ async function killZombies() {
   });
 }
 
+/**
+ * CGO-built digitalmuseum.exe often needs MinGW DLLs (libgcc, winpthread). Git Bash
+ * may have those on PATH while the npm/Electron parent does not, which surfaces as
+ * synchronous spawn UNKNOWN (-4094) before the process can start.
+ */
+function augmentPathWithMingwBin(env) {
+  if (process.platform !== 'win32') return env;
+  const prefixes = [];
+  if (typeof env.MINGW_PREFIX === 'string' && env.MINGW_PREFIX.trim()) {
+    const b = path.join(env.MINGW_PREFIX.trim(), 'bin');
+    if (fs.existsSync(b)) prefixes.push(b);
+  }
+  for (const p of [
+    'C:\\msys64\\mingw64\\bin',
+    'C:\\msys64\\ucrt64\\bin',
+    'C:\\msys64\\clang64\\bin',
+    'C:\\msys64\\usr\\bin',
+    'C:\\mingw64\\bin',
+  ]) {
+    if (fs.existsSync(p)) prefixes.push(p);
+  }
+  const seen = new Set();
+  const unique = prefixes.filter((p) => !seen.has(p) && seen.add(p));
+  if (unique.length === 0) return env;
+  const pathKey = Object.prototype.hasOwnProperty.call(env, 'Path') ? 'Path' : 'PATH';
+  const cur = String(env[pathKey] || '');
+  const add = unique.join(path.delimiter);
+  return { ...env, [pathKey]: `${add}${path.delimiter}${cur}` };
+}
+
+/** Best-effort: ensures digitalmuseum.exe is gone (covers shell-wrapped spawns on Windows). */
+function forceKillDigitalMuseumWindows() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve();
+    execFile(
+      'taskkill',
+      ['/f', '/im', 'digitalmuseum.exe', '/t'],
+      { windowsHide: true },
+      () => resolve(),
+    );
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Go server lifecycle
 // ---------------------------------------------------------------------------
@@ -258,37 +302,118 @@ function startGoServer(port, paths, dotenv) {
   sendStatus('Starting application server...');
   log(`Starting Go server on port ${port}...`);
 
-  // Open a synchronous fd for the Go server log — spawn requires an already-open
-  // fd, not a WriteStream (which has fd=null until the async 'open' event fires).
-  let appLogFd;
-  try {
-    appLogFd = fs.openSync(paths.appLogFile, 'a');
-  } catch (_) { /* ignore — fall back to 'ignore' */ }
+  const goExeResolved = path.resolve(paths.goExe);
+  if (!fs.existsSync(goExeResolved)) {
+    throw new Error(
+      `Go server executable not found: ${goExeResolved} — run \`make build-exe\` (dev) or \`make build-exe-electron\` (installer) from the repo root.`,
+    );
+  }
 
-  // Build env: process.env (PATH etc.) → dotenv (user config) → our hard overrides.
-  const env = {
+  // Do not pass raw fds into stdio on Windows — libuv/CreateProcess often fails with
+  // synchronous spawn errors ("spawn UNKNOWN", errno ~-4094). Pipe stdout/stderr into
+  // the log when possible; if spawn still throws, retry with stdio fully ignored.
+  let goLogStream;
+  try {
+    goLogStream = fs.createWriteStream(paths.appLogFile, { flags: 'a' });
+  } catch (_) { /* ignore */ }
+
+  const goStdioPiped = goLogStream
+    ? /** @type {const} */ (['ignore', 'pipe', 'pipe'])
+    : /** @type {const} */ (['ignore', 'ignore', 'ignore']);
+
+  const rawEnv = {
     ...process.env,
     ...dotenv,
     HOST_PORT:             String(port),
-    SQLITE_PATH:           dotenv.SQLITE_PATH || paths.sqliteMainPath,
+    SQLITE_PATH:           dotenv.SQLITE_PATH || '',
     BILLING_SQLITE_PATH:   dotenv.BILLING_SQLITE_PATH || paths.sqliteBillingPath,
     TEMPLATES_DIR:         paths.templatesDir,
     ASSET_STATIC_DIR:      paths.staticDir,
     DEPLOYMENT_NATURE:     dotenv.DEPLOYMENT_NATURE  || 'local',
     SESSION_COOKIE_SECURE: 'false',
   };
+  const env = augmentPathWithMingwBin(rawEnv);
 
   logSqliteDatabasePaths(paths, env.SQLITE_PATH, env.BILLING_SQLITE_PATH, 'electron-spawn-env');
 
-  goProcess = spawn(paths.goExe, [], {
+  const spawnBase = /** @type {const} */ ({
     cwd: paths.appRoot,
     env,
     windowsHide: true,
-    stdio: ['ignore',
-      appLogFd ?? 'ignore',
-      appLogFd ?? 'ignore'],
   });
 
+  const ignore3 = /** @type {const} */ (['ignore', 'ignore', 'ignore']);
+  let stdioUsesPipes = goStdioPiped[1] === 'pipe';
+
+  /** @type {Error|undefined} */
+  let lastSpawnErr;
+
+  if (process.platform === 'win32') {
+    const attempts = /** @type {const} */ ([
+      ['spawn+pipe', () => spawn(goExeResolved, [], { ...spawnBase, stdio: goStdioPiped })],
+      ['spawn+ignore', () => spawn(goExeResolved, [], { ...spawnBase, stdio: ignore3 })],
+      ['spawn+detached', () => spawn(goExeResolved, [], { ...spawnBase, stdio: ignore3, detached: true })],
+      ['execFile', () => execFile(goExeResolved, [], { ...spawnBase, stdio: ignore3 })],
+      ['spawn+shell', () => spawn(goExeResolved, [], { ...spawnBase, stdio: ignore3, shell: true })],
+    ]);
+    let started = false;
+    for (const [name, fn] of attempts) {
+      try {
+        goProcess = fn();
+        log(`Go server process started (${name})`);
+        started = true;
+        stdioUsesPipes = name === 'spawn+pipe' && goStdioPiped[1] === 'pipe';
+        if (!stdioUsesPipes) {
+          try {
+            goLogStream?.end();
+          } catch (_) { /* ignore */ }
+          goLogStream = null;
+        }
+        break;
+      } catch (e) {
+        lastSpawnErr = e;
+        log(`Go ${name} failed: ${e.code || e.errno || ''} ${e.message}`);
+      }
+    }
+    if (!started) {
+      throw new Error(
+        `${lastSpawnErr?.message || 'spawn failed'} — could not launch digitalmuseum.exe from Electron. `
+        + `Open cmd.exe and run: "${goExeResolved}" `
+        + `If Windows reports a missing DLL, ensure MinGW/MSYS64 is installed and on PATH (or run from Git Bash where \`make\` built the binary). `
+        + `If the exe runs in cmd but not here, try excluding the repo from real-time antivirus (errno UNKNOWN / -4094).`,
+      );
+    }
+  } else {
+    try {
+      goProcess = spawn(goExeResolved, [], { ...spawnBase, stdio: goStdioPiped });
+    } catch (spawnErr) {
+      log(`Go spawn failed (${spawnErr.code || spawnErr.errno || 'no-code'} ${spawnErr.message}); retrying with stdio ignored (server logs won't be captured)`);
+      try {
+        goProcess = spawn(goExeResolved, [], { ...spawnBase, stdio: ignore3 });
+        stdioUsesPipes = false;
+        try {
+          goLogStream?.end();
+        } catch (_) { /* ignore */ }
+        goLogStream = null;
+      } catch (spawnErr2) {
+        throw new Error(
+          `${spawnErr2.message}; first error: ${spawnErr.message}. Hint: rebuild with \`make build-exe\` (console subsystem), exclude the repo from real-time antivirus, and ensure GCC + SQLite CGO prerequisites from the Makefile are installed.`,
+        );
+      }
+    }
+  }
+
+  if (stdioUsesPipes && goLogStream && goProcess.stdout && goProcess.stderr) {
+    const opts = { end: false };
+    goProcess.stdout.pipe(goLogStream, opts);
+    goProcess.stderr.pipe(goLogStream, opts);
+  }
+
+  goProcess.on('exit', () => {
+    try {
+      goLogStream?.end();
+    } catch (_) { /* ignore */ }
+  });
   goProcess.on('exit', (code, signal) => {
     log(`Go server exited (code=${code}, signal=${signal})`);
   });
@@ -309,6 +434,7 @@ async function restartGoServer(newSqlitePath, logLevel) {
       goProcess.once('exit', () => { clearTimeout(t); resolve(); });
     });
   }
+  await forceKillDigitalMuseumWindows();
   const paths = getPaths();
   let envContent = fs.existsSync(paths.dotEnvPath)
     ? fs.readFileSync(paths.dotEnvPath, 'utf8') : '';
@@ -476,6 +602,7 @@ async function shutdown() {
       goProcess.once('exit', () => { clearTimeout(t); resolve(); });
     });
   }
+  await forceKillDigitalMuseumWindows();
 
   if (ollamaProcess && !ollamaProcess.killed) {
     ollamaProcess.kill('SIGTERM');
@@ -527,21 +654,13 @@ app.whenReady().then(async () => {
       ...loadDotEnv(paths.dotEnvPath),
       ...(app.isPackaged ? {} : loadDotEnv(path.join(__dirname, '..', '.env'))),
     };
-    // Packaged app: always use userData/data/*.sqlite so a leftover SQLITE_PATH in
-    // %APPDATA%\.env (e.g. from dev) cannot point the installer at the wrong DB.
-    if (app.isPackaged) {
-      dotenv = {
-        ...dotenv,
-        SQLITE_PATH: paths.sqliteMainPath,
-        BILLING_SQLITE_PATH: paths.sqliteBillingPath,
-      };
-    } else {
-      dotenv = {
-        ...dotenv,
-        SQLITE_PATH: dotenv.SQLITE_PATH || paths.sqliteMainPath,
-        BILLING_SQLITE_PATH: dotenv.BILLING_SQLITE_PATH || paths.sqliteBillingPath,
-      };
-    }
+    // BILLING_SQLITE_PATH always has a default so billing tracking works from day one.
+    // SQLITE_PATH is left empty when absent — Go handles nil pool on first run
+    // and the user creates their first archive through the login page.
+    dotenv = {
+      ...dotenv,
+      BILLING_SQLITE_PATH: dotenv.BILLING_SQLITE_PATH || paths.sqliteBillingPath,
+    };
     logSqliteDatabasePaths(paths, dotenv.SQLITE_PATH, dotenv.BILLING_SQLITE_PATH, 'electron-resolved');
 
     sendStatus('Cleaning up previous processes...');
@@ -588,24 +707,103 @@ app.on('window-all-closed', () => {
 ipcMain.handle('show-open-dialog', (_event, options) => dialog.showOpenDialog(options));
 ipcMain.handle('show-save-dialog', (_event, options) => dialog.showSaveDialog(options));
 
-ipcMain.handle('get-db-path', () => {
-  const paths = getPaths();
-  return (activeDotenv && activeDotenv.SQLITE_PATH) || paths.sqliteMainPath;
-});
+ipcMain.handle('get-db-path', () => (activeDotenv && activeDotenv.SQLITE_PATH) || null);
 
 ipcMain.handle('get-log-level', () => (activeDotenv && activeDotenv.LOG_LEVEL) || 'warn');
 
 ipcMain.handle('select-db', async (_event, opts) => {
-  // opts: { path: string, logLevel?: string }
+  // opts: { path: string, logLevel?: string, profileId?: string }
   const newPath = typeof opts === 'string' ? opts : opts.path;
   const logLevel = typeof opts === 'string' ? undefined : opts.logLevel;
+  const profileId = (typeof opts === 'object' && opts.profileId) ? opts.profileId : null;
   try {
     await restartGoServer(newPath, logLevel);
+    if (profileId) activeProfileId = profileId;
     return { ok: true };
   } catch (err) {
     log(`select-db error: ${err.message}`);
     return { ok: false, error: err.message };
   }
+});
+
+// ── Archive profile management ────────────────────────────────────────────────
+
+function slugify(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'archive';
+}
+
+function goFetch(urlPath, opts) {
+  return fetch(`http://127.0.0.1:${appPort}${urlPath}`, opts);
+}
+
+ipcMain.handle('get-profiles', async () => {
+  if (!appPort) return { profiles: [], activeId: null };
+  try {
+    const res = await goFetch('/profiles');
+    if (!res.ok) return { profiles: [], activeId: null };
+    const data = await res.json();
+    const profiles = Array.isArray(data) ? data : (data.profiles || []);
+    return { profiles, activeId: activeProfileId };
+  } catch (_) { return { profiles: [], activeId: null }; }
+});
+
+ipcMain.handle('create-profile', async (_event, opts) => {
+  const { name, dbPath: customPath } = opts || {};
+  if (!name || !name.trim()) return { ok: false, error: 'Name is required' };
+
+  const paths = getPaths();
+  const archivesDir = path.join(paths.userData, 'archives');
+  if (!fs.existsSync(archivesDir)) fs.mkdirSync(archivesDir, { recursive: true });
+  const dbPath = customPath || path.join(archivesDir, slugify(name.trim()) + '.sqlite');
+
+  if (appPort) {
+    try {
+      const res = await goFetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), db_path: dbPath }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        return { ok: false, error: d.error || 'Server error registering profile' };
+      }
+      const profile = await res.json();
+      activeProfileId = profile.id;
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  try {
+    await restartGoServer(dbPath, undefined);
+    return { ok: true };
+  } catch (err) {
+    log(`create-profile restart error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('update-profile', async (_event, opts) => {
+  const { id, name, username } = opts || {};
+  if (!id || !appPort) return { ok: false };
+  try {
+    const res = await goFetch(`/api/profiles/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, username }),
+    });
+    return res.ok ? { ok: true } : { ok: false };
+  } catch (_) { return { ok: false }; }
+});
+
+ipcMain.handle('get-profile-db-path', async (_event, id) => {
+  if (!id || !appPort) return { ok: false };
+  try {
+    const res = await goFetch(`/api/profiles/${id}/dbpath`);
+    if (!res.ok) return { ok: false, error: 'Not found' };
+    const d = await res.json();
+    return { ok: true, dbPath: d.db_path };
+  } catch (_) { return { ok: false, error: 'Network error' }; }
 });
 
 // ── Ollama local AI ───────────────────────────────────────────────────────────
@@ -615,37 +813,77 @@ ipcMain.handle('check-ollama-model', () => {
   if (!fs.existsSync(ollamaExe)) {
     return { ok: false, error: 'Ollama executable not found at ' + ollamaExe };
   }
-  // Check the manifest directory — avoids spawning the CLI which needs a running daemon.
-  const manifestDir = path.join(
+  // Check manifest directories — avoids spawning the CLI which needs a running daemon.
+  const libDir = path.join(
     require('os').homedir(),
-    '.ollama', 'models', 'manifests',
-    'registry.ollama.ai', 'library', 'gemma4',
+    '.ollama', 'models', 'manifests', 'registry.ollama.ai', 'library',
   );
-  const hasModel = fs.existsSync(manifestDir) &&
-    fs.readdirSync(manifestDir).length > 0;
-  return { ok: true, hasModel };
+  const hasDir = (name) => {
+    const d = path.join(libDir, name);
+    return fs.existsSync(d) && fs.readdirSync(d).length > 0;
+  };
+  const hasGemma4         = hasDir('gemma4');
+  const hasEmbeddingModel = hasDir('embeddinggemma');
+  return { ok: true, hasModel: hasGemma4 && hasEmbeddingModel, hasGemma4, hasEmbeddingModel };
 });
 
-ipcMain.handle('pull-ollama-model', () => {
-  const ollamaExe = getOllamaExe();
+// Pull a single Ollama model and stream progress events.
+// Resolves { ok: true } on success, { ok: false, error } on failure.
+// Does NOT send a 'done' event — the caller sends it after all models finish.
+function pullOllamaModel(ollamaExe, modelName, send) {
   return new Promise((resolve) => {
-    const proc = spawn(ollamaExe, ['pull', 'gemma4-32k'], { windowsHide: true });
-    const send = (line) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('ollama-pull-progress', line);
+    const proc = spawn(ollamaExe, ['pull', modelName], { windowsHide: true });
+    const fmtGB = (bytes) => (bytes / 1e9).toFixed(2) + ' GB';
+    const parseLine = (line) => {
+      const t = line.trim();
+      if (!t) return;
+      try {
+        const obj = JSON.parse(t);
+        if (obj.total && obj.completed) {
+          send({ type: 'progress', model: modelName,
+                 percent: Math.round(obj.completed / obj.total * 100),
+                 downloaded: fmtGB(obj.completed),
+                 total: fmtGB(obj.total),
+                 status: obj.status || 'downloading' });
+        } else if (obj.status) {
+          send({ type: 'status', status: obj.status });
+        }
+      } catch (_) {
+        send({ type: 'status', status: t });
       }
     };
     let errOut = '';
-    proc.stdout && proc.stdout.on('data', (d) =>
-      d.toString().split('\n').forEach(l => { if (l.trim()) send(l.trim()); }));
+    proc.stdout && proc.stdout.on('data', (d) => d.toString().split('\n').forEach(parseLine));
     proc.stderr && proc.stderr.on('data', (d) => {
       errOut += d.toString();
-      d.toString().split('\n').forEach(l => { if (l.trim()) send(l.trim()); });
+      d.toString().split('\n').forEach(parseLine);
     });
-    proc.on('close', (code) =>
-      code === 0 ? resolve({ ok: true }) : resolve({ ok: false, error: errOut || `exit ${code}` }));
+    proc.on('close', (code) => {
+      if (code === 0) resolve({ ok: true });
+      else resolve({ ok: false, error: errOut || `exit ${code}` });
+    });
     proc.on('error', (err) => resolve({ ok: false, error: err.message }));
   });
+}
+
+ipcMain.handle('pull-ollama-model', async () => {
+  const ollamaExe = getOllamaExe();
+  const send = (evt) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('ollama-pull-progress', evt);
+    }
+  };
+
+  send({ type: 'status', status: 'Downloading chat model (gemma4:latest)…' });
+  const r1 = await pullOllamaModel(ollamaExe, 'gemma4:latest', send);
+  if (!r1.ok) return r1;
+
+  send({ type: 'status', status: 'Downloading embedding model (embeddinggemma:latest)…' });
+  const r2 = await pullOllamaModel(ollamaExe, 'embeddinggemma:latest', send);
+  if (!r2.ok) return r2;
+
+  send({ type: 'done', ok: true });
+  return { ok: true };
 });
 
 ipcMain.handle('start-ollama', async () => {

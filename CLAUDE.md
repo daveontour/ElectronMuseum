@@ -97,6 +97,7 @@ in dev mode, or the install root in packaged mode). User-editable settings live 
 | `LOCALAI_MODEL_NAME` | No | Default: `local-model` (use `gemma4` for Ollama) |
 | `LOCALAI_API_KEY` | No | Not required by Ollama; kept for compatibility |
 | `LOCALAI_EMBEDDING_MODEL` | No | Falls back to `LOCALAI_MODEL_NAME` if empty |
+| `LOCALAI_NUM_CTX` | No | Per-request `num_ctx` sent to Ollama under `options`. Empty / 0 / non-positive omits the field so Ollama uses its server-side default (set via `OLLAMA_NUM_CTX` when Electron starts the daemon). |
 | `TAVILY_API_KEY` | No | Enables `search_tavily` web-search tool |
 | `GMAIL_CLIENT_ID` | No | Google OAuth 2.0 Desktop App client ID |
 | `GMAIL_CLIENT_SECRET` | No | Google OAuth 2.0 client secret |
@@ -164,8 +165,15 @@ restarts the Go server via `restartGoServer()` in `electron/main.js`.
 - No `Authorization` header required
 - Model options (temperature, num_ctx) sent under `"options"` key
 
-Ollama is started with `OLLAMA_NUM_CTX=8192` env var (configured in `start-ollama` IPC
-handler in `electron/main.js`).
+**Context size (`num_ctx`):**
+
+- The Ollama daemon spawned by Electron is started with `OLLAMA_NUM_CTX=32768` (configured in
+  the `start-ollama` IPC handler in `electron/main.js`). This becomes the **server-side default**
+  for any request that omits `num_ctx`.
+- The Go provider also sends `num_ctx` per-request when `LOCALAI_NUM_CTX` is set to a positive
+  integer. When unset / 0, the field is omitted and Ollama applies the server-side default.
+- Note: the env-var default only applies to the daemon Electron starts. If users connect to a
+  pre-existing Ollama daemon they started themselves, that daemon's own configuration wins.
 
 ## DeepSeek Provider
 

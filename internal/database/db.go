@@ -29,10 +29,11 @@ func ensureSQLiteVecAuto() {
 }
 
 // New opens the main SQLite database file.
+// Returns (nil, nil) when cfg.SQLitePath is empty — caller must nil-check.
 func New(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
 	ensureSQLiteVecAuto()
 	if cfg.SQLitePath == "" {
-		return nil, fmt.Errorf("SQLITE_PATH is required")
+		return nil, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.SQLitePath), 0o755); err != nil {
 		return nil, fmt.Errorf("create sqlite directory: %w", err)

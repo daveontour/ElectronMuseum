@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -102,7 +103,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("connect to database: %w", err)
 	}
-	defer db.Close()
+	if db != nil {
+		defer db.Close()
+	}
 
 	billingDB, err := database.NewBilling(ctx, billingCfg)
 	if err != nil {
@@ -115,51 +118,59 @@ func run() error {
 	migrateCtx, migrateCancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer migrateCancel()
 
-	if err := database.MigrateSQLite(migrateCtx, db.Std); err != nil {
-		return fmt.Errorf("run migrations: %w", err)
-	}
-	if err := database.MigratePamBot(migrateCtx, db.Std); err != nil {
-		return fmt.Errorf("run pam bot migrations: %w", err)
+	if db != nil {
+		if err := database.MigrateSQLite(migrateCtx, db.Std); err != nil {
+			return fmt.Errorf("run migrations: %w", err)
+		}
+		if err := database.MigratePamBot(migrateCtx, db.Std); err != nil {
+			return fmt.Errorf("run pam bot migrations: %w", err)
+		}
 	}
 	if err := database.MigrateBilling(migrateCtx, billingDB.Std); err != nil {
 		return fmt.Errorf("run billing migrations: %w", err)
 	}
 
-	userRepo := repository.NewUserRepo(db.Std)
-	if n, err := userRepo.DeleteAllSessions(migrateCtx); err != nil {
-		return fmt.Errorf("clear sessions on startup: %w", err)
-	} else if n > 0 {
-		slog.Info("cleared auth sessions after restart", "deleted", n)
-	}
+	if db != nil {
+		userRepo := repository.NewUserRepo(db.Std)
+		if n, err := userRepo.DeleteAllSessions(migrateCtx); err != nil {
+			return fmt.Errorf("clear sessions on startup: %w", err)
+		} else if n > 0 {
+			slog.Info("cleared auth sessions after restart", "deleted", n)
+		}
 
-	if err := database.SeedEmailExclusionsFromJSON(migrateCtx, db.Std, "static/data/exclusions.json"); err != nil {
-		return fmt.Errorf("seed email exclusions: %w", err)
-	}
-	if err := database.SeedEmailMatchesFromJSON(migrateCtx, db.Std, "static/data/email_matches.json"); err != nil {
-		return fmt.Errorf("seed email matches: %w", err)
-	}
-	if err := database.SeedEmailClassificationsFromJSON(migrateCtx, db.Std, "static/data/email_classifications.json"); err != nil {
-		return fmt.Errorf("seed email classifications: %w", err)
-	}
-	if err := database.SeedAppSystemInstructionsFromFiles(migrateCtx, db.Std, "static"); err != nil {
-		return fmt.Errorf("seed app system instructions: %w", err)
-	}
+		if err := database.SeedEmailExclusionsFromJSON(migrateCtx, db.Std, "static/data/exclusions.json"); err != nil {
+			return fmt.Errorf("seed email exclusions: %w", err)
+		}
+		if err := database.SeedEmailMatchesFromJSON(migrateCtx, db.Std, "static/data/email_matches.json"); err != nil {
+			return fmt.Errorf("seed email matches: %w", err)
+		}
+		if err := database.SeedEmailClassificationsFromJSON(migrateCtx, db.Std, "static/data/email_classifications.json"); err != nil {
+			return fmt.Errorf("seed email classifications: %w", err)
+		}
+		if err := database.SeedAppSystemInstructionsFromFiles(migrateCtx, db.Std, "static"); err != nil {
+			return fmt.Errorf("seed app system instructions: %w", err)
+		}
 
-	// Bootstrap admin from ADMIN_EMAIL / ADMIN_PASSWORD when none exists, then require ≥1 admin.
-	authSvc := service.NewAuthService(userRepo, cfg.Server.SessionCookieSecure)
-	if err := authSvc.EnsureAdminUser(migrateCtx, cfg.Server.AdminEmail, cfg.Server.AdminPassword); err != nil {
-		return fmt.Errorf("bootstrap admin user: %w", err)
-	}
-	hasAdmin, err := userRepo.AdminExists(migrateCtx)
-	if err != nil {
-		return fmt.Errorf("check admin user: %w", err)
-	}
-	if !hasAdmin {
-		return fmt.Errorf("no admin user in database: set ADMIN_EMAIL and ADMIN_PASSWORD to create the initial administrator, or sign in as an existing admin and create one under /admin")
+		// Bootstrap admin from ADMIN_EMAIL / ADMIN_PASSWORD when none exists, then require ≥1 admin.
+		authSvc := service.NewAuthService(userRepo, cfg.Server.SessionCookieSecure)
+		if err := authSvc.EnsureAdminUser(migrateCtx, cfg.Server.AdminEmail, cfg.Server.AdminPassword); err != nil {
+			return fmt.Errorf("bootstrap admin user: %w", err)
+		}
+		hasAdmin, err := userRepo.AdminExists(migrateCtx)
+		if err != nil {
+			return fmt.Errorf("check admin user: %w", err)
+		}
+		if !hasAdmin {
+			return fmt.Errorf("no admin user in database: set ADMIN_EMAIL and ADMIN_PASSWORD to create the initial administrator, or sign in as an existing admin and create one under /admin")
+		}
 	}
 
 	// ── HTTP server ────────────────────────────────────────────────────────────
-	handler, bgJobsScheduler, err := router.New(db.Std, billingDB.Std, cfg)
+	var mainPool *sql.DB
+	if db != nil {
+		mainPool = db.Std
+	}
+	handler, bgJobsScheduler, err := router.New(mainPool, billingDB.Std, cfg)
 	if err != nil {
 		return fmt.Errorf("router: %w", err)
 	}

@@ -124,6 +124,12 @@ func (s *ImageService) BulkUpdateTags(ctx context.Context, imageIDs []int64, tag
 	return updated, errs
 }
 
+// UpdateTagsMerge appends comma-separated tags into existing media_items.tags (see repository.UpdateTags).
+// Unlike BulkUpdateTags, this does not refresh sqlite-vec tag embeddings — call SyncTagEmbedding when metadata is final.
+func (s *ImageService) UpdateTagsMerge(ctx context.Context, id int64, newTags string) (bool, error) {
+	return s.repo.UpdateTags(ctx, id, newTags)
+}
+
 // ListImageIDsMissingTag returns image IDs that do not yet contain the supplied tag.
 func (s *ImageService) ListImageIDsMissingTag(ctx context.Context, tag string) ([]int64, error) {
 	return s.repo.ListImageIDsMissingTag(ctx, tag)

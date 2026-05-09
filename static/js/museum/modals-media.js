@@ -1135,10 +1135,10 @@ Modals.NewImageGallery = (() => {
                 if (hasMoreData) {
                     _checkAndLoadMoreIfNeeded();
                     // Add loading indicator if viewport is filled and there's more data
-                    const grid = DOM.newImageGalleryThumbnailGrid;
-                    if (grid.scrollHeight > grid.clientHeight + 50) {
-                        _addLoadingIndicator();
-                    }
+                    //const grid = DOM.newImageGalleryThumbnailGrid;
+                    // if (grid.scrollHeight > grid.clientHeight + 50) {
+                    //     _addLoadingIndicator();
+                    // }
                 }
             }, 100);
         }

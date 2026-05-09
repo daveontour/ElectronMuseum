@@ -15,4 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAutoStartLocalAI: ()       => ipcRenderer.invoke('get-auto-start-local-ai'),
   setAutoStartLocalAI: (enabled)=> ipcRenderer.invoke('set-auto-start-local-ai', !!enabled),
   onOllamaPullProgress:(cb)     => ipcRenderer.on('ollama-pull-progress', (_e, msg) => cb(msg)),
+  getProfiles:      ()     => ipcRenderer.invoke('get-profiles'),
+  createProfile:    (opts) => ipcRenderer.invoke('create-profile', opts),
+  updateProfile:    (opts) => ipcRenderer.invoke('update-profile', opts),
+  getProfileDbPath: (id)   => ipcRenderer.invoke('get-profile-db-path', id),
 });

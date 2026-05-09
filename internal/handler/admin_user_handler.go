@@ -615,6 +615,11 @@ func (h *AdminUsersHandler) requireAdmin(w http.ResponseWriter, r *http.Request)
 	return true
 }
 
+// RequireAdmin is an exported shim so ProfileHandler can reuse admin session logic.
+func (h *AdminUsersHandler) RequireAdmin(w http.ResponseWriter, r *http.Request) bool {
+	return h.requireAdmin(w, r)
+}
+
 // ── In-process admin session store ───────────────────────────────────────────
 
 type adminSessions struct {
@@ -771,6 +776,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <button type="button" class="admin-tab" id="tab-btn-errors" role="tab" aria-selected="false" aria-controls="tab-panel-errors">Errors</button>
         <button type="button" class="admin-tab" id="tab-btn-sys" role="tab" aria-selected="false" aria-controls="tab-panel-sys">System instructions</button>
         <button type="button" class="admin-tab" id="tab-btn-pambot" role="tab" aria-selected="false" aria-controls="tab-panel-pambot">Pam Bot</button>
+        <button type="button" class="admin-tab" id="tab-btn-archives" role="tab" aria-selected="false" aria-controls="tab-panel-archives">Archives</button>
       </div>
       <div id="tab-panel-users" class="admin-tab-panel active" role="tabpanel">
       <div class="card-header" style="padding:0 0 20px 0;margin-bottom:0">
@@ -911,6 +917,26 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
       </div>
 
+      <div id="tab-panel-archives" class="admin-tab-panel" role="tabpanel">
+      <div class="card-header" style="padding:0 0 16px;margin-bottom:0">
+        <h2 style="margin:0"><i class="fas fa-archive" style="color:#3b82f6;margin-right:8px"></i>Archives</h2>
+      </div>
+      <p style="color:#8fa4c8;font-size:.88rem;margin-bottom:16px">
+        Archive profiles stored in the billing database.
+        Disabling an archive hides it from the login dropdown.
+      </p>
+      <div id="archives-error" class="error" style="margin-bottom:12px;display:none"></div>
+      <div style="overflow-x:auto">
+        <table id="archives-table" style="min-width:640px">
+          <thead><tr>
+            <th>Name</th><th>Username</th><th>DB Path</th>
+            <th>Status</th><th>Last Used</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="archives-body"></tbody>
+        </table>
+      </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -969,6 +995,25 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <div class="modal-actions">
       <button class="btn btn-ghost" id="del-cancel">Cancel</button>
       <button class="btn btn-danger" id="del-confirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete archive confirm modal -->
+<div class="modal-overlay" id="del-archive-modal">
+  <div class="modal">
+    <h3>Delete Archive</h3>
+    <p style="color:#f87171;margin-bottom:8px" id="del-archive-modal-label"></p>
+    <p style="color:#8fa4c8;font-size:0.88rem;margin-bottom:6px">DB file: <span id="del-archive-modal-path" style="font-family:monospace;font-size:.82rem;word-break:break-all"></span></p>
+    <p style="color:#8fa4c8;font-size:0.88rem">This removes the archive entry from the billing database. The .sqlite file is kept on disk unless you tick the option below.</p>
+    <label style="display:flex;align-items:center;gap:8px;color:#cdd6e8;font-size:0.9rem;margin-top:14px;cursor:pointer">
+      <input type="checkbox" id="del-archive-file" style="accent-color:#3b82f6">
+      Also delete the .sqlite file from disk (cannot be undone)
+    </label>
+    <p id="del-archive-error" style="color:#f87171;font-size:0.85rem;margin-top:10px;display:none"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="del-archive-cancel">Cancel</button>
+      <button class="btn btn-danger" id="del-archive-confirm">Delete</button>
     </div>
   </div>
 </div>
@@ -1565,20 +1610,22 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     return String(s).replace(/'/g,"\\'");
   }
 
-  // ── Tabs: Users | Usage & Billing | Errors | System instructions | Pam Bot ─
+  // ── Tabs: Users | Usage & Billing | Errors | System instructions | Pam Bot | Archives ─
   (function initAdminTabs() {
     var btnUsers = document.getElementById('tab-btn-users');
     var btnBilling = document.getElementById('tab-btn-billing');
     var btnErrors = document.getElementById('tab-btn-errors');
     var btnSys = document.getElementById('tab-btn-sys');
     var btnPambot = document.getElementById('tab-btn-pambot');
+    var btnArchives = document.getElementById('tab-btn-archives');
     var panelUsers = document.getElementById('tab-panel-users');
     var panelBilling = document.getElementById('tab-panel-billing');
     var panelErrors = document.getElementById('tab-panel-errors');
     var panelSys = document.getElementById('tab-panel-sys');
     var panelPambot = document.getElementById('tab-panel-pambot');
-    if (!btnUsers || !btnBilling || !btnErrors || !btnSys || !btnPambot ||
-        !panelUsers || !panelBilling || !panelErrors || !panelSys || !panelPambot) return;
+    var panelArchives = document.getElementById('tab-panel-archives');
+    if (!btnUsers || !btnBilling || !btnErrors || !btnSys || !btnPambot || !btnArchives ||
+        !panelUsers || !panelBilling || !panelErrors || !panelSys || !panelPambot || !panelArchives) return;
 
     async function loadSystemInstructions() {
       var errEl = document.getElementById('sys-instr-error');
@@ -1625,21 +1672,25 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       var isErrors = which === 'errors';
       var isSys = which === 'sys';
       var isPambot = which === 'pambot';
+      var isArchives = which === 'archives';
       btnUsers.classList.toggle('active', isUsers);
       btnBilling.classList.toggle('active', isBilling);
       btnErrors.classList.toggle('active', isErrors);
       btnSys.classList.toggle('active', isSys);
       btnPambot.classList.toggle('active', isPambot);
+      btnArchives.classList.toggle('active', isArchives);
       btnUsers.setAttribute('aria-selected', isUsers);
       btnBilling.setAttribute('aria-selected', isBilling);
       btnErrors.setAttribute('aria-selected', isErrors);
       btnSys.setAttribute('aria-selected', isSys);
       btnPambot.setAttribute('aria-selected', isPambot);
+      btnArchives.setAttribute('aria-selected', isArchives);
       panelUsers.classList.toggle('active', isUsers);
       panelBilling.classList.toggle('active', isBilling);
       panelErrors.classList.toggle('active', isErrors);
       panelSys.classList.toggle('active', isSys);
       panelPambot.classList.toggle('active', isPambot);
+      panelArchives.classList.toggle('active', isArchives);
       if (isErrors) {
         var ef = document.getElementById('err-from');
         var et = document.getElementById('err-to');
@@ -1652,12 +1703,14 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       }
       if (isSys) loadSystemInstructions();
       if (isPambot) loadPambotInstructions();
+      if (isArchives) loadArchives();
     }
     btnUsers.addEventListener('click', function() { setTab('users'); });
     btnBilling.addEventListener('click', function() { setTab('billing'); });
     btnErrors.addEventListener('click', function() { setTab('errors'); });
     btnSys.addEventListener('click', function() { setTab('sys'); });
     btnPambot.addEventListener('click', function() { setTab('pambot'); });
+    btnArchives.addEventListener('click', function() { setTab('archives'); });
 
     var sysReload = document.getElementById('sys-reload-btn');
     var sysSave = document.getElementById('sys-save-btn');
@@ -1695,6 +1748,116 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         }
       } finally {
         btn.disabled = false;
+      }
+    });
+
+    async function loadArchives() {
+      var errEl = document.getElementById('archives-error');
+      errEl.style.display = 'none';
+      try {
+        var res = await apiFetch('/admin/profiles');
+        if (res.status === 401) { showAdminLogin(); return; }
+        if (!res.ok) throw new Error('Failed to load archives');
+        var data = await res.json();
+        renderArchives(data.profiles || data || []);
+      } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    }
+
+    function renderArchives(profiles) {
+      var tbody = document.getElementById('archives-body');
+      if (!profiles.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:#8fa4c8;text-align:center;padding:24px">No archive profiles.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = profiles.map(function(p) {
+        var lu = p.last_used ? new Date(p.last_used).toLocaleString() : '—';
+        var badge = p.enabled
+          ? '<span class="badge badge-active">Enabled</span>'
+          : '<span class="badge badge-inactive">Disabled</span>';
+        return '<tr>' +
+          '<td>' + escHtml(p.name) + '</td>' +
+          '<td>' + escHtml(p.username || '—') + '</td>' +
+          '<td style="font-family:monospace;font-size:.82rem;word-break:break-all">' + escHtml(p.db_path) + '</td>' +
+          '<td>' + badge + '</td>' +
+          '<td style="color:#8fa4c8">' + lu + '</td>' +
+          '<td style="white-space:nowrap">' +
+            '<button class="btn btn-warning" onclick="toggleArchive(\'' +
+              escAttr(p.id) + '\',' + (!p.enabled) + ')">' +
+              (p.enabled ? 'Disable' : 'Enable') + '</button>' +
+            ' <button class="btn btn-danger" style="margin-left:6px" onclick="openDelArchiveModal(\'' +
+              escAttr(p.id) + '\',\'' + escAttr(p.name) + '\',\'' + escAttr(p.db_path) + '\')">Delete</button>' +
+          '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    function showAdminLogin() {
+      document.getElementById('admin-section').style.display = 'none';
+      document.getElementById('login-section').style.display = 'flex';
+      showAdminUserLoginBtn(true);
+    }
+
+    window.toggleArchive = async function(id, enable) {
+      try {
+        var res = await apiFetch('/admin/profiles/' + id, {
+          method: 'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({enabled: enable})
+        });
+        if (res.status === 401) { showAdminLogin(); return; }
+        if (!res.ok) { var d = await res.json().catch(function(){return{};}); alert(d.error || 'Failed'); }
+        loadArchives();
+      } catch(e) { alert('Network error.'); }
+    };
+
+    // ── Delete archive modal ───────────────────────────────────────────────
+    var pendingDelArchiveId = null;
+    window.openDelArchiveModal = function(id, name, dbPath) {
+      pendingDelArchiveId = id;
+      document.getElementById('del-archive-modal-label').textContent = 'Delete archive: ' + name;
+      document.getElementById('del-archive-modal-path').textContent = dbPath || '(unknown)';
+      document.getElementById('del-archive-file').checked = false;
+      var errEl = document.getElementById('del-archive-error');
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+      document.getElementById('del-archive-modal').classList.add('open');
+    };
+    var delArchiveCancel = document.getElementById('del-archive-cancel');
+    if (delArchiveCancel) delArchiveCancel.addEventListener('click', function() {
+      document.getElementById('del-archive-modal').classList.remove('open');
+      pendingDelArchiveId = null;
+    });
+    var delArchiveConfirm = document.getElementById('del-archive-confirm');
+    if (delArchiveConfirm) delArchiveConfirm.addEventListener('click', async function() {
+      if (!pendingDelArchiveId) return;
+      var btn = this;
+      var errEl = document.getElementById('del-archive-error');
+      var deleteFile = document.getElementById('del-archive-file').checked;
+      btn.disabled = true; btn.textContent = 'Deleting\u2026';
+      errEl.style.display = 'none'; errEl.textContent = '';
+      try {
+        var url = '/admin/profiles/' + pendingDelArchiveId + (deleteFile ? '?delete_file=true' : '');
+        var res = await apiFetch(url, { method: 'DELETE' });
+        if (res.status === 401) { showAdminLogin(); return; }
+        var d = await res.json().catch(function(){return{};});
+        if (!res.ok) {
+          errEl.textContent = d.error || 'Failed to delete archive.';
+          errEl.style.display = 'block';
+          return;
+        }
+        document.getElementById('del-archive-modal').classList.remove('open');
+        pendingDelArchiveId = null;
+        if (d.file_warning) {
+          var aErr = document.getElementById('archives-error');
+          aErr.textContent = d.file_warning;
+          aErr.style.display = 'block';
+        }
+        loadArchives();
+      } catch(e) {
+        errEl.textContent = 'Network error.';
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Delete';
       }
     });
 

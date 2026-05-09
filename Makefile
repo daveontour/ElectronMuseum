@@ -17,12 +17,17 @@ export PATH := $(GCCDIR):$(PATH)
 endif
 endif
 
-# sqlite-vec-go-bindings/cgo includes "sqlite3.h". Point CGO includes at a
-# local shim header and mattn/go-sqlite3's bundled sqlite3-binding.h.
-SQLITE3_BINDING_DIR := $(shell go list -f '{{.Dir}}' -m github.com/mattn/go-sqlite3 2>/dev/null)
-ifneq ($(SQLITE3_BINDING_DIR),)
-export CGO_CFLAGS := -I$(CURDIR)/cgo-compat -I$(SQLITE3_BINDING_DIR) $(CGO_CFLAGS)
-endif
+# sqlite-vec-go-bindings/cgo includes "sqlite3.h". Always inject cgo-compat so a
+# cold build works: until modules are fetched, `go list -m` has no Dir for go-sqlite3
+# (first `go build` was downloading deps, so CGO previously had no sqlite3.h includes).
+_SQLITE_RAW := $(shell go list -f '{{.Dir}}' -m github.com/mattn/go-sqlite3 2>/dev/null)
+SQLITE3_BINDING_DIR := $(shell printf '%s' '$(_SQLITE_RAW)' | tr '\\' '/' 2>/dev/null || printf '%s' '$(_SQLITE_RAW)')
+export CGO_CFLAGS := -I$(CURDIR)/cgo-compat $(if $(strip $(SQLITE3_BINDING_DIR)),-I$(SQLITE3_BINDING_DIR)) $(CGO_CFLAGS)
+
+# Go 1.25+ with CGO on Windows can emit a PE that the loader rejects (“This app can't
+# run on your PC”) when debug info is retained (malformed headers / DWARF interaction;
+# see https://go.dev/issue/75121 ). Always strip for Windows server/launcher builds.
+WINDOWS_STRIP_LDF := $(if $(filter windows,$(shell go env GOOS 2>/dev/null)),-s -w,)
 
 # go.mod is 1.25+; grpc and stdlib (log/slog, slices, …) need a current toolchain.
 check-go:
@@ -35,14 +40,14 @@ check-go:
 	fi
 
 build: check-go
-	go build -o bin/$(BINARY) $(CMD)
+	go build $(if $(WINDOWS_STRIP_LDF),-ldflags="$(WINDOWS_STRIP_LDF)") -o bin/$(BINARY) $(CMD)
 
 build-exe: check-go
-	go build -o bin/$(BINARY).exe $(CMD)
+	go build $(if $(WINDOWS_STRIP_LDF),-ldflags="$(WINDOWS_STRIP_LDF)") -o bin/$(BINARY).exe $(CMD)
 
 # Windowsgui subsystem build — no console window when launched by Electron.
 build-exe-electron: check-go
-	go build -ldflags="-H windowsgui" -o bin/$(BINARY).exe $(CMD)
+	go build -ldflags="$(strip $(WINDOWS_STRIP_LDF) -H windowsgui)" -o bin/$(BINARY).exe $(CMD)
 
 build-linux: check-go
 	@hostos="$$(go env GOOS)"; \
@@ -54,7 +59,7 @@ build-linux: check-go
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -o bin/$(BINARY)-linux-amd64 $(CMD)
 
 build-launcher: check-go
-	go build -buildvcs=false -ldflags="-H windowsgui" -o launcher.exe ./cmd/launcher
+	go build -buildvcs=false -ldflags="$(strip $(WINDOWS_STRIP_LDF) -H windowsgui)" -o launcher.exe ./cmd/launcher
 
 run: check-go
 	go run $(CMD)
@@ -88,8 +93,10 @@ dev: build
 # ── Electron targets ──────────────────────────────────────────────────────────
 
 # Run Electron in dev mode against the local source tree (no packaging).
-# Requires Go binary at bin/digitalmuseum.exe.
-electron-dev: build-exe-electron
+# Uses the console-subsystem binary (plain `go build`); spawning a WINDOWSGUI exe
+# with piped stdout/stderr can fail on some Windows setups with spawn UNKNOWN (-4094).
+# Packaged installers still use build-exe-electron (hidden console).
+electron-dev: build-exe
 	cd electron && npm install --prefer-offline && npx electron .
 
 # Package the Electron app into a distributable installer.

@@ -53,5 +53,15 @@ func billingSchemaSQLite() []string {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_llm_usage_events_created_at ON llm_usage_events (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_llm_usage_events_user_created ON llm_usage_events (user_id, created_at)`,
+		`CREATE TABLE IF NOT EXISTS archive_profiles (
+			id         TEXT PRIMARY KEY,
+			name       TEXT NOT NULL,
+			username   TEXT,
+			db_path    TEXT NOT NULL UNIQUE,
+			enabled    INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			last_used  TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_archive_profiles_enabled ON archive_profiles (enabled)`,
 	}
 }

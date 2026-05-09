@@ -22,16 +22,42 @@ import (
 // scheduler that the caller is expected to start (e.g. cmd/server/main.go).
 // The scheduler may be nil if construction fails non-fatally; callers should
 // nil-check before launching its goroutine.
+// When pool is nil (no SQLITE_PATH configured), a minimal router is returned
+// that serves /health, /login, /profiles, /static/*, and /api/profiles only.
 func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *backgroundjobs.Scheduler, error) {
 	r := chi.NewRouter()
-
-	billingRepo := repository.NewBillingRepo(billingPool)
 
 	// ── Global middleware ───────────────────────────────────────────────────────
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Logger)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
+
+	// ── Profile repo (always available — billing DB) ──────────────────────────
+	profileRepo := repository.NewProfileRepo(billingPool)
+
+	if pool == nil {
+		// No main archive DB — serve only what is needed to choose/create one.
+		r.Get("/health", healthHandler)
+
+		profileHandler := handler.NewProfileHandler(profileRepo, nil)
+		profileHandler.RegisterRoutes(r)
+
+		templateHandler := handler.NewTemplateHandler(nil, nil, cfg)
+		r.Get("/login", templateHandler.GetLogin)
+
+		staticFS := http.FileServer(http.Dir(cfg.App.AssetStaticDir))
+		r.Handle("/static/*", http.StripPrefix("/static/", staticFS))
+
+		r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"no archive configured — select or create an archive first"}`))
+		})
+		return r, nil, nil
+	}
+
+	billingRepo := repository.NewBillingRepo(billingPool)
 
 	// ── Authentication service (shared by handler + middleware) ───────────────
 	userRepo := repository.NewUserRepo(pool)
@@ -47,7 +73,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 
 	sessionMasterStore := keystore.NewSessionMasterStore(cfg.Server.SessionCookieSecure)
 
-	localAIProvider := appai.NewLocalAIProvider(cfg.AI.LocalAIBaseURL, cfg.AI.LocalAIAPIKey, cfg.AI.LocalAIModelName)
+	localAIProvider := appai.NewLocalAIProvider(cfg.AI.LocalAIBaseURL, cfg.AI.LocalAIAPIKey, cfg.AI.LocalAIModelName, cfg.AI.LocalAINumCtx)
 	embeddingSvc := service.NewEmbeddingService(localAIProvider, cfg.AI.LocalAIEmbeddingModel)
 
 	// ── Emails ─────────────────────────────────────────────────────────────────
@@ -212,6 +238,10 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	adminUsersHandler := handler.NewAdminUsersHandler(userRepo, authSvc, sensitiveSvc, subjectConfigSvc, dashboardSvc, billingRepo, appInstrRepo, cfg.Server.SessionCookieSecure)
 	adminUsersHandler.RegisterRoutes(r)
 
+	// ── Archive profiles (billing DB) ─────────────────────────────────────────
+	profileHandler := handler.NewProfileHandler(profileRepo, adminUsersHandler.RequireAdmin)
+	profileHandler.RegisterRoutes(r)
+
 	billingExportHandler := handler.NewBillingExportHandler(userRepo, billingRepo)
 	billingExportHandler.RegisterRoutes(r)
 	chatRepo := repository.NewChatRepo(pool)
@@ -234,6 +264,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 		cfg.AI.LocalAIBaseURL,
 		cfg.AI.LocalAIAPIKey,
 		cfg.AI.LocalAIModelName,
+		cfg.AI.LocalAINumCtx,
 		cfg.App.AssetStaticDir,
 		cfg.Crypto.KeyringPepper,
 		sessionMasterStore,

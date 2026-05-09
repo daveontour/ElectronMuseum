@@ -91,7 +91,7 @@ func main() {
 		die("message_embeddings is empty; run context embedding backfill first")
 	}
 
-	provider := ai.NewLocalAIProvider(baseURL, apiKey, model)
+	provider := ai.NewLocalAIProvider(baseURL, apiKey, model, 0)
 	if provider == nil || !provider.IsAvailable() {
 		die("ollama provider unavailable; set -base-url or LOCALAI_BASE_URL")
 	}

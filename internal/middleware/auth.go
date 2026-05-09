@@ -25,7 +25,8 @@ var exemptPrefixes = []string{
 	"/share/",
 	"/s/",
 	"/visitor/",
-	"/admin", // admin panel has its own session-based auth
+	"/admin",        // admin panel has its own session-based auth
+	"/api/profiles", // localhost-only archive profile endpoints; isLocalhost() guards in handler
 }
 
 // exemptExact lists paths that are always accessible without authentication.
@@ -34,6 +35,7 @@ var exemptExact = map[string]bool{
 	"/auth/login":    true,
 	"/auth/register": true,
 	"/login":         true,
+	"/profiles":      true,
 }
 
 // NewAuthMiddleware returns a middleware that authenticates every request via

@@ -70,6 +70,7 @@ type ChatService struct {
 	defaultLocalAIURL    string
 	defaultLocalAIKey    string
 	defaultLocalAIModel  string
+	defaultLocalAINumCtx int
 	pythonStaticDir      string
 	pepper               string
 	sessionStore         *keystore.SessionMasterStore
@@ -90,6 +91,7 @@ func NewChatService(
 	defaultGeminiKey, defaultGeminiModel, defaultAnthropicKey, defaultClaudeModel string,
 	defaultDeepSeekKey, defaultDeepSeekModel, defaultTavilyKey string,
 	defaultLocalAIURL, defaultLocalAIKey, defaultLocalAIModel string,
+	defaultLocalAINumCtx int,
 	pythonStaticDir string,
 	pepper string,
 	sessionStore *keystore.SessionMasterStore,
@@ -114,6 +116,7 @@ func NewChatService(
 		defaultLocalAIURL:    defaultLocalAIURL,
 		defaultLocalAIKey:    defaultLocalAIKey,
 		defaultLocalAIModel:  defaultLocalAIModel,
+		defaultLocalAINumCtx: defaultLocalAINumCtx,
 		pythonStaticDir:      pythonStaticDir,
 		pepper:               pepper,
 		sessionStore:         sessionStore,
@@ -286,7 +289,7 @@ func (s *ChatService) effectiveDeepSeekProvider() appai.ChatProvider {
 // effectiveLocalAIProvider returns a LocalAIProvider using the server-level config.
 // LocalAI does not support per-user API key overrides — it always uses the server default.
 func (s *ChatService) effectiveLocalAIProvider() appai.ChatProvider {
-	return appai.NewLocalAIProvider(s.defaultLocalAIURL, s.defaultLocalAIKey, s.defaultLocalAIModel)
+	return appai.NewLocalAIProvider(s.defaultLocalAIURL, s.defaultLocalAIKey, s.defaultLocalAIModel, s.defaultLocalAINumCtx)
 }
 
 // LocalAIAvailable reports whether the LocalAI provider is configured.

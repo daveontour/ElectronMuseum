@@ -15,6 +15,10 @@ type LocalAIProvider struct {
 	baseURL   string
 	apiKey    string // retained for interface compatibility; not required by Ollama
 	modelName string
+	// numCtx is sent under "options".num_ctx on every chat request when > 0.
+	// Zero leaves it unset so Ollama uses its server-side default (set via the
+	// OLLAMA_NUM_CTX env var when Electron starts the daemon).
+	numCtx int
 }
 
 // ollamaRequest is the body sent to POST /api/chat.
@@ -45,17 +49,23 @@ type ollamaResponse struct {
 }
 
 // NewLocalAIProvider creates a LocalAIProvider. Returns nil if baseURL is empty.
-func NewLocalAIProvider(baseURL, apiKey, modelName string) *LocalAIProvider {
+// numCtx <= 0 means "do not send num_ctx in the request body" (the Ollama server
+// will use its own default, typically set via the OLLAMA_NUM_CTX env var).
+func NewLocalAIProvider(baseURL, apiKey, modelName string, numCtx int) *LocalAIProvider {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil
 	}
 	if modelName == "" {
 		modelName = "local-model"
 	}
+	if numCtx < 0 {
+		numCtx = 0
+	}
 	return &LocalAIProvider{
 		baseURL:   strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		apiKey:    apiKey,
 		modelName: modelName,
+		numCtx:    numCtx,
 	}
 }
 
@@ -66,13 +76,17 @@ func (p *LocalAIProvider) SimpleGenerate(ctx context.Context, prompt string) (st
 	if p == nil || p.baseURL == "" {
 		return "", nil, fmt.Errorf("localai: not configured")
 	}
+	opts := map[string]any{"temperature": 0.2}
+	if p.numCtx > 0 {
+		opts["num_ctx"] = p.numCtx
+	}
 	req := ollamaRequest{
 		Model:  p.modelName,
 		Stream: false,
 		Messages: []map[string]any{
 			{"role": "user", "content": prompt},
 		},
-		Options: map[string]any{"temperature": 0.2},
+		Options: opts,
 	}
 	resp, err := ollamaPost(ctx, p.baseURL, req)
 	if err != nil {
@@ -136,12 +150,16 @@ func (p *LocalAIProvider) GenerateResponse(
 	outputTokens := 0
 
 	for iter := 0; iter < maxToolCallIterations; iter++ {
+		opts := map[string]any{"temperature": req.Temperature}
+		if p.numCtx > 0 {
+			opts["num_ctx"] = p.numCtx
+		}
 		ollamaReq := ollamaRequest{
 			Model:    p.modelName,
 			Messages: messages,
 			Tools:    tools,
 			Stream:   false,
-			Options:  map[string]any{"temperature": req.Temperature},
+			Options:  opts,
 		}
 
 		resp, err := ollamaPost(ctx, p.baseURL, ollamaReq)

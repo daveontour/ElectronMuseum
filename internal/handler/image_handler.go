@@ -771,14 +771,14 @@ func classifyImageAIOne(ctx context.Context, svc *service.ImageService, id int64
 	}
 
 	tagsForUpdate := keywordTags + ", GemmaClassified"
-	n, tagErrs := svc.BulkUpdateTags(ctx, []int64{id}, tagsForUpdate)
-	if n == 0 || len(tagErrs) > 0 {
-		msg := fmt.Sprintf("tag update image %d failed", id)
-		if len(tagErrs) > 0 {
-			msg = fmt.Sprintf("tag update image %d: %s", id, strings.Join(tagErrs, "; "))
-		}
-		return imageAIClassifyOutcome{id: id, errMsg: msg}
+	ok, mergeErr := svc.UpdateTagsMerge(ctx, id, tagsForUpdate)
+	if mergeErr != nil {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("tag update image %d: %v", id, mergeErr)}
 	}
+	if !ok {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("tag update image %d failed", id)}
+	}
+	svc.SyncTagEmbedding(ctx, id)
 	if _, err := svc.SetRequireClassification(ctx, id, false); err != nil {
 		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("clear require_classification image %d: %v", id, err)}
 	}
@@ -933,14 +933,14 @@ func classifyImageAIOneRunPod(ctx context.Context, svc *service.ImageService, id
 	}
 
 	tagsForUpdate := keywordTags + ", GemmaClassified"
-	n, tagErrs := svc.BulkUpdateTags(ctx, []int64{id}, tagsForUpdate)
-	if n == 0 || len(tagErrs) > 0 {
-		msg := fmt.Sprintf("tag update image %d failed", id)
-		if len(tagErrs) > 0 {
-			msg = fmt.Sprintf("tag update image %d: %s", id, strings.Join(tagErrs, "; "))
-		}
-		return imageAIClassifyOutcome{id: id, errMsg: msg}
+	ok, mergeErr := svc.UpdateTagsMerge(ctx, id, tagsForUpdate)
+	if mergeErr != nil {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("tag update image %d: %v", id, mergeErr)}
 	}
+	if !ok {
+		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("tag update image %d failed", id)}
+	}
+	svc.SyncTagEmbedding(ctx, id)
 	if _, err := svc.SetRequireClassification(ctx, id, false); err != nil {
 		return imageAIClassifyOutcome{id: id, errMsg: fmt.Sprintf("clear require_classification image %d: %v", id, err)}
 	}

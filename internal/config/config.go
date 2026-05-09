@@ -139,6 +139,10 @@ type AIConfig struct {
 	LocalAIAPIKey         string
 	LocalAIModelName      string
 	LocalAIEmbeddingModel string
+	// LocalAINumCtx is the per-request `num_ctx` sent to Ollama. Zero means
+	// the request omits the field and Ollama applies its server-side default
+	// (which Electron starts with via OLLAMA_NUM_CTX).
+	LocalAINumCtx int
 }
 
 // AttachmentConfig holds attachment filtering settings.
@@ -245,10 +249,10 @@ func loadCryptoConfig() (CryptoConfig, error) {
 
 func loadDatabaseConfig() (DatabaseConfig, error) {
 	main := strings.TrimSpace(os.Getenv("SQLITE_PATH"))
-	if main == "" {
-		return DatabaseConfig{}, fmt.Errorf("missing SQLITE_PATH (path to main .sqlite file)")
+	if main != "" {
+		main = filepath.Clean(main)
 	}
-	main = filepath.Clean(main)
+	// Empty SQLITE_PATH is valid — server starts in profiles-only mode until an archive is selected.
 	billing := strings.TrimSpace(os.Getenv("BILLING_SQLITE_PATH"))
 	if billing != "" {
 		billing = filepath.Clean(billing)
@@ -307,7 +311,22 @@ func loadAIConfig() AIConfig {
 		LocalAIAPIKey:         os.Getenv("LOCALAI_API_KEY"),
 		LocalAIModelName:      getenv("LOCALAI_MODEL_NAME", "local-model"),
 		LocalAIEmbeddingModel: getenv("LOCALAI_EMBEDDING_MODEL", ""),
+		LocalAINumCtx:         parseNumCtxEnv(),
 	}
+}
+
+// parseNumCtxEnv reads LOCALAI_NUM_CTX. Empty / unparseable / non-positive
+// values resolve to 0, which means "do not send num_ctx in the request body".
+func parseNumCtxEnv() int {
+	raw := strings.TrimSpace(os.Getenv("LOCALAI_NUM_CTX"))
+	if raw == "" {
+		return 0
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return 0
+	}
+	return v
 }
 
 func loadAttachmentConfig() (AttachmentConfig, error) {

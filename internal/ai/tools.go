@@ -218,7 +218,8 @@ func toolEmbedText(ctx context.Context, text string) ([]float32, error) {
 	if embeddingModel == "" {
 		embeddingModel = model
 	}
-	provider := NewLocalAIProvider(baseURL, apiKey, model)
+	// num_ctx is irrelevant for the embed endpoint, so pass 0 here.
+	provider := NewLocalAIProvider(baseURL, apiKey, model, 0)
 	if provider == nil || !provider.IsAvailable() {
 		return nil, fmt.Errorf("embedding service unavailable: set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
 	}
