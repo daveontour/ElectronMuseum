@@ -559,23 +559,17 @@ const App = (() => {
         const closeGuideModalBtn = document.getElementById('close-guide-modal');
         if (guideSidebarBtn && guideModal) {
             guideSidebarBtn.addEventListener('click', () => {
-                guideModal.style.display = 'flex';
+                const topicsContainer = document.getElementById('guide-topics-list');
+                if (typeof Guide !== 'undefined' && Guide.renderTopicList && topicsContainer && !topicsContainer.querySelector('.guide-topic-btn')) {
+                    try { Guide.renderTopicList(); } catch (_) {}
+                }
+                if (typeof Guide !== 'undefined' && Guide.openGuideModal) Guide.openGuideModal();
+                else guideModal.style.display = 'flex';
             });
         }
         const closeGuideModal = () => {
-            guideModal.style.display = 'none';
-            const gsOverlay = document.getElementById('getting-started-overlay');
-            const gsDialog = document.getElementById('getting-started-dialog');
-            if (gsOverlay) gsOverlay.style.display = 'none';
-            if (gsDialog) gsDialog.style.display = 'none';
-            document.getElementById('guide-explanation-overlay').style.display = 'none';
-            document.getElementById('guide-explanation-dialog').style.display = 'none';
-            document.querySelectorAll('.guide-topic-btn').forEach(b => b.classList.remove('guide-topic-glow'));
-            document.querySelectorAll('.guide-glow').forEach(el => el.classList.remove('guide-glow'));
-            const nextBtn = document.getElementById('guide-explanation-next-btn');
-            if (nextBtn) nextBtn.style.display = 'none';
-            const tileCloseBtn = document.getElementById('guide-explanation-close-btn');
-            if (tileCloseBtn) tileCloseBtn.style.display = 'none';
+            if (typeof Guide !== 'undefined' && Guide.closeAll) Guide.closeAll();
+            else guideModal.style.display = 'none';
         };
         if (closeGuideModalBtn && guideModal) {
             closeGuideModalBtn.addEventListener('click', closeGuideModal);
@@ -585,13 +579,17 @@ const App = (() => {
                 if (e.target === guideModal) closeGuideModal();
             });
         }
-        document.querySelectorAll('.guide-topic-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+        if (guideModal) {
+            guideModal.addEventListener('click', (e) => {
+                const btn = e.target && e.target.closest ? e.target.closest('.guide-topic-btn') : null;
+                if (!btn) return;
                 e.stopPropagation();
                 const topic = btn.dataset.topic || '';
-                Guide.onTopicSelected(topic, btn);
+                if (typeof Guide !== 'undefined' && Guide.onTopicSelected) {
+                    Guide.onTopicSelected(topic, btn);
+                }
             });
-        });
+        }
 
         // Load control defaults from API
         let controlDefaults = {};

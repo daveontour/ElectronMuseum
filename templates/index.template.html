@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page_title }}</title>
-    <link rel="stylesheet" href="/static/css/museum_of.css?v=20260329d">
+    <link rel="stylesheet" href="/static/css/museum_of.css?v=20260509a">
     <link rel="stylesheet" href="/static/css/leaflet.css">
     <link rel="stylesheet" href="/static/css/images_grid.css">
     <!-- Include marked.js -->
@@ -114,6 +114,7 @@
             <div class="top-bar-right-buttons" style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
                 <button id="guide-sidebar-btn" class="top-bar-guide-btn" type="button" title="Guide">
                     <i class="fas fa-question-circle"></i>
+                     <span style="margin-left:4px; font-size:0.85em;">Guide</span>
                 </button>
                 <button id="hamburger-menu" class="hamburger-btn">
                     <i class="fas fa-cog"></i>
@@ -3100,25 +3101,14 @@
 
         <!-- Guide Modal -->
         <div id="guide-modal" class="modal" style="display: none;">
-            <div class="modal-content guide-modal-content" style="max-width: 500px; padding: 0;" onclick="event.stopPropagation()">
+            <div class="modal-content guide-modal-content" style="padding: 0;" onclick="event.stopPropagation()">
                 <div class="modal-header">
                     <h2><i class="fas fa-question-circle"></i> Guide</h2>
                     <button class="modal-close-btn" id="close-guide-modal">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p style="color: #666; margin-bottom: 16px;">Select a topic for help:</p>
-                    <ul id="guide-topics-list" class="guide-topics-list">
-                        <li><button type="button" class="guide-topic-btn" data-topic="GettingStarted">Getting started</button></li>
-                        <li><button type="button" class="guide-topic-btn" data-topic="AskingQuestions">Asking questions</button></li>
-                        <li><button type="button" class="guide-topic-btn" data-topic="Browsing images">Browsing images</button></li>
-                        <li><button type="button" class="guide-topic-btn" data-topic="Managing contacts">Managing contacts</button></li>
-                        <li><button type="button" class="guide-topic-btn" data-topic="Voice and AI settings">Voice and AI settings</button></li>
-                        <li><button type="button" class="guide-topic-btn" data-topic="Today's Thing of Interest">Today's Thing of Interest</button></li>
-                        <li><button type="button" class="guide-topic-btn" data-topic="Email catchup">Email catchup</button></li>
-                        <li><button type="button" class="guide-topic-btn" data-topic="Settings and data import">Settings and data import</button></li>
-                        <li><button type="button" class="guide-topic-btn" data-topic="ImportFacebookArchive">Import Facebook Archive</button></li>                   
-                        <li><button type="button" class="guide-topic-btn" data-topic="ImportInstagramArchive">Import Instagram Archive</button></li>                   
-                    </ul>
+                    <p class="guide-modal-intro">Select a topic for step-by-step help.</p>
+                    <div id="guide-topics-list" class="guide-topics-list" role="list"></div>
                 </div>
             </div>
         </div>
@@ -3168,9 +3158,14 @@
         <!-- Guide Explanation (shown after closing Guide; positioned over main app) -->
         <div id="guide-explanation-overlay" class="guide-explanation-overlay" style="display: none;"></div>
         <div id="guide-explanation-dialog" class="guide-explanation-dialog" style="display: none;">
+            <p id="guide-explanation-progress" class="guide-explanation-progress" aria-live="polite"></p>
             <p id="guide-explanation-text"></p>
             <img id="guide-explanation-image" class="guide-explanation-image" src="" alt="" style="display: none;">
-            <button type="button" id="guide-explanation-next-btn" class="guide-explanation-next-btn" style="display: none;">Next <i class="fas fa-chevron-right"></i></button>
+            <div class="guide-explanation-actions">
+                <button type="button" id="guide-explanation-back-btn" class="guide-explanation-back-btn" style="display: none;"><i class="fas fa-chevron-left"></i> Back</button>
+                <button type="button" id="guide-explanation-next-btn" class="guide-explanation-next-btn" style="display: none;">Next <i class="fas fa-chevron-right"></i></button>
+                <button type="button" id="guide-explanation-done-btn" class="guide-explanation-done-btn" style="display: none;">Done</button>
+            </div>
             <button type="button" id="guide-explanation-close-btn" class="guide-explanation-close-btn" style="display: none;">&times;</button>
         </div>
 
@@ -3417,7 +3412,7 @@
     <script src="/static/js/museum/modals-artefacts.js" defer></script>
     <script src="/static/js/museum/modals-sensitive.js" defer></script>
     <script src="/static/js/museum/modals-settings.js?v={{ static_modals_settings_js_cache_bust }}" defer></script>
-    <script src="/static/js/museum/guide.js" defer></script>
+    <script src="/static/js/museum/guide.js?v={{ static_app_js_cache_bust }}" defer></script>
     <script src="/static/js/museum/interviewer.js" defer></script>
     <script src="/static/js/museum/chat-voice-input.js" defer></script>
     <script src="/static/js/museum/app.js?v={{ static_app_js_cache_bust }}" defer></script>

@@ -684,12 +684,10 @@ app.whenReady().then(async () => {
     createMainWindow(appPort);
     setupTray(appPort);
     registerDevToolsShortcut();
-    if (parseBoolEnv(dotenv.AUTO_START_LOCAL_AI)) {
-      log('AUTO_START_LOCAL_AI enabled — starting Local AI');
-      ensureOllamaRunning().then((res) => {
-        if (!res.ok) log(`AUTO_START_LOCAL_AI failed: ${res.error || 'unknown'}`);
-      });
-    }
+    ensureOllamaRunning().then((res) => {
+      if (!res.ok) log(`Ollama auto-start failed: ${res.error || 'unknown'}`);
+      else log('Ollama server available (auto-started when needed)');
+    });
 
   } catch (err) {
     log(`Startup error: ${err.message}`);
@@ -706,6 +704,20 @@ app.on('window-all-closed', () => {
 // ── File / directory picker (used by import dialogs) ─────────────────────────
 ipcMain.handle('show-open-dialog', (_event, options) => dialog.showOpenDialog(options));
 ipcMain.handle('show-save-dialog', (_event, options) => dialog.showSaveDialog(options));
+ipcMain.handle('confirm-continue-without-ai', async () => {
+  const parentWindow = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const result = await dialog.showMessageBox(parentWindow, {
+    type: 'warning',
+    title: 'Local AI Setup Incomplete',
+    message: 'Local AI setup is incomplete.',
+    detail: 'Some features may not be available until Ollama is running and both required models are installed (gemma4 and embeddinggemma). Do you want to continue signing in?',
+    buttons: ['Continue Sign In', 'Go to AI Setup'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  return { ok: true, proceed: result.response === 0 };
+});
 
 ipcMain.handle('get-db-path', () => (activeDotenv && activeDotenv.SQLITE_PATH) || null);
 

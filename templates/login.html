@@ -75,6 +75,7 @@
             transition: color 0.15s, border-color 0.15s;
         }
         .tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }
+        .tab-row .advanced-btn { margin-left: auto; }
         .form-group { margin-bottom: 20px; }
         .form-row { display: flex; gap: 12px; }
         .form-row .form-group { flex: 1; }
@@ -136,12 +137,40 @@
             display: flex; justify-content: space-between;
             color: #8fa4c8; font-size: 0.78rem; margin-top: 4px;
         }
+        .adv-status-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            font-size: 0.82rem; margin-top: 8px; padding: 8px 10px; border-radius: 6px;
+            background: #0c1419; border: 1px solid #1e3050;
+        }
+        .adv-status-row:first-of-type { margin-top: 0; }
+        .adv-status-label { color: #8fa4c8; flex-shrink: 0; }
+        .adv-status-value { font-weight: 600; text-align: right; }
         .adv-input {
             padding: 6px 10px; border-radius: 6px; border: 1px solid #2e4068;
             background: #0f1922; color: #cdd6e8; font-size: 0.85rem;
             font-family: inherit; box-sizing: border-box;
         }
         .adv-btn-sm { padding: 6px 12px; font-size: 0.82rem; }
+
+        #advanced-btn.advanced-btn {
+            color: #fbbf24;
+            transition: color 0.15s ease;
+        }
+        #advanced-btn.advanced-btn:hover {
+            color: #fcd34d;
+        }
+        #advanced-btn.advanced-btn.advanced-btn-needs-attention {
+            color: #ef4444 !important;
+        }
+        #advanced-btn.advanced-btn.advanced-btn-needs-attention:hover {
+            color: #f87171 !important;
+        }
+        #advanced-btn.advanced-btn.advanced-btn-ready {
+            color: #4ade80 !important;
+        }
+        #advanced-btn.advanced-btn.advanced-btn-ready:hover {
+            color: #86efac !important;
+        }
 
         #login-admin-login-btn {
             position: fixed; top: 14px; right: 14px; z-index: 100;
@@ -178,17 +207,12 @@
             <button class="tab-btn active" id="tab-login"    type="button">Sign In</button>
             <button class="tab-btn"        id="tab-register" type="button">Register</button>
             <button class="tab-btn"        id="tab-visitor"  type="button">Visitor</button>
+            <button type="button" id="advanced-btn" class="tab-btn advanced-btn" aria-expanded="false"
+                title="AI configuration and advanced options">Local AI Setup</button>
         </div>
 
         <div id="error-msg" class="error-msg"></div>
         <div id="success-msg" style="display:none; color:#4ade80; background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.25); padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:0.9rem;"></div>
-
-        <!-- AI & Setup toggle -->
-        <div id="advanced-trigger" style="text-align:right; margin-bottom:4px;">
-            <button type="button" id="advanced-btn" aria-expanded="false"
-                title="AI configuration and advanced options"
-                style="background:none;border:none;color:#8fa4c8;font-size:0.82rem;cursor:pointer;padding:2px 0;">&#9881; AI &amp; Setup</button>
-        </div>
 
         <!-- AI & Setup panel -->
         <div id="panel-advanced" style="display:none; margin-bottom:16px; padding:14px; background:#0f1922; border:1px solid #2e4068; border-radius:8px;">
@@ -197,25 +221,29 @@
             </div>
             <!-- Local AI -->
             <div id="adv-ollama-block">
-                <div style="color:#cdd6e8; font-size:0.88rem; font-weight:600; margin-bottom:4px;">Local AI — Ollama / Gemma4</div>
+                <div style="color:#cdd6e8; font-size:0.88rem; font-weight:600; margin-bottom:4px;">Local AI</div>
                 <div style="color:#8fa4c8; font-size:0.82rem; margin-bottom:10px;">
-                    Runs privately on your computer — no API key needed.<br>
-                    First-time setup downloads the chat model (~5 GB) and the embedding model.
+                    Runs privately on your computer. The app starts the Ollama server when you open Digital Museum. The Ollama server makes the Local AI available to the app.
+                    Downloads of the required models may take several minutes.
                 </div>
-                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <button type="button" id="adv-start-ollama-btn" class="adv-btn adv-btn-outline adv-btn-sm" style="white-space:nowrap;">
-                        <i class="fas fa-robot" style="margin-right:5px;"></i>Start Local AI
-                    </button>
-                    <label style="display:flex; align-items:center; gap:6px; color:#cdd6e8; font-size:0.84rem; cursor:pointer; margin-left:auto;">
-                        <input type="checkbox" id="adv-auto-start-local-ai" style="accent-color:#3b82f6;">
-                        Auto-start on launch
-                    </label>
+                <div id="adv-local-ai-rows" style="margin-top:4px;">
+                    <div class="adv-status-row">
+                        <span class="adv-status-label">Ollama server</span>
+                        <span id="adv-ollama-server-value" class="adv-status-value" style="color:#6b7c99;">…</span>
+                    </div>
+                    <div class="adv-status-row">
+                        <span class="adv-status-label">Chat and Image Classification (gemma4)</span>
+                        <span id="adv-model-gemma-value" class="adv-status-value" style="color:#6b7c99;">—</span>
+                    </div>
+                    <div class="adv-status-row">
+                        <span class="adv-status-label">Vectorisation for Similarity Searches (embeddingemma)</span>
+                        <span id="adv-model-embed-value" class="adv-status-value" style="color:#6b7c99;">—</span>
+                    </div>
                 </div>
+                <button type="button" id="adv-download-models-btn" class="adv-btn adv-btn-primary adv-btn-sm" style="margin-top:12px;display:none;white-space:nowrap;">
+                    <i class="fas fa-download" style="margin-right:5px;"></i>Download required models
+                </button>
                 <div id="adv-ollama-msg" style="display:none; font-size:0.82rem; margin-top:8px; padding:6px 8px; border-radius:4px; color:#8fa4c8;"></div>
-                <div id="adv-ollama-confirm" style="display:none; gap:8px; margin-top:8px;">
-                    <button type="button" id="adv-ollama-yes"    class="adv-btn adv-btn-primary adv-btn-sm"><i class="fas fa-download" style="margin-right:5px;"></i>Yes, Download Models</button>
-                    <button type="button" id="adv-ollama-cancel" class="adv-btn adv-btn-outline adv-btn-sm">Cancel</button>
-                </div>
                 <div id="adv-ollama-progress-bar-wrap">
                     <progress id="adv-ollama-progress-bar" value="0" max="100"></progress>
                     <div id="adv-ollama-progress-label">
@@ -224,7 +252,7 @@
                     </div>
                 </div>
                 <div style="margin-top:12px; padding-top:10px; border-top:1px solid #1e3050; color:#4a5a80; font-size:0.8rem;">
-                    Prefer cloud AI? Add a Claude, Gemini, or DeepSeek API key in <strong style="color:#6b80a8;">Settings</strong> after signing in.
+                    Prefer more capable cloud AI? Add a Claude, Gemini, or DeepSeek API key in <strong style="color:#6b80a8;">Settings</strong> after signing in.
                 </div>
             </div>
             <div id="adv-status" style="color:#f87171; font-size:0.82rem; margin-top:12px; display:none;"></div>
@@ -371,6 +399,7 @@
         const errorMsg    = document.getElementById('error-msg');
 
         function showTab(tab) {
+            if (window.closeSetupPanel) window.closeSetupPanel(false);
             ['login','register','visitor'].forEach(t => {
                 document.getElementById('tab-' + t).classList.toggle('active', t === tab);
                 document.getElementById('panel-' + t).classList.toggle('active', t === tab);
@@ -385,6 +414,35 @@
             el.textContent = msg; el.style.display = 'block';
         }
         function showError(msg) { errorMsg.textContent = msg; errorMsg.style.display = 'block'; }
+        async function shouldProceedWithSignInWhenAIIncomplete() {
+            if (!hasElectron || !window.electronAPI) return true;
+            try {
+                const aiSetupBtn = document.getElementById('advanced-btn');
+                if (aiSetupBtn && aiSetupBtn.classList.contains('advanced-btn-ready')) {
+                    return true;
+                }
+                if (aiSetupBtn && aiSetupBtn.classList.contains('advanced-btn-needs-attention')) {
+                    if (window.electronAPI.confirmContinueWithoutAI) {
+                        const result = await window.electronAPI.confirmContinueWithoutAI();
+                        return !!(result && result.ok && result.proceed);
+                    }
+                    return window.confirm('Local AI setup is incomplete. Some functions may not be available. Continue signing in?');
+                }
+
+                const startRes = await window.electronAPI.startOllama();
+                const check = await window.electronAPI.checkOllamaModel();
+                const hasIssue = !startRes?.ok || !check?.ok || !check?.hasGemma4 || !check?.hasEmbeddingModel;
+                if (!hasIssue) return true;
+
+                if (window.electronAPI.confirmContinueWithoutAI) {
+                    const result = await window.electronAPI.confirmContinueWithoutAI();
+                    return !!(result && result.ok && result.proceed);
+                }
+                return window.confirm('Local AI setup is incomplete. Some functions may not be available. Continue signing in?');
+            } catch (_) {
+                return true;
+            }
+        }
 
         tabLogin.addEventListener('click',    () => showTab('login'));
         tabRegister.addEventListener('click', () => showTab('register'));
@@ -422,6 +480,7 @@
         document.getElementById('login-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const btn = document.getElementById('login-btn');
+            if (btn.disabled) return;
             errorMsg.style.display = 'none';
             // Resolve username: prefer the visible input; fall back to the selected
             // profile option's dataset.username (Electron mode hides the input).
@@ -441,6 +500,8 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Signing in…';
             try {
+                const proceed = await shouldProceedWithSignInWhenAIIncomplete();
+                if (!proceed) return;
                 const res = await fetch('/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -585,13 +646,16 @@
 
             function buildSelect() {
                 profileSelect.innerHTML = '';
-                profiles.forEach(p => {
+                const hasActive = profiles.some(p => p.id === activeId);
+                profiles.forEach((p, idx) => {
                     const opt = document.createElement('option');
                     opt.value            = p.id;
                     opt.textContent      = p.username ? p.name + ' (' + p.username + ')' : p.name;
                     opt.dataset.username = p.username || '';
-                    opt.dataset.active   = (p.id === activeId) ? '1' : '0';
-                    if (p.id === activeId) opt.selected = true;
+                    const isDefault = !hasActive && idx === 0;
+                    const isActiveProfile = p.id === activeId || isDefault;
+                    opt.dataset.active   = isActiveProfile ? '1' : '0';
+                    if (isActiveProfile) opt.selected = true;
                     profileSelect.appendChild(opt);
                 });
                 const newOpt = document.createElement('option');
@@ -615,6 +679,38 @@
 
             buildSelect();
 
+            async function ensureInitialActiveProfile() {
+                if (!profiles.length) return;
+                const hasActive = profiles.some(p => p.id === activeId);
+                if (hasActive) return;
+                const first = profiles[0];
+                if (!first || !window.electronAPI || !window.electronAPI.getProfileDbPath || !window.electronAPI.selectDatabase) {
+                    return;
+                }
+                try {
+                    profileSelect.disabled = true;
+                    const dbRes = await window.electronAPI.getProfileDbPath(first.id);
+                    if (!dbRes || !dbRes.ok || !dbRes.dbPath) {
+                        showError('Could not resolve archive path for selected user.');
+                        profileSelect.disabled = false;
+                        return;
+                    }
+                    const result = await window.electronAPI.selectDatabase({
+                        path: dbRes.dbPath,
+                        profileId: first.id,
+                    });
+                    if (result && result.ok) {
+                        window.location.reload();
+                        return;
+                    }
+                    showError('Failed to switch archive: ' + ((result && result.error) || 'unknown'));
+                } catch (_) {
+                    showError('Failed to initialize selected archive.');
+                } finally {
+                    profileSelect.disabled = false;
+                }
+            }
+
             // Cancel button only makes sense when there is an existing archive to revert to.
             document.getElementById('new-profile-cancel').style.display =
                 profiles.length > 0 ? '' : 'none';
@@ -629,7 +725,12 @@
             } else {
                 // Pre-fill username from active profile
                 const active = profiles.find(p => p.id === activeId);
-                if (active && active.username) usernameInput.value = active.username;
+                if (active && active.username) {
+                    usernameInput.value = active.username;
+                } else if (profiles[0] && profiles[0].username) {
+                    usernameInput.value = profiles[0].username;
+                }
+                await ensureInitialActiveProfile();
             }
 
             profileSelect.addEventListener('change', async function() {
@@ -811,16 +912,26 @@
 
         // ── AI & Setup panel ──────────────────────────────────────────────────
         (function() {
-            const trigger  = document.getElementById('advanced-trigger');
-            if (!hasElectron && !SHOW_LOGIN_ADVANCED) { trigger.style.display = 'none'; return; }
-
             const statusEl    = document.getElementById('adv-status');
-            const autoStartCb = document.getElementById('adv-auto-start-local-ai');
             const panelAdv    = document.getElementById('panel-advanced');
             const advBtn      = document.getElementById('advanced-btn');
             const loginCard   = document.querySelector('.login-card');
             const noElectronMsg = document.getElementById('adv-no-electron-msg');
             const ollamaBlock = document.getElementById('adv-ollama-block');
+            let refreshLocalAiStatus;
+            let lastPrimaryTab = 'login';
+            if (!hasElectron && !SHOW_LOGIN_ADVANCED) { advBtn.style.display = 'none'; return; }
+
+            function syncAiSetupTriggerAlert(startRes, check) {
+                const serverBad = !startRes || !startRes.ok;
+                const modelsBad = !check || !check.ok || !check.hasGemma4 || !check.hasEmbeddingModel;
+                const bad = serverBad || modelsBad;
+                advBtn.classList.toggle('advanced-btn-needs-attention', bad);
+                advBtn.classList.toggle('advanced-btn-ready', !bad);
+                advBtn.title = bad
+                    ? 'Local AI needs attention — open for server status and model downloads'
+                    : 'AI configuration and advanced options';
+            }
 
             function hideLoginFields(hidden) {
                 // When advanced is open, collapse all tab panels
@@ -831,8 +942,16 @@
             }
 
             async function openSetupPanel() {
+                const activeTab = ['login','register','visitor'].find((t) =>
+                    document.getElementById('tab-' + t).classList.contains('active')
+                );
+                if (activeTab) lastPrimaryTab = activeTab;
                 panelAdv.style.display = 'block';
                 advBtn.setAttribute('aria-expanded', 'true');
+                advBtn.classList.add('active');
+                ['login','register','visitor'].forEach((t) => {
+                    document.getElementById('tab-' + t).classList.remove('active');
+                });
                 hideLoginFields(true);
                 loginCard.style.maxWidth = '840px';
                 statusEl.style.display = 'none';
@@ -844,31 +963,44 @@
                 }
                 if (noElectronMsg) noElectronMsg.style.display = 'none';
                 if (ollamaBlock) ollamaBlock.style.display = '';
-                const autoStart = await window.electronAPI.getAutoStartLocalAI();
-                autoStartCb.checked = !!autoStart;
+                if (typeof refreshLocalAiStatus === 'function') await refreshLocalAiStatus();
             }
 
             window.openSetupPanel = openSetupPanel;
+            window.closeSetupPanel = function closeSetupPanel(restorePrimaryTab) {
+                if (panelAdv.style.display !== 'block') return;
+                panelAdv.style.display = 'none';
+                advBtn.setAttribute('aria-expanded', 'false');
+                advBtn.classList.remove('active');
+                hideLoginFields(false);
+                loginCard.style.maxWidth = '';
+                if (restorePrimaryTab) showTab(lastPrimaryTab);
+            };
 
             advBtn.addEventListener('click', async function() {
                 if (panelAdv.style.display === 'block') {
-                    panelAdv.style.display = 'none';
-                    advBtn.setAttribute('aria-expanded', 'false');
-                    hideLoginFields(false);
-                    loginCard.style.maxWidth = '';
+                    window.closeSetupPanel(true);
                     return;
                 }
                 await openSetupPanel();
             });
 
             // ── Local AI ──────────────────────────────────────────────────────
-            const ollamaMsg      = document.getElementById('adv-ollama-msg');
-            const ollamaConfirm  = document.getElementById('adv-ollama-confirm');
-            const progressWrap   = document.getElementById('adv-ollama-progress-bar-wrap');
-            const progressBar    = document.getElementById('adv-ollama-progress-bar');
-            const progressStatus = document.getElementById('adv-ollama-progress-status');
-            const progressSize   = document.getElementById('adv-ollama-progress-size');
-            const ollamaStartBtn = document.getElementById('adv-start-ollama-btn');
+            const ollamaMsg       = document.getElementById('adv-ollama-msg');
+            const progressWrap    = document.getElementById('adv-ollama-progress-bar-wrap');
+            const progressBar     = document.getElementById('adv-ollama-progress-bar');
+            const progressStatus  = document.getElementById('adv-ollama-progress-status');
+            const progressSize    = document.getElementById('adv-ollama-progress-size');
+            const downloadModelsBtn = document.getElementById('adv-download-models-btn');
+            const serverValueEl = document.getElementById('adv-ollama-server-value');
+            const gemmaValueEl  = document.getElementById('adv-model-gemma-value');
+            const embedValueEl  = document.getElementById('adv-model-embed-value');
+
+            function ollamaSetMsg(text, color) {
+                ollamaMsg.textContent = text;
+                ollamaMsg.style.color = color || '#8fa4c8';
+                ollamaMsg.style.display = text ? 'block' : 'none';
+            }
 
             if (hasElectron) {
                 window.electronAPI.onOllamaPullProgress((evt) => {
@@ -889,58 +1021,74 @@
                         progressSize.textContent   = '';
                     }
                 });
+
+                refreshLocalAiStatus = async function refreshLocalAiStatus() {
+                    ollamaMsg.style.display = 'none';
+                    serverValueEl.textContent = 'Checking…';
+                    serverValueEl.style.color = '#8fa4c8';
+                    gemmaValueEl.textContent = '…';
+                    gemmaValueEl.style.color = '#8fa4c8';
+                    embedValueEl.textContent = '…';
+                    embedValueEl.style.color = '#8fa4c8';
+                    downloadModelsBtn.style.display = 'none';
+
+                    const startRes = await window.electronAPI.startOllama();
+                    if (startRes.ok) {
+                        serverValueEl.textContent = 'Running';
+                        serverValueEl.style.color = '#4ade80';
+                    } else {
+                        serverValueEl.textContent = 'Not running';
+                        serverValueEl.style.color = '#f87171';
+                        ollamaSetMsg('Ollama: ' + (startRes.error || 'failed to start'), '#f87171');
+                    }
+
+                    const check = await window.electronAPI.checkOllamaModel();
+                    if (!check.ok) {
+                        gemmaValueEl.textContent = '—';
+                        embedValueEl.textContent = '—';
+                        ollamaSetMsg(check.error, '#f87171');
+                        syncAiSetupTriggerAlert(startRes, check);
+                        return;
+                    }
+
+                    gemmaValueEl.textContent = check.hasGemma4 ? 'Available' : 'Not installed';
+                    gemmaValueEl.style.color = check.hasGemma4 ? '#4ade80' : '#fbbf24';
+                    embedValueEl.textContent = check.hasEmbeddingModel ? 'Available' : 'Not installed';
+                    embedValueEl.style.color = check.hasEmbeddingModel ? '#4ade80' : '#fbbf24';
+
+                    const needDownload = !check.hasGemma4 || !check.hasEmbeddingModel;
+                    downloadModelsBtn.style.display = needDownload ? 'inline-flex' : 'none';
+
+                    syncAiSetupTriggerAlert(startRes, check);
+                    if (check.hasModel && startRes.ok) setStep(3);
+                };
+
+                downloadModelsBtn.addEventListener('click', async () => {
+                    downloadModelsBtn.disabled = true;
+                    progressWrap.style.display = 'block';
+                    progressBar.value = 0;
+                    progressStatus.textContent = 'Preparing…';
+                    progressSize.textContent = '';
+                    ollamaSetMsg('Downloading AI models — this may take several minutes…', '#8fa4c8');
+                    const res = await window.electronAPI.pullOllamaModel();
+                    progressWrap.style.display = 'none';
+                    downloadModelsBtn.disabled = false;
+                    if (!res.ok) {
+                        ollamaSetMsg('Download failed: ' + (res.error || 'unknown'), '#f87171');
+                        await refreshLocalAiStatus();
+                        return;
+                    }
+                    ollamaSetMsg('Models installed.', '#4ade80');
+                    await refreshLocalAiStatus();
+                });
             }
 
-            function ollamaSetMsg(text, color) { ollamaMsg.textContent = text; ollamaMsg.style.color = color || '#8fa4c8'; ollamaMsg.style.display = 'block'; }
-
-            async function doStartOllama() {
-                ollamaSetMsg('Starting Ollama server…');
-                const res = await window.electronAPI.startOllama();
-                if (!res.ok) { ollamaSetMsg('Failed to start Ollama: ' + (res.error || 'unknown'), '#f87171'); ollamaStartBtn.disabled = false; return; }
-                ollamaSetMsg('✓ Local AI (Ollama / Gemma4) is running — you may now sign in.', '#4ade80');
-                ollamaStartBtn.innerHTML = '<i class="fas fa-check" style="margin-right:5px;"></i>Running';
-                ollamaStartBtn.style.borderColor = '#166534'; ollamaStartBtn.style.color = '#4ade80';
-                setStep(3);
+            // Auto-expand on first run; otherwise refresh once so the AI & Setup link shows alert state
+            if (!HAS_REGISTERED_USER && hasElectron) {
+                openSetupPanel();
+            } else if (hasElectron) {
+                refreshLocalAiStatus();
             }
-
-            document.getElementById('adv-ollama-yes').addEventListener('click', async () => {
-                ollamaConfirm.style.display = 'none';
-                progressWrap.style.display = 'block'; progressBar.value = 0;
-                progressStatus.textContent = 'Preparing…'; progressSize.textContent = '';
-                ollamaSetMsg('Downloading AI models — this may take several minutes…');
-                const res = await window.electronAPI.pullOllamaModel();
-                if (!res.ok) { ollamaSetMsg('Download failed: ' + (res.error || 'unknown'), '#f87171'); ollamaStartBtn.disabled = false; return; }
-                autoStartCb.checked = true;
-                window.electronAPI.setAutoStartLocalAI(true);
-                progressWrap.style.display = 'none';
-                await doStartOllama();
-            });
-            document.getElementById('adv-ollama-cancel').addEventListener('click', () => { ollamaConfirm.style.display = 'none'; ollamaMsg.style.display = 'none'; ollamaStartBtn.disabled = false; });
-
-            ollamaStartBtn.addEventListener('click', async () => {
-                ollamaStartBtn.disabled = true; ollamaConfirm.style.display = 'none'; progressWrap.style.display = 'none';
-                ollamaSetMsg('Checking for required AI models…');
-                const check = await window.electronAPI.checkOllamaModel();
-                if (!check.ok) { ollamaSetMsg('Error: ' + check.error, '#f87171'); ollamaStartBtn.disabled = false; return; }
-                if (!check.hasModel) {
-                    const missing = [];
-                    if (!check.hasGemma4)         missing.push('gemma4 (chat)');
-                    if (!check.hasEmbeddingModel) missing.push('embeddinggemma (embeddings)');
-                    ollamaSetMsg('Missing: ' + missing.join(', ') + '. Download now?', '#fbbf24');
-                    ollamaConfirm.style.display = 'flex';
-                    return;
-                }
-                await doStartOllama();
-            });
-
-            autoStartCb.addEventListener('change', async () => {
-                const result = await window.electronAPI.setAutoStartLocalAI(autoStartCb.checked);
-                if (!result.ok) { autoStartCb.checked = !autoStartCb.checked; ollamaSetMsg('Failed to save setting: ' + (result.error || 'unknown'), '#f87171'); return; }
-                ollamaSetMsg(autoStartCb.checked ? 'Auto-start enabled.' : 'Auto-start disabled.', '#8fa4c8');
-            });
-
-            // Auto-expand on first run
-            if (!HAS_REGISTERED_USER && hasElectron) openSetupPanel();
         }());
     </script>
 </body>

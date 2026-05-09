@@ -926,6 +926,33 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         Disabling an archive hides it from the login dropdown.
       </p>
       <div id="archives-error" class="error" style="margin-bottom:12px;display:none"></div>
+      <div style="border:1px solid #2e4068;border-radius:8px;padding:12px;margin-bottom:12px;background:#0f1922">
+        <div style="color:#cdd6e8;font-weight:600;margin-bottom:8px">Add archive entry</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="archive-add-name">Name *</label>
+            <input id="archive-add-name" type="text" placeholder="Archive name">
+          </div>
+          <div class="form-group">
+            <label for="archive-add-username">Username</label>
+            <input id="archive-add-username" type="text" placeholder="Optional">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="archive-add-db-path">DB Path *</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="archive-add-db-path" type="text" placeholder="C:\path\to\archive.sqlite" style="font-family:monospace;font-size:.88rem;flex:1">
+            <button class="btn btn-secondary" id="archive-add-browse-btn" type="button"><i class="fas fa-folder-open" style="margin-right:6px"></i>Browse…</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:8px;color:#cdd6e8;font-size:0.88rem;cursor:pointer">
+            <input id="archive-add-enabled" type="checkbox" checked style="accent-color:#3b82f6">
+            Enabled (show on login screen)
+          </label>
+          <button class="btn btn-primary" id="archive-add-btn" type="button"><i class="fas fa-plus" style="margin-right:6px"></i>Add Archive</button>
+        </div>
+      </div>
       <div style="overflow-x:auto">
         <table id="archives-table" style="min-width:640px">
           <thead><tr>
@@ -1762,6 +1789,81 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         renderArchives(data.profiles || data || []);
       } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
     }
+
+    var archiveAddBtn = document.getElementById('archive-add-btn');
+    var archiveBrowseBtn = document.getElementById('archive-add-browse-btn');
+    if (archiveBrowseBtn) archiveBrowseBtn.addEventListener('click', async function() {
+      var errEl = document.getElementById('archives-error');
+      var dbPathEl = document.getElementById('archive-add-db-path');
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+      if (!window.electronAPI || !window.electronAPI.showOpenDialog) {
+        errEl.textContent = 'Browse is available in the desktop app only.';
+        errEl.style.display = 'block';
+        return;
+      }
+      try {
+        var res = await window.electronAPI.showOpenDialog({
+          title: 'Select Archive SQLite File',
+          properties: ['openFile'],
+          filters: [
+            { name: 'SQLite Databases', extensions: ['sqlite', 'db'] },
+            { name: 'All Files', extensions: ['*'] }
+          ]
+        });
+        if (res && !res.canceled && Array.isArray(res.filePaths) && res.filePaths[0]) {
+          dbPathEl.value = res.filePaths[0];
+        }
+      } catch(e) {
+        errEl.textContent = 'Failed to open file picker.';
+        errEl.style.display = 'block';
+      }
+    });
+    if (archiveAddBtn) archiveAddBtn.addEventListener('click', async function() {
+      var errEl = document.getElementById('archives-error');
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+      var nameEl = document.getElementById('archive-add-name');
+      var usernameEl = document.getElementById('archive-add-username');
+      var dbPathEl = document.getElementById('archive-add-db-path');
+      var enabledEl = document.getElementById('archive-add-enabled');
+      var name = (nameEl.value || '').trim();
+      var username = (usernameEl.value || '').trim();
+      var dbPath = (dbPathEl.value || '').trim();
+      if (!name || !dbPath) {
+        errEl.textContent = 'Name and DB path are required.';
+        errEl.style.display = 'block';
+        return;
+      }
+      archiveAddBtn.disabled = true;
+      var oldHtml = archiveAddBtn.innerHTML;
+      archiveAddBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Adding…';
+      try {
+        var payload = { name: name, db_path: dbPath, enabled: !!enabledEl.checked };
+        if (username) payload.username = username;
+        var res = await apiFetch('/admin/profiles', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        if (res.status === 401) { showAdminLogin(); return; }
+        if (!res.ok) {
+          var d = await res.json().catch(function(){return{};});
+          throw new Error(d.error || 'Failed to add archive');
+        }
+        nameEl.value = '';
+        usernameEl.value = '';
+        dbPathEl.value = '';
+        enabledEl.checked = true;
+        loadArchives();
+      } catch(e) {
+        errEl.textContent = e && e.message ? e.message : 'Network error.';
+        errEl.style.display = 'block';
+      } finally {
+        archiveAddBtn.disabled = false;
+        archiveAddBtn.innerHTML = oldHtml;
+      }
+    });
 
     function renderArchives(profiles) {
       var tbody = document.getElementById('archives-body');

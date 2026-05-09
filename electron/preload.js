@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLogLevel:         ()       => ipcRenderer.invoke('get-log-level'),
   selectDatabase:      (opts)   => ipcRenderer.invoke('select-db', opts),
   showSaveDialog:      (options)=> ipcRenderer.invoke('show-save-dialog', options),
+  confirmContinueWithoutAI: ()   => ipcRenderer.invoke('confirm-continue-without-ai'),
   checkOllamaModel:    ()       => ipcRenderer.invoke('check-ollama-model'),
   pullOllamaModel:     ()       => ipcRenderer.invoke('pull-ollama-model'),
   startOllama:         ()       => ipcRenderer.invoke('start-ollama'),

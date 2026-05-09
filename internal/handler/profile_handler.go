@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/daveontour/aimuseum/internal/repository"
 	"github.com/go-chi/chi/v5"
@@ -40,6 +41,7 @@ func (h *ProfileHandler) RegisterRoutes(r chi.Router) {
 	r.Patch("/api/profiles/{id}", h.PatchProfile)
 	if h.requireAdminFn != nil {
 		r.Get("/admin/profiles", h.AdminList)
+		r.Post("/admin/profiles", h.AdminCreate)
 		r.Patch("/admin/profiles/{id}", h.AdminPatch)
 		r.Delete("/admin/profiles/{id}", h.AdminDelete)
 	}
@@ -152,6 +154,58 @@ func (h *ProfileHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"profiles": profiles})
+}
+
+// AdminCreate serves POST /admin/profiles — admin-auth; manual archive entry.
+func (h *ProfileHandler) AdminCreate(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdminFn(w, r) {
+		return
+	}
+	var body struct {
+		Name     string  `json:"name"`
+		DBPath   string  `json:"db_path"`
+		Username *string `json:"username"`
+		Enabled  *bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	body.DBPath = strings.TrimSpace(body.DBPath)
+	if body.Name == "" || body.DBPath == "" {
+		writeError(w, http.StatusBadRequest, "name and db_path are required")
+		return
+	}
+
+	profile, err := h.repo.Create(r.Context(), body.Name, body.DBPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "failed to create profile")
+		return
+	}
+	if body.Username != nil {
+		u := strings.TrimSpace(*body.Username)
+		if u != "" {
+			if err := h.repo.UpdateUsername(r.Context(), profile.ID, u); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update username")
+				return
+			}
+		}
+	}
+	if body.Enabled != nil && !*body.Enabled {
+		if err := h.repo.SetEnabled(r.Context(), profile.ID, false); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to update enabled")
+			return
+		}
+	}
+
+	created, err := h.repo.GetByID(r.Context(), profile.ID)
+	if err != nil || created == nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch created profile")
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, created)
 }
 
 // AdminPatch serves PATCH /admin/profiles/{id} — admin-auth, enable/disable.
