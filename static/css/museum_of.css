@@ -2958,7 +2958,7 @@ body {
     outline: none !important;
 }
 
-/* Data Import modal: scroll only the table; keep job status footer visible */
+/* Data Import modal: scroll card lists; keep job status footer visible */
 #data-import-modal .data-import-modal-body {
     padding: 20px;
     flex: 1;
@@ -2974,13 +2974,120 @@ body {
     min-height: 0;
     overflow: hidden;
     padding: 2px;
+    background: #e2e8f0;
+    border-radius: 10px;
 }
 #data-import-modal .data-import-table-scroll-region {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: scroll; /* always show scrollbar tracks (not only when content overflows) */
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    overflow: hidden;
+    gap: 0;
+    border: 1px solid #94a3b8;
+    border-radius: 8px;
+    background: #cbd5e1;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+#data-import-modal .data-import-main-column {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #f1f5f9;
+}
+#data-import-modal .data-import-panels-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     scrollbar-gutter: stable;
     -webkit-overflow-scrolling: touch;
+}
+#data-import-modal .data-import-detail-sidebar {
+    flex: 0 0 min(320px, 32vw);
+    width: min(320px, 32vw);
+    max-width: 100%;
+    min-height: 0;
+    border-left: 1px solid #94a3b8;
+    background: #f8fafc;
+    box-shadow: -4px 0 14px rgba(15, 23, 42, 0.06);
+    display: flex;
+    flex-direction: column;
+}
+#data-import-modal .data-import-detail-sidebar-inner {
+    padding: 14px 16px 18px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+#data-import-modal .data-import-detail-placeholder {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #64748b;
+}
+#data-import-modal .data-import-detail-content:not([hidden]) {
+    display: block;
+}
+#data-import-modal .data-import-detail-title {
+    margin: 0 0 10px 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.35;
+}
+#data-import-modal .data-import-detail-title .fas,
+#data-import-modal .data-import-detail-title .far {
+    margin-right: 6px;
+    opacity: 0.9;
+}
+#data-import-modal .data-import-detail-desc {
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: #334155;
+    margin-bottom: 14px;
+}
+#data-import-modal .data-import-detail-desc p {
+    margin: 0 0 0.65em 0;
+}
+#data-import-modal .data-import-detail-desc p:last-child {
+    margin-bottom: 0;
+}
+#data-import-modal .data-import-detail-stats {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+}
+#data-import-modal .data-import-detail-stat-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 12px;
+    align-items: baseline;
+}
+#data-import-modal .data-import-detail-stat-row + .data-import-detail-stat-row {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+}
+#data-import-modal .data-import-detail-stats dt {
+    margin: 0;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    color: #64748b;
+}
+#data-import-modal .data-import-detail-stats dd {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+    word-break: break-word;
 }
 #data-import-modal .import-controls-footer-grid {
     flex-shrink: 0;
@@ -3053,139 +3160,153 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     display: none !important;
 }
 
-/* Data Import modal: tabular layout */
-#data-import-modal .data-import-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem; /* was 0.9rem; +50% for readability */
-}
-#data-import-modal .data-import-table th,
-#data-import-modal .data-import-table td {
-    padding: 5px 12px;
-    text-align: left;
-    border-bottom: 1px solid #e2e8f0;
-    vertical-align: middle;
-}
-#data-import-modal .data-import-table thead th {
-    background: #f1f5f9;
-    font-weight: 600;
-    color: #334155;
-}
-#data-import-modal .data-import-table-scroll-region .data-import-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    box-shadow: 0 1px 0 #e2e8f0;
-}
-#data-import-modal .data-import-table tbody tr:hover {
-    background: #f8fafc;
-}
-#data-import-modal .data-import-table tbody tr.data-import-row-zero-count {
-    background-color: #fffbeb;
-}
-#data-import-modal .data-import-table tbody tr.data-import-row-zero-count:hover {
-    background-color: #fef9c3;
-}
-#data-import-modal .data-import-table .data-import-count {
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    text-align: center;
-}
-
-#data-import-modal .data-import-table .data-import-last-run {
-    font-size: 0.9rem; /* was 0.8rem; +50% to match table scale */
-    color: #64748b;
-    max-width: 240px;
-}
-#data-import-modal .data-import-table tbody tr.import-executing {
-    box-shadow: inset 0 0 0 2px #f59e0b;
-}
-
-#data-import-modal .data-import-table tbody tr.data-import-section-heading td {
-    background: #e2e8f0;
-    font-weight: 600;
-    font-size: 0.88rem;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: #475569;
-    padding: 10px 12px;
+/* Data Import modal: category tabs + card grid */
+#data-import-modal .data-import-category-tabstrip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 12px 12px;
+    background: #e8eef5;
     border-bottom: 1px solid #cbd5e1;
+    flex-shrink: 0;
 }
-#data-import-modal .data-import-table tbody tr.data-import-section-heading:hover td {
-    background: #e2e8f0;
+#data-import-modal .data-import-category-tab {
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #475569;
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-
-/* Source column: colored leading icons (text stays default body color) */
-#data-import-modal .data-import-table tbody td:first-child > i {
+#data-import-modal .data-import-category-tab:hover {
+    border-color: var(--color-blue, #2563eb);
+    color: var(--color-blue, #2563eb);
+}
+#data-import-modal .data-import-category-tab.data-import-category-tab--active {
+    border-color: var(--color-blue, #2563eb);
+    background: #eff6ff;
+    color: var(--color-blue, #1d4ed8);
+    font-weight: 600;
+}
+#data-import-modal .data-import-category-panel {
+    display: none;
+}
+#data-import-modal .data-import-category-panel--active {
+    display: block;
+}
+#data-import-modal .data-import-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    padding: 14px 12px 18px;
+    box-sizing: border-box;
+}
+#data-import-modal .data-import-card {
+    border: 1px solid #94a3b8;
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: #ffffff;
+    font-size: 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+#data-import-modal .data-import-card:hover {
+    border-color: #64748b;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+}
+#data-import-modal .data-import-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+#data-import-modal .data-import-card-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.35;
+    flex: 1;
+    min-width: 0;
+}
+/* Card titles: colored leading icons */
+#data-import-modal .data-import-card-title > i {
     margin-right: 0.45em;
     width: 1.15em;
     text-align: center;
 }
-#data-import-modal .data-import-table tbody tr[data-import="email_processing"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="email_processing"] .data-import-card-title > i {
     color: #ea4335;
 }
-#data-import-modal .data-import-table tbody tr[data-import="imap_processing"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="imap_processing"] .data-import-card-title > i {
     color: #2563eb;
 }
-#data-import-modal .data-import-table tbody tr[data-import="upload_zip"][data-zip-archive-type="whatsapp"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="upload_zip"][data-zip-archive-type="whatsapp"] .data-import-card-title > i {
     color: #25d366;
 }
-#data-import-modal .data-import-table tbody tr[data-import="upload_zip"][data-zip-archive-type="instagram"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="upload_zip"][data-zip-archive-type="instagram"] .data-import-card-title > i {
     color: #e4405f;
 }
-#data-import-modal .data-import-table tbody tr[data-import="upload_zip"][data-zip-archive-type="imessage"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="upload_zip"][data-zip-archive-type="imessage"] .data-import-card-title > i {
     color: #34c759;
 }
-#data-import-modal .data-import-table tbody tr[data-import="upload_zip"][data-zip-archive-type="facebook"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="upload_zip"][data-zip-archive-type="facebook"] .data-import-card-title > i {
     color: #1877f2;
 }
-#data-import-modal .data-import-table tbody tr[data-import="whatsapp"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="whatsapp"] .data-import-card-title > i {
     color: #25d366;
 }
-#data-import-modal .data-import-table tbody tr[data-import="instagram"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="instagram"] .data-import-card-title > i {
     color: #e4405f;
 }
-#data-import-modal .data-import-table tbody tr[data-import="imessage"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="imessage"] .data-import-card-title > i {
     color: #0a84ff;
 }
-#data-import-modal .data-import-table tbody tr[data-import="facebook"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="facebook"] .data-import-card-title > i {
     color: #0084ff;
 }
-#data-import-modal .data-import-table tbody tr[data-import="facebook_all"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="facebook_all"] .data-import-card-title > i {
     color: #1877f2;
 }
-#data-import-modal .data-import-table tbody tr[data-import="facebook_albums"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="facebook_albums"] .data-import-card-title > i {
     color: #4267b2;
 }
-#data-import-modal .data-import-table tbody tr[data-import="facebook_posts"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="facebook_posts"] .data-import-card-title > i {
     color: #1877f2;
 }
-#data-import-modal .data-import-table tbody tr[data-import="facebook_places"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="facebook_places"] .data-import-card-title > i {
     color: #e11d48;
 }
-#data-import-modal .data-import-table tbody tr[data-import="upload_photos"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="upload_photos"] .data-import-card-title > i {
     color: #0ea5e9;
 }
-#data-import-modal .data-import-table tbody tr[data-import="filesystem"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="filesystem"] .data-import-card-title > i {
     color: #8b5cf6;
 }
-#data-import-modal .data-import-table tbody tr[data-import="thumbnails"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="thumbnails"] .data-import-card-title > i {
     color: #f59e0b;
 }
-#data-import-modal .data-import-table tbody tr[data-import="reference_modal"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="reference_modal"] .data-import-card-title > i {
     color: #b45309;
 }
-#data-import-modal .data-import-table tbody tr[data-import="contacts"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="contacts"] .data-import-card-title > i {
     color: #6366f1;
 }
-#data-import-modal .data-import-table tbody tr[data-import="reference_import"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="reference_import"] .data-import-card-title > i {
     color: #0d9488;
 }
-#data-import-modal .data-import-table tbody tr[data-import="image_export"] td:first-child > i {
+#data-import-modal .data-import-card[data-import="image_export"] .data-import-card-title > i {
     color: #7c3aed;
 }
-/* Same width for every primary/control button in the Start column */
-#data-import-modal .data-import-table tbody td:nth-child(4) button.modal-btn {
+/* Primary actions: consistent button width (Import / Run — not Clear Data) */
+#data-import-modal .data-import-action-group button.modal-btn {
     width: 120px;
     min-width: 120px;
     max-width: 120px;
@@ -3197,6 +3318,28 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     align-items: center;
     justify-content: center;
     gap: 0.4em;
+}
+
+#data-import-modal .data-import-actions-td {
+    margin-top: auto;
+    width: 100%;
+    align-self: stretch;
+}
+#data-import-modal .data-import-card-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+#data-import-modal .data-import-card-actions-row > .data-import-delete-btn {
+    margin-left: auto;
+}
+#data-import-modal .data-import-card-actions-row--clear-only {
+    justify-content: flex-end;
+}
+#data-import-modal .data-import-card-actions-row--clear-only > .data-import-delete-btn {
+    margin-left: 0;
 }
 
 /* Data Import — cancel requested, waiting for server/SSE to finish */
@@ -3222,45 +3365,46 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     cursor: wait;
 }
 
-#data-import-modal .data-import-delete-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2.25rem;
-    min-height: 2.25rem;
-    padding: 0.35rem 0.5rem;
-    margin: 0;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: #dc2626;
-    font-size: 1.05rem; /* was 1.05rem; +50% with table text */
-    line-height: 1;
-    cursor: pointer;
-    transition: color 0.15s ease, background-color 0.15s ease;
+/* Data Import — active execution (Processing + spinner) */
+#data-import-modal .data-import-start-btn.data-import-btn--processing,
+#data-import-modal .data-import-zip-start-btn.data-import-btn--processing,
+#data-import-modal .data-import-open-modal-btn.data-import-btn--processing {
+    background: linear-gradient(180deg, #d9f99d 0%, #84cc16 45%, #65a30d 100%) !important;
+    color: #14532d !important;
+    border-color: #4d7c0f !important;
 }
-#data-import-modal .data-import-delete-btn:hover:not(:disabled) {
-    color: #b91c1c;
-    background-color: rgba(220, 38, 38, 0.1);
-}
-#data-import-modal .data-import-delete-btn:focus {
-    outline: none;
-    box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(220, 38, 38, 0.45);
-}
-#data-import-modal .data-import-delete-btn:disabled {
-    color: #cbd5e1;
-    cursor: not-allowed;
-    opacity: 0.6;
+#data-import-modal button.modal-btn.data-import-btn--processing:disabled,
+#data-import-modal button.modal-btn.data-import-btn--processing[disabled] {
+    opacity: 1;
+    filter: none;
+    cursor: wait;
 }
 
-/* Delete column: icon buttons (scaled with table text) */
-#data-import-modal .data-import-table tbody td:nth-child(5) .data-import-delete-btn {
-    width: 60px;
-    min-width: 60px;
-    max-width: 60px;
-    box-sizing: border-box;
-    padding-left: 0;
-    padding-right: 0;
+/* Clear Data (purge): labelled secondary-style danger button */
+#data-import-modal .data-import-card-actions-row .modal-btn.data-import-delete-btn {
+    width: auto;
+    min-width: auto;
+    max-width: none;
+    white-space: nowrap;
+    font-size: 0.88rem;
+    padding-left: 12px;
+    padding-right: 12px;
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+}
+#data-import-modal .data-import-card-actions-row .modal-btn.data-import-delete-btn:hover:not(:disabled) {
+    color: #991b1b;
+    background: #fee2e2;
+    border-color: #fca5a5;
+}
+#data-import-modal .data-import-card-actions-row .modal-btn.data-import-delete-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(220, 38, 38, 0.35);
+}
+#data-import-modal .data-import-card-actions-row .modal-btn.data-import-delete-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 /* Compact import tiles: legacy / optional grid layout */
@@ -3350,14 +3494,17 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     color: #2c3e50;
 }
 
-/* Data Import modal: job status panel (light background, readable text) */
+/* Data Import modal: job status panel (retro terminal green on black) */
 #data-import-modal .import-controls-status-box {
-    background-color: #f1f5f9 !important;
-    color: #334155 !important;
-    border: 1px solid #e2e8f0 !important;
+    background-color: #0a0a0a !important;
+    color: #33ff33 !important;
+    border: 1px solid #1f6b1f !important;
+    font-family: "VT323", "Courier New", Courier, monospace;
+    box-shadow: inset 0 0 20px rgba(0, 40, 0, 0.45);
 }
 #data-import-modal .import-controls-status-box .import-controls-status-text {
-    color: #166534 !important;
+    color: #39ff14 !important;
+    text-shadow: 0 0 4px rgba(57, 255, 20, 0.35);
 }
 
 /* Data Import modal: tabbed job logs */
@@ -3369,11 +3516,12 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 }
 #data-import-modal .import-job-tab {
     padding: 4px 10px;
-    border-radius: 6px;
-    border: 1px solid #cbd5e1;
-    background: #fff;
-    color: #475569;
-    font-size: 0.82em;
+    border-radius: 2px;
+    border: 1px solid #2d6b2d;
+    background: #0f140f;
+    color: #5fdf5f;
+    font-family: "VT323", "Courier New", Courier, monospace;
+    font-size: 1rem;
     cursor: pointer;
     max-width: 11rem;
     overflow: hidden;
@@ -3381,13 +3529,15 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     white-space: nowrap;
 }
 #data-import-modal .import-job-tab:hover {
-    background: #f8fafc;
-    border-color: #94a3b8;
+    background: #152015;
+    border-color: #3d9a3d;
+    color: #7fff7f;
 }
 #data-import-modal .import-job-tab.import-job-tab--active {
-    border-color: #0ea5e9;
-    background: #e0f2fe;
-    color: #0c4a6e;
+    border-color: #39ff14;
+    background: #0c1a0c;
+    color: #b8ffb8;
+    box-shadow: 0 0 8px rgba(57, 255, 20, 0.22);
 }
 #data-import-modal .data-import-action-group {
     display: flex;
@@ -3400,6 +3550,27 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     padding: 6px 10px;
     white-space: nowrap;
 }
+/* Caution styling when Cancel is shown (job running / stopping) */
+#data-import-modal button.data-import-row-cancel-btn:not([hidden]) {
+    background: linear-gradient(180deg, #fde047 0%, #eab308 85%) !important;
+    color: #422006 !important;
+    border: 1px solid #ca8a04 !important;
+}
+#data-import-modal button.data-import-row-cancel-btn:not([hidden]):hover:not(:disabled) {
+    background: linear-gradient(180deg, #fef08a 0%, #facc15 90%) !important;
+    color: #451a03 !important;
+    border-color: #a16207 !important;
+}
+#data-import-modal button.data-import-row-cancel-btn:not([hidden]):disabled {
+    opacity: 0.92;
+    cursor: wait;
+}
+
+/* Hide purge while this card’s job is active (Processing / Stopping) */
+#data-import-modal .data-import-card.import-executing .data-import-delete-btn {
+    display: none !important;
+}
+
 /* Ensure [hidden] wins over .modal-btn display (otherwise Cancel stays visible). */
 #data-import-modal button.data-import-row-cancel-btn[hidden] {
     display: none !important;
@@ -3411,31 +3582,46 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     overflow-y: auto;
     overflow-x: auto;
     scrollbar-gutter: stable;
-    border-radius: 4px;
-    background: #fff;
-    border: 1px solid #e2e8f0;
+    border-radius: 2px;
+    background: #050505;
+    border: 1px solid #1f6b1f;
+}
+#data-import-modal .import-job-log-outer::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+#data-import-modal .import-job-log-outer::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+#data-import-modal .import-job-log-outer::-webkit-scrollbar-thumb {
+    background: #2a5c2a;
+    border-radius: 2px;
 }
 #data-import-modal .import-job-log-display {
     margin: 0;
-    padding: 6px 8px;
+    padding: 8px 10px;
     box-sizing: border-box;
     display: block;
     width: 100%;
     min-height: min-content;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: monospace;
-    font-size: 0.85em;
-    line-height: 1.35;
-    /* color: #1e293b !important; */
-    color:darkgreen !important;
+    font-family: "VT323", "Courier New", Courier, monospace;
+    font-size: 1.125rem;
+    line-height: 1.25;
+    background: transparent !important;
+    color: #33ff33 !important;
+    text-shadow: 0 0 3px rgba(51, 255, 51, 0.35);
 }
 #data-import-modal .import-job-status-idle-wrap {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    color: darkgreen;
+    font-family: "VT323", "Courier New", Courier, monospace;
+    font-size: 1.125rem;
+    color: #33ff33;
+    padding: 6px 8px;
 }
 #data-import-modal .import-job-status-idle-wrap .import-controls-status-text {
-    color: darkgreen !important;
+    color: #39ff14 !important;
+    text-shadow: 0 0 4px rgba(57, 255, 20, 0.35);
 }
 
 /* Config / Data Import: job status label + status box */
@@ -3451,6 +3637,15 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     font-size: 0.95em;
     font-weight: 600;
     color: #475569;
+}
+
+#data-import-modal .import-controls-footer-grid .import-controls-status-label {
+    font-family: "VT323", "Courier New", Courier, monospace;
+    font-size: 1.15rem;
+    font-weight: 400;
+    color: #5fdf5f;
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 3px rgba(95, 223, 95, 0.25);
 }
 
 .import-controls-footer-grid .import-controls-status-box {
@@ -6224,7 +6419,80 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     outline-offset: 2px;
 }
 
-/* Master Pane */
+/* Sidebar — search + bulk actions, fixed 25% width */
+.new-image-gallery-sidebar {
+    width: 25%;
+    min-width: 220px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    border-right: 1px solid #dce3ee;
+    background: #f8f9fc;
+    padding: 0.75rem;
+    box-sizing: border-box;
+    gap: 0;
+    /* override email-gallery-search-section border-bottom */
+    border-bottom: none !important;
+}
+
+/* Main content area — thumbnail grid */
+.new-image-gallery-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Sidebar sections with spacing */
+.new-image-gallery-sidebar-section {
+    display: flex;
+    flex-direction: column;
+    padding-top: 2rem;
+    flex-shrink: 0;
+}
+.new-image-gallery-sidebar-section:first-child {
+    padding-top: 0;
+}
+
+.new-image-gallery-sidebar-section-divider {
+    height: 15px;
+    flex-shrink: 0;
+    background: inherit;
+}
+
+.new-image-gallery-sidebar-section-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #5a6a8a;
+    padding-bottom: 0.45rem;
+    margin-bottom: 0.6rem;
+    border-bottom: 2px solid #dce3ee;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+}
+
+.new-image-gallery-sidebar-section-hint {
+    font-size: 0.85em;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #8a96b0;
+}
+
+.new-image-gallery-selected-count-row {
+    font-weight: 600;
+    color: #233366;
+    margin-bottom: 0.5em;
+    font-size: 0.9em;
+}
+
+/* Keep these for any legacy references */
 .new-image-gallery-master-pane {
     width: 100%;
     min-width: 0;
@@ -6235,20 +6503,15 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     overflow: hidden;
 }
 
-/* Layout only; padding/background/border from .email-gallery-search-section */
 .new-image-gallery-search-section {
     width: 100%;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    display: flex;
-    flex-direction: row;
-    gap: 0.75rem;
-    align-items: flex-start;
 }
 
 .new-image-metadata-filters {
-    flex: 1 1 0;
+    width: 100%;
     min-width: 0;
     max-width: 100%;
 }
@@ -6267,6 +6530,12 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     box-sizing: border-box;
 }
 
+/* Sidebar: suppress email-gallery-search-section chrome (padding/border already on sidebar) */
+.new-image-gallery-sidebar.email-gallery-search-section {
+    border-bottom: none;
+    padding: 0.75rem;
+}
+
 /* Bulk actions: fixed-width buttons were forcing the column past the dialog edge */
 .new-image-gallery-bulk-actions {
     display: flex;
@@ -6282,6 +6551,42 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     max-width: 100%;
     width: auto !important;
 }
+
+/* Unified disabled colour for all bulk-action buttons */
+.new-image-gallery-bulk-actions .modal-btn:disabled,
+.new-image-gallery-bulk-actions .modal-btn[disabled] {
+    background: #c8d0dc !important;
+    color: #8a96a8 !important;
+    border-color: transparent !important;
+    filter: none !important;
+    opacity: 1 !important;
+    cursor: not-allowed;
+}
+
+/* Per-button active colours */
+#new-image-gallery-apply-tags-btn:not(:disabled) {
+    background: #4a90e2;
+    color: #fff;
+}
+#new-image-gallery-apply-tags-btn:not(:disabled):hover { background: #2f6fbf; }
+
+#new-image-gallery-ai-classification-btn:not(:disabled) {
+    background: #6f42c1;
+    color: #fff;
+}
+#new-image-gallery-ai-classification-btn:not(:disabled):hover { background: #5a32a3; }
+
+#new-image-gallery-delete-selected-btn:not(:disabled) {
+    background: var(--color-danger);
+    color: #fff;
+}
+#new-image-gallery-delete-selected-btn:not(:disabled):hover { background: #c82333; }
+
+#new-image-gallery-clear-selection-btn:not(:disabled) {
+    background: #fd7e14;
+    color: #fff;
+}
+#new-image-gallery-clear-selection-btn:not(:disabled):hover { background: #e0680a; }
 
 .new-image-gallery-title h2 {
     margin: 0;
@@ -6799,8 +7104,41 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 }
 
 .email-list-item.selected {
-    background: #e8f0fe;
+    background: #233366;
     box-shadow: none;
+    border-radius: 4px;
+    border-bottom-color: #dee2e6;
+}
+
+.email-list-item.selected:hover {
+    background: #2c4078;
+}
+
+.email-list-item.selected .email-list-sender-name,
+.email-list-item.selected .email-list-subject {
+    color: #fff;
+}
+
+.email-list-item.selected .email-list-date-short,
+.email-list-item.selected .email-list-preview {
+    color: #ccc;
+}
+
+.email-list-item.selected .email-list-star {
+    color: #aab8e8;
+}
+
+.email-list-item.selected .email-list-star:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #f4b400;
+}
+
+.email-list-item.selected .email-list-star.email-list-star-on {
+    color: #f4b400;
+}
+
+.email-list-item.selected .email-list-attach-glyph {
+    opacity: 0.9;
 }
 
 .email-list-item.selected::before {
@@ -8172,6 +8510,47 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 
 .fb-album-item {
     user-select: none;
+    padding: 0.6rem 0.8rem;
+    cursor: pointer;
+    border-radius: 4px;
+    background: transparent;
+    color: #333;
+    border-bottom: 1px solid #dee2e6;
+    margin-bottom: 2px;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.fb-album-item:hover:not(.selected) {
+    background-color: #f0f0f0;
+}
+
+.fb-album-item.selected {
+    background: #233366;
+    color: #fff;
+}
+
+.fb-album-item.selected:hover {
+    background: #2c4078;
+}
+
+.fb-album-item-title {
+    font-weight: 600;
+    font-size: 0.85em;
+    margin-bottom: 2px;
+    color: #333;
+}
+
+.fb-album-item.selected .fb-album-item-title {
+    color: #fff;
+}
+
+.fb-album-item-meta {
+    font-size: 0.75em;
+    color: #888;
+}
+
+.fb-album-item.selected .fb-album-item-meta {
+    color: #ccc;
 }
 
 #fb-albums-images-container {

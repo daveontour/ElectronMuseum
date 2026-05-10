@@ -342,18 +342,26 @@ func (h *TemplateHandler) readFile(baseDir, relPath string) (string, error) {
 
 // indexFilesystemImportTileHTML is the Data Import “Picture and Images” tile (server path scan).
 // Omitted from the rendered page when DEPLOYMENT_NATURE is not local (see GetRoot extras).
-const indexFilesystemImportTileHTML = `                                <tr class="data-import-row data-import-path-row" data-import="filesystem">
-                                    <td><i class="fas fa-link"></i>Create References to Images on Disk</td>
-                                    <td class="data-import-count" data-import-count-key="filesystem">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="filesystem"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="filesystem"><i class="fas fa-play"></i> Start</button>
-                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+const indexFilesystemImportTileHTML = `
+                                <article class="data-import-card data-import-row data-import-path-row" data-import="filesystem">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-link"></i> Link to Images on Disk</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="filesystem">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="filesystem"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Scan folders on this machine and register image paths as referenced media (local Electron deployments only). Entries counts referenced-path images. <strong>Clear Data</strong> removes filesystem-linked rows.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
+                                                <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="filesystem"><i class="fas fa-link"></i> Link</button>
+                                                <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="filesystem_media" title="Remove filesystem-sourced images from the library"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="filesystem_media" title="Remove filesystem-sourced images from the library"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>`
+                                    </div>
+                                </article>`
 
 // indexFilesystemReferenceImportTileHTML registers paths only (is_referenced); same purge as folder scan.
 // const indexFilesystemReferenceImportTileHTML = `                                <tr class="data-import-row data-import-path-row" data-import="filesystem_reference">

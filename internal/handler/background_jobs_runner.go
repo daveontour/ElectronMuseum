@@ -46,33 +46,32 @@ func (r *backgroundJobsRunner) Definitions() []backgroundjobs.JobDef {
 	return []backgroundjobs.JobDef{
 		{
 			Name:                   BackgroundJobThumbnails,
-			Title:                  "Thumbnail processing",
+			Title:                  "Generate image thumbnails",
 			Description:            "Generate or refresh thumbnails for images that do not yet have one.",
-			DefaultIntervalSeconds: 6 * 60 * 60,
-		},
-		{
-			Name:                   BackgroundJobImageTagEmbeddings,
-			Title:                  "Image tag embeddings backfill",
-			Description:            "Compute embeddings for image tags so the AI similarity search returns relevant images.",
-			DefaultIntervalSeconds: 6 * 60 * 60,
+			DefaultIntervalSeconds: 10 * 60,
 		},
 		{
 			Name:                   BackgroundJobImageAIClassification,
 			Title:                  "Image AI classification",
-			Description:            "Run AI classification (tags, description) on images that have not been classified yet.",
-			DefaultIntervalSeconds: 12 * 60 * 60,
+			Description:            "Use AI tools to generate tags for the image based on its content.",
+			DefaultIntervalSeconds: 600,
+		}, {
+			Name:                   BackgroundJobImageTagEmbeddings,
+			Title:                  "Image Classification Encoding",
+			Description:            "Encode image tags to enable textual searches of the image content.",
+			DefaultIntervalSeconds: 10 * 60,
 		},
 		{
 			Name:                   BackgroundJobMessageContextEmbeddings,
-			Title:                  "Message context embeddings backfill",
-			Description:            "Embed prev/current/next message windows so chat similarity search stays current.",
-			DefaultIntervalSeconds: 6 * 60 * 60,
+			Title:                  "Message Content Encoding",
+			Description:            "Encode message content to enable similarity searches.",
+			DefaultIntervalSeconds: 600,
 		},
 		{
 			Name:                   BackgroundJobEmailEmbeddings,
-			Title:                  "Email embeddings backfill",
-			Description:            "Embed email bodies so AI tools can search emails by similarity.",
-			DefaultIntervalSeconds: 6 * 60 * 60,
+			Title:                  "Email Content Encoding",
+			Description:            "Encode email bodies so to enable similarity searches.",
+			DefaultIntervalSeconds: 600,
 		},
 	}
 }

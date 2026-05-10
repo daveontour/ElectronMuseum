@@ -1462,8 +1462,8 @@ const App = (() => {
         }
 
         async function loadDataImportModalCounts() {
-            const table = document.getElementById('data-import-table');
-            if (!table) return;
+            const modalRoot = document.getElementById('data-import-modal');
+            if (!modalRoot) return;
             try {
                 const response = await fetch('/api/dashboard');
                 if (!response.ok) return;
@@ -1479,9 +1479,9 @@ const App = (() => {
                     const num = typeof value === 'number' && !Number.isNaN(value) ? value : Number(value);
                     const safe = Number.isNaN(num) ? 0 : num;
                     const isZero = safe === 0;
-                    table.querySelectorAll(`[data-import-count-key="${key}"]`).forEach((el) => {
+                    modalRoot.querySelectorAll(`[data-import-count-key="${key}"]`).forEach((el) => {
                         el.textContent = String(safe);
-                        const row = el.closest('tr.data-import-row');
+                        const row = el.closest('.data-import-row');
                         if (row) {
                             row.classList.toggle('data-import-row-zero-count', isZero);
                         }
@@ -2075,12 +2075,13 @@ const App = (() => {
         function setImportStatusAllIdle(text, isError = false) {
             importStatusTextEls().forEach(el => {
                 el.textContent = text || 'Idle';
-                el.style.color = isError ? '#f87171' : '';
+                el.style.color = isError ? '#ff6b6b' : '';
             });
             const { logPre, idleWrap, tabsStrip } = dataImportStatusEls();
             if (logPre) {
                 logPre.hidden = true;
                 logPre.textContent = '';
+                logPre.style.color = '';
             }
             if (idleWrap) idleWrap.hidden = false;
             if (tabsStrip) {
@@ -2124,6 +2125,7 @@ const App = (() => {
             }
             idleWrap.hidden = true;
             logPre.hidden = false;
+            logPre.style.color = '';
             const job = selectedJobKey && runningJobs.get(selectedJobKey);
             logPre.textContent = job && job.lines && job.lines.length ? job.lines.join('\n') : '';
             scrollImportJobLogToBottom();
@@ -2410,7 +2412,7 @@ const App = (() => {
             } else if (selectedJobKey && runningJobs.has(selectedJobKey)) {
                 appendJobLine(selectedJobKey, text);
                 const { logPre } = dataImportStatusEls();
-                if (logPre && isError) logPre.style.color = '#fca5a5';
+                if (logPre) logPre.style.color = isError ? '#ff6b6b' : '';
             }
         }
 
@@ -2494,7 +2496,7 @@ const App = (() => {
                 }
 
                 row.querySelectorAll('.data-import-start-btn, .data-import-zip-start-btn').forEach(b => {
-                    b.classList.remove('data-import-start-btn--cancel-pending');
+                    b.classList.remove('data-import-start-btn--cancel-pending', 'data-import-btn--processing');
                     if (busy) {
                         if (!b.dataset.importOriginalHtml) b.dataset.importOriginalHtml = b.innerHTML;
                         if (job.cancelPending) {
@@ -2503,6 +2505,7 @@ const App = (() => {
                             b.style.backgroundColor = '';
                             b.disabled = true;
                         } else {
+                            b.classList.add('data-import-btn--processing');
                             b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing';
                             b.disabled = true;
                         }
@@ -2520,7 +2523,7 @@ const App = (() => {
                         b.disabled = false;
                         return;
                     }
-                    b.classList.remove('data-import-start-btn--cancel-pending');
+                    b.classList.remove('data-import-start-btn--cancel-pending', 'data-import-btn--processing');
                     if (busy) {
                         if (!b.dataset.importOriginalHtml) b.dataset.importOriginalHtml = b.innerHTML;
                         if (job.cancelPending) {
@@ -2529,6 +2532,7 @@ const App = (() => {
                             b.style.backgroundColor = '';
                             b.disabled = true;
                         } else {
+                            b.classList.add('data-import-btn--processing');
                             b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing';
                             b.disabled = true;
                         }
@@ -3300,6 +3304,72 @@ const App = (() => {
             btn.addEventListener('click', () => { void triggerImport(btn.getAttribute('data-import')); });
         });
 
+        let resetDataImportDetailSidebar = () => {};
+
+        (function setupDataImportModalCategoryTabs() {
+            const modal = document.getElementById('data-import-modal');
+            if (!modal) return;
+            const strip = modal.querySelector('.data-import-category-tabstrip');
+            if (!strip) return;
+            strip.addEventListener('click', (e) => {
+                const btn = e.target.closest('.data-import-category-tab');
+                if (!btn || !strip.contains(btn)) return;
+                const tab = btn.getAttribute('data-import-category-tab');
+                if (!tab) return;
+                e.preventDefault();
+                strip.querySelectorAll('.data-import-category-tab').forEach((b) => {
+                    const on = b.getAttribute('data-import-category-tab') === tab;
+                    b.classList.toggle('data-import-category-tab--active', on);
+                    b.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                modal.querySelectorAll('.data-import-category-panel').forEach((p) => {
+                    const on = p.getAttribute('data-import-category-panel') === tab;
+                    p.classList.toggle('data-import-category-panel--active', on);
+                });
+                resetDataImportDetailSidebar();
+            });
+        })();
+
+        (function setupDataImportDetailSidebar() {
+            const modal = document.getElementById('data-import-modal');
+            if (!modal) return;
+            const ph = modal.querySelector('.data-import-detail-placeholder');
+            const content = modal.querySelector('.data-import-detail-content');
+            const titleEl = modal.querySelector('.data-import-detail-title');
+            const descEl = modal.querySelector('.data-import-detail-desc');
+            const entriesEl = modal.querySelector('.data-import-detail-entries');
+            const lastRunEl = modal.querySelector('.data-import-detail-last-run');
+
+            function resetSidebar() {
+                if (ph) ph.hidden = false;
+                if (content) content.hidden = true;
+            }
+
+            resetDataImportDetailSidebar = resetSidebar;
+
+            function showCard(card) {
+                if (!card || !content || !ph || !titleEl || !descEl || !entriesEl || !lastRunEl) return;
+                const titleSrc = card.querySelector('.data-import-card-title');
+                const detailBody = card.querySelector('.data-import-card-detail-body');
+                const metrics = card.querySelector('.data-import-card-metrics-source');
+                const cnt = metrics && metrics.querySelector('.data-import-count');
+                const lr = metrics && metrics.querySelector('.data-import-last-run');
+                titleEl.innerHTML = titleSrc ? titleSrc.innerHTML : '';
+                descEl.innerHTML = detailBody ? detailBody.innerHTML : '';
+                entriesEl.textContent = cnt ? cnt.textContent.trim() : '—';
+                lastRunEl.textContent = lr ? lr.textContent.trim() : '';
+                if (lr && lr.title) lastRunEl.title = lr.title;
+                else lastRunEl.removeAttribute('title');
+                ph.hidden = true;
+                content.hidden = false;
+            }
+
+            modal.querySelectorAll('.data-import-card').forEach((card) => {
+                card.addEventListener('mouseenter', () => showCard(card));
+                card.addEventListener('focusin', () => showCard(card));
+            });
+        })();
+
         document.querySelectorAll('.import-control-tile').forEach(tile => {
             tile.addEventListener('click', (e) => {
                 const openModal = tile.getAttribute('data-open-modal');
@@ -3312,6 +3382,7 @@ const App = (() => {
                                 modal.style.display = 'flex';
                                 if (DOM.configPage) DOM.configPage.style.display = 'none';
                                 if (typeof loadControlDefaults === 'function') loadControlDefaults();
+                                if (typeof resetDataImportDetailSidebar === 'function') resetDataImportDetailSidebar();
                                 if (typeof loadDataImportModalCounts === 'function') void loadDataImportModalCounts();
                                 if (typeof loadImportControlLastRun === 'function') loadImportControlLastRun();
                             }

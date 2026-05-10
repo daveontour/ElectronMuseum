@@ -57,32 +57,17 @@ Modals.FBAlbums = (() => {
             
             filteredAlbums.forEach(album => {
                 const albumItem = document.createElement('div');
-                albumItem.className = 'fb-album-item';
-                albumItem.style.cssText = 'padding: 12px; margin-bottom: 8px; border-radius: 6px; cursor: pointer; transition: background-color 0.2s; border: 1px solid transparent;';
-                albumItem.style.backgroundColor = selectedAlbumId === album.id ? '#e3f2fd' : 'transparent';
-                albumItem.style.borderColor = selectedAlbumId === album.id ? '#2196F3' : 'transparent';
-                
-                albumItem.onmouseover = () => {
-                    if (selectedAlbumId !== album.id) {
-                        albumItem.style.backgroundColor = '#f0f0f0';
-                    }
-                };
-                albumItem.onmouseout = () => {
-                    if (selectedAlbumId !== album.id) {
-                        albumItem.style.backgroundColor = 'transparent';
-                    }
-                };
-                
+                albumItem.className = 'fb-album-item' + (selectedAlbumId === album.id ? ' selected' : '');
                 albumItem.onclick = () => selectAlbum(album.id);
-                
+
                 const title = document.createElement('div');
-                title.style.cssText = 'font-weight: 600; color: #233366; margin-bottom: 4px; font-size: 14px;';
+                title.className = 'fb-album-item-title';
                 title.textContent = album.name;
-                
+
                 const meta = document.createElement('div');
-                meta.style.cssText = 'font-size: 12px; color: #666;';
+                meta.className = 'fb-album-item-meta';
                 meta.textContent = `${album.image_count || 0} image${album.image_count !== 1 ? 's' : ''}`;
-                
+
                 albumItem.appendChild(title);
                 albumItem.appendChild(meta);
                 DOM.fbAlbumsList.appendChild(albumItem);
@@ -541,8 +526,8 @@ Modals.NewImageGallery = (() => {
         let isLoading = false;
         let hasMoreData = true;
         let searchTimeout = null;
-        let selectMode = false;
         let selectedImageIds = new Set(); // Track selected image IDs
+        let lastCtrlSelectedIndex = -1;
         let _isPickMode = false;
         let _pickModeCallback = null;
 
@@ -566,6 +551,15 @@ Modals.NewImageGallery = (() => {
             DOM.newImageGalleryClearBtn.addEventListener('click', _handleClear);
             if (DOM.newImageGallerySimilarBtn) {
                 DOM.newImageGallerySimilarBtn.addEventListener('click', () => { void _handleSimilarByTags(); });
+            }
+            const similarClearBtn = document.getElementById('new-image-gallery-similar-clear-btn');
+            if (similarClearBtn) {
+                similarClearBtn.addEventListener('click', () => {
+                    if (DOM.newImageGallerySimilarTags) DOM.newImageGallerySimilarTags.value = '';
+                    if (DOM.newImageGallerySimilarN) DOM.newImageGallerySimilarN.value = '25';
+                    imageData = [];
+                    _renderThumbnailGrid();
+                });
             }
             
             // Add event listeners for filter changes with debouncing
@@ -612,17 +606,6 @@ Modals.NewImageGallery = (() => {
             
             // Add scroll event listener for lazy loading
             DOM.newImageGalleryThumbnailGrid.addEventListener('scroll', _handleThumbnailScroll);
-            
-            // Select mode toggle
-            if (DOM.newImageGallerySelectMode) {
-                DOM.newImageGallerySelectMode.addEventListener('change', (e) => {
-                    selectMode = e.target.checked;
-                    if (!selectMode) {
-                        selectedImageIds.clear();
-                    }
-                    _updateSelectionUI();
-                });
-            }
             
             // Bulk tag application
             if (DOM.newImageGalleryApplyTagsBtn) {
@@ -745,11 +728,8 @@ Modals.NewImageGallery = (() => {
             // Don't load images automatically - wait for user to enter search criteria
             imageData = [];
             selectedImageIndex = -1;
-            selectMode = false;
             selectedImageIds.clear();
-            if (DOM.newImageGallerySelectMode) {
-                DOM.newImageGallerySelectMode.checked = false;
-            }
+            lastCtrlSelectedIndex = -1;
             if (DOM.newImageGalleryBulkTags) {
                 DOM.newImageGalleryBulkTags.value = '';
             }
@@ -868,6 +848,8 @@ Modals.NewImageGallery = (() => {
         function close() {
             DOM.newImageGalleryModal.style.display = 'none';
             selectedImageIndex = -1;
+            selectedImageIds.clear();
+            lastCtrlSelectedIndex = -1;
             _isPickMode = false;
             _pickModeCallback = null;
             _syncGalleryPickModeZIndex();
@@ -1115,10 +1097,9 @@ Modals.NewImageGallery = (() => {
                     thumbnailItem.appendChild(sourceBadge);
                 }
                 
-                thumbnailItem.addEventListener('click', () => _selectImage(actualIndex));
+                thumbnailItem.addEventListener('click', (e) => _selectImage(actualIndex, e));
                 
-                // Update selection state if in select mode
-                if (selectMode && selectedImageIds.has(image.id)) {
+                if (selectedImageIds.has(image.id)) {
                     thumbnailItem.classList.add('bulk-selected');
                 }
                 
@@ -1182,7 +1163,7 @@ Modals.NewImageGallery = (() => {
             }
         }
 
-        async function _selectImage(index) {
+        async function _selectImage(index, e) {
             if (index < 0 || index >= imageData.length) return;
 
             const image = imageData[index];
@@ -1195,60 +1176,66 @@ Modals.NewImageGallery = (() => {
                 return;
             }
 
-            if (selectMode) {
-                // Toggle selection in select mode
+            if (e && (e.ctrlKey || e.metaKey)) {
+                // Ctrl/Cmd-click: toggle selection
                 if (selectedImageIds.has(image.id)) {
                     selectedImageIds.delete(image.id);
                 } else {
                     selectedImageIds.add(image.id);
+                    lastCtrlSelectedIndex = index;
                 }
                 _updateSelectionUI();
-            } else {
-                // Normal mode: open detail modal
-                selectedImageIndex = index;
-                
-                // Update selected state in UI
-                const thumbnails = DOM.newImageGalleryThumbnailGrid.querySelectorAll('.new-image-gallery-thumbnail-item');
-                thumbnails.forEach((thumb, idx) => {
-                    const actualIdx = parseInt(thumb.dataset.index);
-                    if (actualIdx === index) {
-                        thumb.classList.add('selected');
-                        thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    } else {
-                        thumb.classList.remove('selected');
-                    }
-                });
-                
-                // Open detail modal with full image and metadata
-                Modals.ImageDetailModal.open(image, {
-                    allowRedirects: true,
-                    onSave: (updatedImage, updateData) => {
-                        // Update the image in imageData array
-                        const imageIndex = imageData.findIndex(img => img.id === updatedImage.id);
-                        if (imageIndex !== -1) {
-                            imageData[imageIndex].description = updateData.description;
-                            imageData[imageIndex].tags = updateData.tags;
-                            imageData[imageIndex].rating = updateData.rating;
-                        }
-                    },
-                    onDelete: (deletedImage) => {
-                        // Remove from imageData array
-                        imageData = imageData.filter(img => img.id !== deletedImage.id);
-                        
-                        // Update selected index
-                        if (selectedImageIndex >= imageData.length) {
-                            selectedImageIndex = -1;
-                        }
-                        
-                        // Refresh thumbnail grid
-                        _renderThumbnailGrid();
-                        
-                        // Remove selected state from thumbnails
-                        const thumbnails = DOM.newImageGalleryThumbnailGrid.querySelectorAll('.new-image-gallery-thumbnail-item');
-                        thumbnails.forEach(thumb => thumb.classList.remove('selected'));
-                    }
-                });
+                return;
             }
+
+            if (e && e.shiftKey && lastCtrlSelectedIndex >= 0) {
+                // Shift-click: range select from last Ctrl-clicked index
+                const from = Math.min(lastCtrlSelectedIndex, index);
+                const to   = Math.max(lastCtrlSelectedIndex, index);
+                for (let i = from; i <= to; i++) {
+                    selectedImageIds.add(imageData[i].id);
+                }
+                _updateSelectionUI();
+                return;
+            }
+
+            // Plain click: open detail modal
+            selectedImageIndex = index;
+
+            const thumbnails = DOM.newImageGalleryThumbnailGrid.querySelectorAll('.new-image-gallery-thumbnail-item');
+            thumbnails.forEach((thumb) => {
+                const actualIdx = parseInt(thumb.dataset.index);
+                if (actualIdx === index) {
+                    thumb.classList.add('selected');
+                    thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    thumb.classList.remove('selected');
+                }
+            });
+
+            Modals.ImageDetailModal.open(image, {
+                allowRedirects: true,
+                onSave: (updatedImage, updateData) => {
+                    const imageIndex = imageData.findIndex(img => img.id === updatedImage.id);
+                    if (imageIndex !== -1) {
+                        imageData[imageIndex].description = updateData.description;
+                        imageData[imageIndex].tags = updateData.tags;
+                        imageData[imageIndex].rating = updateData.rating;
+                    }
+                },
+                onDelete: (deletedImage) => {
+                    imageData = imageData.filter(img => img.id !== deletedImage.id);
+
+                    if (selectedImageIndex >= imageData.length) {
+                        selectedImageIndex = -1;
+                    }
+
+                    _renderThumbnailGrid();
+
+                    const thumbnails = DOM.newImageGalleryThumbnailGrid.querySelectorAll('.new-image-gallery-thumbnail-item');
+                    thumbnails.forEach(thumb => thumb.classList.remove('selected'));
+                }
+            });
         }
         
         function _updateSelectionUI() {
@@ -1257,27 +1244,24 @@ Modals.NewImageGallery = (() => {
                 DOM.newImageGallerySelectedCount.textContent = selectedImageIds.size;
             }
 
-            if (DOM.newImageGalleryBulkTags) {
-                DOM.newImageGalleryBulkTags.disabled = !selectMode;
-            }
-            if (DOM.newImageGalleryClearSelectionBtn) {
-                DOM.newImageGalleryClearSelectionBtn.disabled = !selectMode;
-            }
-            
             // Enable/disable apply button
             if (DOM.newImageGalleryApplyTagsBtn) {
-                DOM.newImageGalleryApplyTagsBtn.disabled = !selectMode ||
+                DOM.newImageGalleryApplyTagsBtn.disabled =
                     selectedImageIds.size === 0 ||
                     !DOM.newImageGalleryBulkTags || !DOM.newImageGalleryBulkTags.value.trim();
             }
-            
+
             // Enable/disable delete button
             if (DOM.newImageGalleryDeleteSelectedBtn) {
-                DOM.newImageGalleryDeleteSelectedBtn.disabled = !selectMode || selectedImageIds.size === 0;
+                DOM.newImageGalleryDeleteSelectedBtn.disabled = selectedImageIds.size === 0;
             }
 
             if (DOM.newImageGalleryAIClassificationBtn) {
-                DOM.newImageGalleryAIClassificationBtn.disabled = !selectMode || selectedImageIds.size === 0;
+                DOM.newImageGalleryAIClassificationBtn.disabled = selectedImageIds.size === 0;
+            }
+
+            if (DOM.newImageGalleryClearSelectionBtn) {
+                DOM.newImageGalleryClearSelectionBtn.disabled = selectedImageIds.size === 0;
             }
             
             // Update thumbnail visual selection state
@@ -1324,15 +1308,20 @@ Modals.NewImageGallery = (() => {
 
         async function _applyTagsToSelected() {
             if (selectedImageIds.size === 0) return;
-            
+
             const tags = DOM.newImageGalleryBulkTags ? DOM.newImageGalleryBulkTags.value.trim() : '';
             if (!tags) {
                 await AppDialogs.showAppAlert('Please enter tags to apply');
                 return;
             }
-            
+
             const imageIds = Array.from(selectedImageIds);
-            
+            const btn = DOM.newImageGalleryApplyTagsBtn;
+            const originalHTML = btn ? btn.innerHTML : null;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying…';
+            }
             try {
                 const response = await fetch('/images/bulk-update', {
                     method: 'PUT',
@@ -1374,9 +1363,14 @@ Modals.NewImageGallery = (() => {
             } catch (error) {
                 console.error('Error applying tags:', error);
                 await AppDialogs.showAppAlert('Error', `Error applying tags: ${error.message}`);
+            } finally {
+                if (btn && originalHTML !== null) {
+                    btn.innerHTML = originalHTML;
+                }
+                _updateSelectionUI();
             }
         }
-        
+
         async function _deleteSelectedImages() {
             if (selectedImageIds.size === 0) return;
             
@@ -1468,6 +1462,12 @@ Modals.NewImageGallery = (() => {
                 if (window.AppDialogs) await AppDialogs.showAppAlert('Similar by tags', 'Enter text to match against stored image tags (e.g. beach, sunset).');
                 return;
             }
+            const btn = DOM.newImageGallerySimilarBtn;
+            const originalHTML = btn ? btn.innerHTML : null;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching…';
+            }
             try {
                 await _runSimilarByTagsQuery(q);
             } catch (err) {
@@ -1475,6 +1475,11 @@ Modals.NewImageGallery = (() => {
                 if (window.AppDialogs) await AppDialogs.showAppAlert('Similar by tags', err.message || 'Request failed');
                 imageData = [];
                 _renderThumbnailGrid();
+            } finally {
+                if (btn && originalHTML !== null) {
+                    btn.innerHTML = originalHTML;
+                    btn.disabled = false;
+                }
             }
         }
 
@@ -1500,10 +1505,7 @@ Modals.NewImageGallery = (() => {
             }
             selectedImageIndex = -1;
             selectedImageIds.clear();
-            selectMode = false;
-            if (DOM.newImageGallerySelectMode) {
-                DOM.newImageGallerySelectMode.checked = false;
-            }
+            lastCtrlSelectedIndex = -1;
             _updateSelectionUI();
             try {
                 await _runSimilarByTagsQuery(q);

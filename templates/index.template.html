@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page_title }}</title>
     <link rel="stylesheet" href="/static/css/museum_of.css?v=20260509a">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=swap">
     <link rel="stylesheet" href="/static/css/leaflet.css">
     <link rel="stylesheet" href="/static/css/images_grid.css">
     <!-- Include marked.js -->
@@ -1035,7 +1036,7 @@
                         </p>
                     </section>
                     <section class="config-section">
-                        <div id="background-jobs-status" style="display:none; margin-bottom:10px; padding:8px 12px; border-radius:4px;"></div>
+                        
                         <div style="overflow-x:auto;">
                             <table class="sensitive-data-table" id="background-jobs-table" style="width:100%;">
                                 <thead>
@@ -1052,6 +1053,7 @@
                                 <tbody id="background-jobs-tbody"></tbody>
                             </table>
                         </div>
+                        <div id="background-jobs-status" style="display:none; margin-bottom:10px; padding:8px 12px; border-radius:4px;"></div>
                         <p id="background-jobs-empty" style="display:none; color:#666; font-size:0.9em;">No background jobs registered.</p>
                     </section>
                 </div>
@@ -1193,240 +1195,314 @@
                         <h1 style="font-size: 1.75rem;">Data Import</h1>
                     </section> -->
                     <section class="config-section data-import-modal-section">
-                        <div class="data-import-table-scroll-region" style="border: 1px solid rgb(76, 68, 68) !important; border-radius: 6px;">
-                            <table class="data-import-table" id="data-import-table">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Source</th>
-                                        <th scope="col">Entries</th>
-                                        <th scope="col">Last run</th>
-                                        <th scope="col" style="width:280px"></th>
-                                        <th scope="col"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                <tr class="data-import-section-heading"><td colspan="5">Import</td></tr>
-                                <tr class="data-import-row" data-import="email_processing">
-                                    <td><i class="fas fa-envelope"></i> Gmail</td>
-                                    <td class="data-import-count" data-import-count-key="email_processing">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="email_processing"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                        <div class="data-import-table-scroll-region">
+                            <div class="data-import-main-column">
+                            <div class="data-import-category-tabstrip" role="tablist" aria-label="Import and maintenance">
+                                <button type="button" role="tab" class="data-import-category-tab data-import-category-tab--active" id="data-import-tab-import" data-import-category-tab="import" aria-selected="true" aria-controls="data-import-panel-import">Data Import</button>
+                                <button type="button" role="tab" class="data-import-category-tab" id="data-import-tab-maintenance" data-import-category-tab="maintenance" aria-selected="false" aria-controls="data-import-panel-maintenance">Data Maintenance</button>
+                            </div>
+                            <div class="data-import-panels-scroll">
+                            <div id="data-import-panel-import" role="tabpanel" class="data-import-category-panel data-import-category-panel--active" data-import-category-panel="import" aria-labelledby="data-import-tab-import">
+                                <div class="data-import-cards-grid">
+                                <article class="data-import-card data-import-row" data-import="email_processing">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-envelope"></i> Gmail</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="email_processing">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="email_processing"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Sign in with Google (OAuth) and import Gmail into this archive. Messages are tagged by source so <strong>Clear Data</strong> only removes mail imported via Gmail, not other email sources.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="email_processing"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="emails_gmail" title="Deletes only emails imported via Gmail API for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="emails_gmail" title="Deletes only emails imported via Gmail API for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="imap_processing">
-                                    <td><i class="fas fa-inbox"></i> Mail from IMAP server</td>
-                                    <td class="data-import-count" data-import-count-key="imap_processing">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="imap_processing"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="imap_processing">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-inbox"></i> Mail from IMAP server</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="imap_processing">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="imap_processing"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Import from any IMAP mailbox using server credentials and folder selection. Counts include non-Gmail IMAP and legacy email rows. <strong>Clear Data</strong> removes IMAP and legacy imports as described in the button tooltip.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="imap_processing"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="emails_imap" title="Deletes IMAP and legacy emails (everything not tagged Gmail) for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="emails_imap" title="Deletes IMAP and legacy emails (everything not tagged Gmail) for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="upload_zip" data-zip-archive-type="whatsapp">
-                                    <td><i class="fas fa-file-archive"></i> WhatsApp Archive</td>
-                                    <td class="data-import-count" data-import-count-key="zip_whatsapp">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="zip_whatsapp"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="upload_zip" data-zip-archive-type="whatsapp">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-file-archive"></i> WhatsApp Archive</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="zip_whatsapp">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="zip_whatsapp"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Upload an official WhatsApp export ZIP. Chats and media are parsed into the archive. Use <strong>Clear Data</strong> to remove only WhatsApp-imported content.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="whatsapp"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="whatsapp"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="whatsapp"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="upload_zip" data-zip-archive-type="instagram">
-                                    <td><i class="fas fa-file-archive"></i> Instagram Archive</td>
-                                    <td class="data-import-count" data-import-count-key="zip_instagram">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="zip_instagram"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="upload_zip" data-zip-archive-type="instagram">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-file-archive"></i> Instagram Archive</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="zip_instagram">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="zip_instagram"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Upload a Meta Instagram data export ZIP. Posts and related metadata are imported. <strong>Clear Data</strong> removes Instagram-imported material.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="instagram"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="instagram"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="instagram"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="upload_zip" data-zip-archive-type="imessage">
-                                    <td><i class="fas fa-file-archive"></i> iMessage & SMS Archive</td>
-                                    <td class="data-import-count" data-import-count-key="zip_imessage">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="zip_imessage"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="upload_zip" data-zip-archive-type="imessage">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-file-archive"></i> iMessage &amp; SMS Archive</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="zip_imessage">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="zip_imessage"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Upload an Apple iMessage/SMS export ZIP. Message threads are merged into the archive. Entry counts combine iMessage, SMS, and MMS where applicable.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="imessage"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="imessage"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="imessage"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="upload_zip" data-zip-archive-type="facebook">
-                                    <td><i class="fas fa-file-archive"></i> Facebook Archive (messages, albums, posts, and places)</td>
-                                    <td class="data-import-count" data-import-count-key="zip_facebook">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="zip_facebook"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="upload_zip" data-zip-archive-type="facebook">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-file-archive"></i> Facebook Archive (messages, albums, posts, and places)</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="zip_facebook">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="zip_facebook"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Upload a Facebook data export ZIP. Messenger, albums, posts, and places are imported. The entries figure is a combined total for those Facebook categories.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-zip-start-btn" data-zip-archive-type="facebook"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="facebook_all" title="Removes Messenger, albums, posts, and Facebook places for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="facebook_all" title="Removes Messenger, albums, posts, and Facebook places for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-
-                                
-                                <!-- {{ index_filesystem_import_tile }} -->
-                                <tr class="data-import-row data-import-path-row" data-import="filesystem">
-                                    <td><i class="fas fa-link"></i>Link to Images on Disk</td>
-                                    <td class="data-import-count" data-import-count-key="filesystem">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="filesystem"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="filesystem"><i class="fas fa-link"></i> Link</button>
-                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
-                                        </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="filesystem_media" title="Remove filesystem-sourced images from the library"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="reference_modal">
-                                    <td><i class="fas fa-book"></i> Import and Manage Reference Documents</td>
-                                    <td class="data-import-count" data-import-count-key="reference_docs">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="reference_import"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                {{ index_filesystem_import_tile }}
+                                <article class="data-import-card data-import-row" data-import="reference_modal">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-book"></i> Import and Manage Reference Documents</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="reference_docs">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="reference_import"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Open the reference documents manager to add PDFs, Word files, text, CSV, or JSON for AI context. Entries counts stored reference docs. Last run reflects linked-file import activity where applicable.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-open-modal-btn" data-open-modal="reference-documents-manage-modal"><i class="fas fa-folder-open"></i> Manage</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this import"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="reference_documents"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="reference_documents"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-section-heading"><td colspan="5">Data Maintenance</td></tr>
-
-                                <tr class="data-import-row" data-import="upload_photos">
-                                    <td><i class="fas fa-cloud-upload-alt"></i> Images stored in the database</td>
-                                    <td class="data-import-count" data-import-count-key="imported_images">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="imported_images"></td>
-                                    <td class="data-import-actions-td">
-
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="filesystem_media" title="Removes all filesystem-sourced images (includes folder uploads and scans)"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="reference_import">
-                                    <td><i class="fas fa-file-import"></i> Import Linked Images to Database</td>
-                                    <td class="data-import-count" data-import-count-key="reference_import_entries">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="reference_import"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                </div>
+                            </div>
+                            <div id="data-import-panel-maintenance" role="tabpanel" class="data-import-category-panel" data-import-category-panel="maintenance" aria-labelledby="data-import-tab-maintenance">
+                                <div class="data-import-cards-grid">
+                                <article class="data-import-card data-import-row" data-import="reference_import">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-file-import"></i> Import Linked Images to Database</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="reference_import_entries">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="reference_import"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Copy linked (referenced-on-disk) images into the database blobs so they travel with the archive. Entries shows reference-linked images. Runs as a background job.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="reference_import"><i class="fas fa-play"></i> Import</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
                                         </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="image_export">
-                                    <td><i class="fas fa-file-export"></i> Export Images to Filesystem</td>
-                                    <td class="data-import-count" data-import-count-key="image_export_entries">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="image_export"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="image_export">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-file-export"></i> Export Images to Filesystem</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="image_export_entries">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="image_export"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Write images from the database to a folder you choose on disk (local deployment). Entries is the total image count eligible for export.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="image_export"><i class="fas fa-play"></i> Export</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
                                         </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="contacts">
-                                    <td><i class="fas fa-address-book"></i> Reprocess Contacts Data</td>
-                                    <td class="data-import-count" data-import-count-key="contacts">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="contacts"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="contacts">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-address-book"></i> Reprocess Contacts Data</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="contacts">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="contacts"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Rebuild the contacts store from existing messages and related sources. Useful after large imports. Entries is the current contacts row count.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="contacts"><i class="fas fa-play"></i> Reprocess</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
                                         </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
-
-                                <tr class="data-import-row" data-import="thumbnails">
-                                    <td><i class="fas fa-image"></i> Thumbnails Creation &amp; Location Extraction</td>
-                                    <td class="data-import-count" data-import-count-key="thumbnails">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="thumbnails"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="thumbnails">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-image"></i> Thumbnails Creation &amp; Location Extraction</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="thumbnails">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="thumbnails"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Generate thumbnails and read GPS/metadata from images. May run as an interactive prompt flow or async jobs. Last run merges thumbnail and async thumbnail timestamps when both exist.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="thumbnails_prompt"><i class="fas fa-play"></i> Process</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="thumbnails" title="Clears thumbnail bytes from stored blobs (images remain)"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="thumbnails" title="Clears thumbnail bytes from stored blobs (images remain)"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="message_context_embeddings">
-                                    <td><i class="fas fa-vector-square"></i> Build Message Context Embeddings</td>
-                                    <td class="data-import-count">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="message_context_embeddings"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="message_context_embeddings">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-vector-square"></i> Build Message Context Embeddings</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="message_context_embeddings"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Compute embedding vectors for conversational/message context to improve retrieval. Heavy CPU or cloud workload depending on configuration.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="message_context_embeddings"><i class="fas fa-play"></i> Run</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="message_embeddings" title="Deletes all message embedding vectors for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="message_embeddings" title="Deletes all message embedding vectors for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="image_tag_embeddings">
-                                    <td><i class="fas fa-tags"></i> Build Image Tag Similarity Embeddings</td>
-                                    <td class="data-import-count">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="image_tag_embeddings"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="image_tag_embeddings">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-tags"></i> Build Image Tag Similarity Embeddings</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="image_tag_embeddings"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Embed image tags for similarity search. You can reprocess all embeddings or skip unchanged tags when prompted.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="image_tag_embeddings"><i class="fas fa-play"></i> Run</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="media_tag_embeddings" title="Deletes all image tag embedding vectors for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td><button type="button" class="data-import-delete-btn" aria-label="Delete data" data-import-purge-kind="media_tag_embeddings" title="Deletes all image tag embedding vectors for this archive"><i class="fas fa-trash-alt" aria-hidden="true"></i></button></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="image_ai_gemma_unclassified">
-                                    <td><i class="fas fa-tags"></i> AI Classify Images Missing GemmaClassified Tag</td>
-                                    <td class="data-import-count" data-import-count-key="imported_images">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="image_ai_gemma_unclassified"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="image_ai_gemma_unclassified">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-tags"></i> AI Classify Images Missing GemmaClassified Tag</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="imported_images">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="image_ai_gemma_unclassified"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Use local AI (e.g. Gemma via Ollama) to tag images that are not yet marked GemmaClassified. Entries uses the imported-images figure as scope context.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row">
+                                            <div class="data-import-action-group">
                                             <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="image_ai_gemma_unclassified"><i class="fas fa-play"></i> Classify</button>
                                             <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                            </div>
                                         </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                                <!-- <tr class="data-import-row" data-import="email_embeddings">
-                                    <td><i class="fas fa-vector-square"></i> Generate Emails Search Vectors</td>
-                                    <td class="data-import-count">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="email_embeddings"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="email_embeddings"><i class="fas fa-play"></i> Run</button>
-                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
+                                    </div>
+                                </article>
+                                <article class="data-import-card data-import-row" data-import="upload_photos">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-cloud-upload-alt"></i> Images stored in the database</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="imported_images">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="imported_images"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Manage embedded images (uploads and folder scans copied into the DB). This tile only offers <strong>Clear Data</strong> to remove filesystem-sourced library images; counts reflect embedded images for this archive.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row data-import-card-actions-row--clear-only">
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="filesystem_media" title="Removes all filesystem-sourced images (includes folder uploads and scans)"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
                                         </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                                <tr class="data-import-row" data-import="message_embeddings">
-                                    <td><i class="fas fa-vector-square"></i> Generate Messages Search Vectors</td>
-                                    <td class="data-import-count">—</td>
-                                    <td class="data-import-last-run" data-import-last-run="message_embeddings"></td>
-                                    <td class="data-import-actions-td">
-                                        <div class="data-import-action-group">
-                                            <button type="button" class="modal-btn modal-btn-primary data-import-start-btn" data-import-start="message_embeddings"><i class="fas fa-play"></i> Run</button>
-                                            <button type="button" class="modal-btn modal-btn-secondary data-import-row-cancel-btn" hidden title="Cancel this job"><i class="fas fa-stop"></i> Cancel</button>
-                                        </div>
-                                    </td>
-                                    <td></td>
-                                </tr> -->
-                                </tbody>
-                            </table>
+                                    </div>
+                                </article>
+                                </div>
+                            </div>
+                            </div>
+                            </div>
+                            <aside class="data-import-detail-sidebar" aria-label="Import option details">
+                                <div class="data-import-detail-sidebar-inner">
+                                    <p class="data-import-detail-placeholder">Hover an option for a description, entry counts, and last run.</p>
+                                    <div class="data-import-detail-content" hidden>
+                                        <h4 class="data-import-detail-title"></h4>
+                                        <div class="data-import-detail-desc"></div>
+                                        <dl class="data-import-detail-stats">
+                                            <div class="data-import-detail-stat-row"><dt>Entries</dt><dd class="data-import-detail-entries">—</dd></div>
+                                            <div class="data-import-detail-stat-row"><dt>Last run</dt><dd class="data-import-detail-last-run"></dd></div>
+                                        </dl>
+                                    </div>
+                                </div>
+                            </aside>
                         </div>
                         <div class="import-controls-footer-grid">
                             <div class="import-controls-status-box import-controls-status-box--jobs" style="padding: 10px 12px; border-radius: 6px; font-size: 0.95em; line-height: 1.45; min-height: 7.5em; max-height: 16em; display: flex; flex-direction: column; gap: 8px;">
@@ -2258,15 +2334,12 @@
                     <button id="close-new-image-gallery-modal" class="modal-close-btn">&times;</button>
                 </div>
                 <div class="new-image-gallery-modal-body">
-                    <!-- Master Pane -->
-                    <div class="new-image-gallery-master-pane">
-                        <div class="new-image-gallery-search-section email-gallery-search-section">
+                    <div class="new-image-gallery-sidebar email-gallery-search-section">
+
+                        <!-- Section 1: Metadata Search -->
+                        <div class="new-image-gallery-sidebar-section">
+                            <div class="new-image-gallery-sidebar-section-label">Metadata Search</div>
                             <div class="new-image-metadata-filters email-metadata-filters">
-                                <div class="new-image-gallery-search-row email-gallery-search-row" style="display: flex; align-items: center; gap: 0.45rem;">
-                                    <input type="text" id="new-image-gallery-similar-tags" placeholder="Enter any text to search for matching images" class="new-image-gallery-input email-gallery-input" disabled aria-describedby="new-image-gallery-similar-hint" style="flex: 1 1 auto; min-width: 0;">
-                                    <input type="number" id="new-image-gallery-similar-n" class="new-image-gallery-input email-gallery-input" value="25" min="1" max="50" step="1" style="flex: 0 0 auto; width: 6rem;">
-                                    <button type="button" id="new-image-gallery-similar-btn" class="modal-btn modal-btn-secondary" disabled>AI Search</button>
-                                </div>
                                 <div class="new-image-gallery-search-row email-gallery-search-row">
                                     <input type="text" id="new-image-gallery-title" placeholder="Title..." class="new-image-gallery-input email-gallery-input">
                                 </div>
@@ -2277,8 +2350,7 @@
                                     <input type="text" id="new-image-gallery-tags" placeholder="Tags..." class="new-image-gallery-input email-gallery-input" list="new-image-gallery-tags-list">
                                     <datalist id="new-image-gallery-tags-list"></datalist>
                                 </div>
-                                <div class="new-image-gallery-filter-row email-gallery-filter-row">
-                                    <input type="text" id="new-image-gallery-author" placeholder="Author..." class="new-image-gallery-input email-gallery-input">
+                                <div class="new-image-gallery-search-row email-gallery-search-row">
                                     <select id="new-image-gallery-source" class="new-image-gallery-select email-gallery-select" aria-label="Source">
                                         <option value="" selected>All sources</option>
                                         <option value="filesystem">Filesystem</option>
@@ -2294,64 +2366,73 @@
                                     </select>
                                 </div>
                                 <div class="new-image-gallery-filter-row email-gallery-filter-row email-gallery-filter-year-month-row">
-                                    <select id="new-image-gallery-year-filter" class="new-image-gallery-select email-gallery-select"></select>                                         
+                                    <select id="new-image-gallery-year-filter" class="new-image-gallery-select email-gallery-select"></select>
                                     <select id="new-image-gallery-month-filter" class="new-image-gallery-select email-gallery-select"></select>
                                 </div>
                                 <div class="new-image-gallery-filter-row email-gallery-filter-row">
-                                    <!-- <input type="number" id="new-image-gallery-rating" placeholder="Rating (1-5)" min="1" max="5" class="new-image-gallery-input email-gallery-input">
-                                    <input type="number" id="new-image-gallery-rating-min" placeholder="Min Rating" min="1" max="5" class="new-image-gallery-input email-gallery-input">
-                                    <input type="number" id="new-image-gallery-rating-max" placeholder="Max Rating" min="1" max="5" class="new-image-gallery-input email-gallery-input"> -->
                                     <label class="new-image-gallery-checkbox-label email-gallery-checkbox-label">
                                         <input type="checkbox" id="new-image-gallery-has-gps">
                                         Has GPS
                                     </label>
                                 </div>
-                                <!-- <div class="new-image-gallery-filter-row">
-                                    <label class="new-image-gallery-checkbox-label">
-                                        <input type="checkbox" id="new-image-gallery-has-gps">
-                                        Has GPS
-                                    </label>
-                                </div> -->
                                 <div class="new-image-gallery-button-row email-gallery-button-row">
                                     <button id="new-image-gallery-search-btn" class="modal-btn modal-btn-primary">
-                                        <i class="fas fa-search"></i>Search
+                                        <i class="fas fa-search"></i>Metadata Search
                                     </button>
                                     <button id="new-image-gallery-clear-btn" class="modal-btn modal-btn-secondary">
                                         <i class="fas fa-times"></i>Clear
                                     </button>
                                 </div>
                             </div>
-                            <div class="new-image-gallery-right-hand-box">
-                                <div id="new-image-gallery-bulk-edit-section">
-                                    <div style="margin-bottom: 1em;">
-                                        <label class="new-image-gallery-select-mode-toggle" style="display: flex; align-items: center; gap: 0.5em; cursor: pointer;">
-                                            <input type="checkbox" id="new-image-gallery-select-mode" style="cursor: pointer;">
-                                            <span>Select Mode</span>
-                                        </label>
-                                    </div>
-                                    <div style="margin-bottom: 0.5em; font-weight: 600; color: #233366;">
-                                        <span id="new-image-gallery-selected-count">0</span> image(s) selected
-                                    </div>
-                                    <div style="display: flex; gap: 0.5em; align-items: center;">
-                                        <input type="text" id="new-image-gallery-bulk-tags" placeholder="Enter tags to apply..." class="new-image-gallery-input email-gallery-input" style="flex: 1;">
-                                    </div>
-                                    <div class="new-image-gallery-bulk-actions">
-                                        <button id="new-image-gallery-apply-tags-btn" class="modal-btn modal-btn-primary" disabled>
-                                            <i class="fas fa-tags"></i> Apply Tags
-                                        </button>
-                                        <button id="new-image-gallery-ai-classification-btn" class="modal-btn modal-btn-secondary" disabled type="button">
-                                            <i class="fas fa-robot"></i> AI Classification
-                                        </button>
-                                        <button id="new-image-gallery-delete-selected-btn" class="modal-btn modal-btn-danger" disabled>
-                                            <i class="fas fa-trash-alt"></i> Delete Selected
-                                        </button>
-                                        <button id="new-image-gallery-clear-selection-btn" class="modal-btn modal-btn-secondary">
-                                            <i class="fas fa-times"></i> Clear Selection
-                                        </button>
-                                    </div>
+                        </div>
+                        
+                        <div class="new-image-gallery-sidebar-section-divider"></div>
+                        <!-- Section 2: Image Content Search -->
+                        <div class="new-image-gallery-sidebar-section">
+                                <div class="new-image-gallery-sidebar-section-label">Image Content Search</div>
+                                <input type="text" id="new-image-gallery-similar-tags" placeholder="Enter any text to search for matching images" class="new-image-gallery-input email-gallery-input" disabled aria-describedby="new-image-gallery-similar-hint" style="width: 100%; box-sizing: border-box;">
+                                <div style="display: flex; align-items: center; gap: 0.45rem; margin-top: 0.45rem;">
+                                    <label for="new-image-gallery-similar-n" class="email-gallery-sort-label" style="margin-right:8px;">Number of matches</label>
+                                    <input type="number" id="new-image-gallery-similar-n" class="new-image-gallery-input email-gallery-input" value="25" min="1" max="50" step="1" style="width: 4.5rem; flex-shrink: 0;">
+                                </div>
+                                <div class="new-image-gallery-button-row email-gallery-button-row" style="margin-top: 0.45rem;">
+                                    <button type="button" id="new-image-gallery-similar-btn" class="modal-btn modal-btn-primary" disabled>
+                                        <i class="fas fa-search"></i>Content Search
+                                    </button>
+                                    <button type="button" id="new-image-gallery-similar-clear-btn" class="modal-btn modal-btn-secondary">
+                                        <i class="fas fa-times"></i>Clear
+                                    </button>
+                                </div>
+                        </div>
+
+                        <div class="new-image-gallery-sidebar-section-divider"></div>
+                        <!-- Section 3: Bulk Actions -->
+                        <div class="new-image-gallery-sidebar-section">
+                            <div class="new-image-gallery-sidebar-section-label">Bulk Actions <span class="new-image-gallery-sidebar-section-hint">Ctrl+click &bull; Shift+click for range</span></div>
+                            <div id="new-image-gallery-bulk-edit-section">
+                                <div class="new-image-gallery-selected-count-row">
+                                    <span id="new-image-gallery-selected-count">0</span> image(s) selected
+                                </div>
+                                <input type="text" id="new-image-gallery-bulk-tags" placeholder="Enter tags to apply..." class="new-image-gallery-input email-gallery-input" style="width: 100%; box-sizing: border-box; margin-bottom: 0.5em;">
+                                <div class="new-image-gallery-bulk-actions">
+                                    <button id="new-image-gallery-apply-tags-btn" class="modal-btn modal-btn-primary" disabled>
+                                        <i class="fas fa-tags"></i> Apply Tags
+                                    </button>
+                                    <button id="new-image-gallery-ai-classification-btn" class="modal-btn modal-btn-secondary" disabled type="button">
+                                        <i class="fas fa-robot"></i> AI Classification
+                                    </button>
+                                    <button id="new-image-gallery-delete-selected-btn" class="modal-btn modal-btn-danger" disabled>
+                                        <i class="fas fa-trash-alt"></i> Delete Selected
+                                    </button>
+                                    <button id="new-image-gallery-clear-selection-btn" class="modal-btn modal-btn-secondary" disabled>
+                                        <i class="fas fa-times"></i> Clear Selection
+                                    </button>
                                 </div>
                             </div>
                         </div>
+
+                    </div>
+                    <div class="new-image-gallery-main">
                         <div class="new-image-gallery-thumbnail-grid" id="new-image-gallery-thumbnail-grid"></div>
                     </div>
                 </div>
@@ -3331,7 +3412,7 @@
                     <div id="sms-chat-list-pane" style="width: 400px; min-width: 300px; max-width: 500px; border-right: 1px solid #e9edef; display: flex; flex-direction: column; background-color: #f0f2f5;">
                         <!-- Chat List Header -->
                         <div style="padding: 10px 16px; background-color: #f0f2f5;">
-                            <input type="text" id="sms-chat-search" placeholder="Search..." style="width: 100%; padding: 8px 12px; border-radius: 8px; border: none; background-color: #fff; font-size: 14px; box-sizing: border-box; color: #667781;">
+                            <input type="text" id="sms-chat-search" placeholder="Search By Contact Name..." style="width: 100%; padding: 8px 12px; border-radius: 8px; border: none; background-color: #fff; font-size: 14px; box-sizing: border-box; color: #667781;">
                         </div>
                         <!-- Filter Buttons -->
                         <div id="sms-chat-filters" style="padding: 8px 16px; background-color: #fff; border-bottom: 1px solid #e9edef; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">

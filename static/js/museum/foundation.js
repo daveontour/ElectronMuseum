@@ -387,7 +387,6 @@ const DOM = {
     newImageGalleryClearBtn: document.getElementById('new-image-gallery-clear-btn'),
     newImageGalleryThumbnailGrid: document.getElementById('new-image-gallery-thumbnail-grid'),
     newImageGalleryMasterPane: document.querySelector('.new-image-gallery-master-pane'),
-    newImageGallerySelectMode: document.getElementById('new-image-gallery-select-mode'),
     newImageGallerySelectedCount: document.getElementById('new-image-gallery-selected-count'),
     newImageGalleryBulkTags: document.getElementById('new-image-gallery-bulk-tags'),
     newImageGalleryApplyTagsBtn: document.getElementById('new-image-gallery-apply-tags-btn'),

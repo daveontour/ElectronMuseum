@@ -175,7 +175,7 @@ const Guide = {
                 {
                     text: 'Click Upload on the Facebook row and select the exported folder.',
                     position: 'top-right',
-                    glow: '#data-import-modal tr[data-import="upload_zip"][data-zip-archive-type="facebook"]',
+                    glow: '#data-import-modal .data-import-row[data-import="upload_zip"][data-zip-archive-type="facebook"]',
                     fallbackText: 'Open Import & Manage Data first, then use Upload on Facebook row.',
                     navigate() {
                         const btn = document.getElementById('data-import-sidebar-btn');
@@ -194,7 +194,7 @@ const Guide = {
                 {
                     text: 'Click Upload on the Instagram row and select the exported folder.',
                     position: 'top-right',
-                    glow: '#data-import-modal tr[data-import="upload_zip"][data-zip-archive-type="instagram"]',
+                    glow: '#data-import-modal .data-import-row[data-import="upload_zip"][data-zip-archive-type="instagram"]',
                     fallbackText: 'Open Import & Manage Data first, then use Upload on Instagram row.',
                     navigate() {
                         const btn = document.getElementById('data-import-sidebar-btn');
