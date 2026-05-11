@@ -1239,6 +1239,58 @@ func runImageTagEmbeddingBackfill(svc *service.ImageService, pool *sql.DB, job *
 	job.Broadcast("completed", job.GetState())
 }
 
+// jsonSafeVecDistance ensures sqlite-vec distance values marshal to JSON (NaN/±Inf break encoding/json).
+func jsonSafeVecDistance(d any) any {
+	switch v := d.(type) {
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil
+		}
+		return v
+	case float32:
+		f := float64(v)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return nil
+		}
+		return float64(v)
+	default:
+		return d
+	}
+}
+
+func similarByTagsResultRow(meta *model.MediaMetadataResponse, distance any) map[string]any {
+	if meta == nil {
+		return nil
+	}
+	return map[string]any{
+		"id":                 meta.ID,
+		"media_blob_id":      meta.MediaBlobID,
+		"description":        meta.Description,
+		"title":              meta.Title,
+		"author":             meta.Author,
+		"tags":               meta.Tags,
+		"categories":         meta.Categories,
+		"notes":              meta.Notes,
+		"available_for_task": meta.AvailableForTask,
+		"media_type":         meta.MediaType,
+		"processed":          meta.Processed,
+		"created_at":         meta.CreatedAt,
+		"updated_at":         meta.UpdatedAt,
+		"year":               meta.Year,
+		"month":              meta.Month,
+		"latitude":           meta.Latitude,
+		"longitude":          meta.Longitude,
+		"altitude":           meta.Altitude,
+		"rating":             meta.Rating,
+		"has_gps":            meta.HasGPS,
+		"google_maps_url":    meta.GoogleMapsURL,
+		"region":             meta.Region,
+		"source":             meta.Source,
+		"source_reference":   meta.SourceReference,
+		"distance":           jsonSafeVecDistance(distance),
+	}
+}
+
 // SimilarByTagsSearch POST /images/similar-by-tags — embed normalized query locally and return nearest images for this user.
 func (h *ImageHandler) SimilarByTagsSearch(w http.ResponseWriter, r *http.Request) {
 	if h.pool == nil {
@@ -1329,6 +1381,8 @@ func (h *ImageHandler) SimilarByTagsSearch(w http.ResponseWriter, r *http.Reques
 	}
 	_ = rows.Close()
 
+	keywords := service.KeywordsForTagSearch(req.Text)
+	seenID := make(map[int64]struct{})
 	results := make([]map[string]any, 0, req.N)
 	for _, c := range candidates {
 		if len(results) >= req.N {
@@ -1345,34 +1399,75 @@ func (h *ImageHandler) SimilarByTagsSearch(w http.ResponseWriter, r *http.Reques
 		if err != nil || meta == nil {
 			continue
 		}
-		m := map[string]any{
-			"id":                 meta.ID,
-			"media_blob_id":      meta.MediaBlobID,
-			"description":        meta.Description,
-			"title":              meta.Title,
-			"author":             meta.Author,
-			"tags":               meta.Tags,
-			"categories":         meta.Categories,
-			"notes":              meta.Notes,
-			"available_for_task": meta.AvailableForTask,
-			"media_type":         meta.MediaType,
-			"processed":          meta.Processed,
-			"created_at":         meta.CreatedAt,
-			"updated_at":         meta.UpdatedAt,
-			"year":               meta.Year,
-			"month":              meta.Month,
-			"latitude":           meta.Latitude,
-			"longitude":          meta.Longitude,
-			"altitude":           meta.Altitude,
-			"rating":             meta.Rating,
-			"has_gps":            meta.HasGPS,
-			"google_maps_url":    meta.GoogleMapsURL,
-			"region":             meta.Region,
-			"source":             meta.Source,
-			"source_reference":   meta.SourceReference,
-			"distance":           c.distance,
+		if _, dup := seenID[meta.ID]; dup {
+			continue
 		}
-		results = append(results, m)
+		seenID[meta.ID] = struct{}{}
+		results = append(results, similarByTagsResultRow(meta, c.distance))
+	}
+
+	if len(results) < req.N && len(keywords) > 0 {
+		orParts := make([]string, len(keywords))
+		args := make([]any, 0, len(keywords)+2)
+		args = append(args, uid)
+		for i, kw := range keywords {
+			orParts[i] = "LOWER(COALESCE(tags, '')) LIKE ?"
+			args = append(args, "%"+kw+"%")
+		}
+		kwLimit := req.N * 15
+		if kwLimit < 50 {
+			kwLimit = 50
+		}
+		if kwLimit > 300 {
+			kwLimit = 300
+		}
+		args = append(args, kwLimit)
+		q := fmt.Sprintf(`
+			SELECT id FROM media_items
+			WHERE COALESCE(user_id, 0) = ?
+			  AND media_type LIKE 'image/%%'
+			  AND tags IS NOT NULL AND TRIM(tags) != ''
+			  AND (%s)
+			ORDER BY updated_at DESC
+			LIMIT ?`, strings.Join(orParts, " OR "))
+		kwRows, err := h.pool.QueryContext(ctx, q, args...)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("tag keyword search failed: %v", err))
+			return
+		}
+		// Drain IDs before GetMetadata: SQLite allows only one active statement per
+		// connection; nested QueryRowContext inside kwRows.Next() can deadlock.
+		var kwIDs []int64
+		for kwRows.Next() {
+			var kid int64
+			if err := kwRows.Scan(&kid); err != nil {
+				_ = kwRows.Close()
+				writeError(w, http.StatusInternalServerError, fmt.Sprintf("tag keyword scan: %v", err))
+				return
+			}
+			kwIDs = append(kwIDs, kid)
+		}
+		if err := kwRows.Err(); err != nil {
+			_ = kwRows.Close()
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("tag keyword iterate: %v", err))
+			return
+		}
+		_ = kwRows.Close()
+
+		for _, kid := range kwIDs {
+			if len(results) >= req.N {
+				break
+			}
+			if _, dup := seenID[kid]; dup {
+				continue
+			}
+			meta, err := h.svc.GetMetadata(ctx, kid)
+			if err != nil || meta == nil {
+				continue
+			}
+			seenID[kid] = struct{}{}
+			results = append(results, similarByTagsResultRow(meta, nil))
+		}
 	}
 
 	writeJSON(w, map[string]any{"results": results, "count": len(results), "query_normalized": norm})

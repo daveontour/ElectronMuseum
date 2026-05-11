@@ -9,12 +9,33 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/daveontour/aimuseum/internal/repository"
 )
 
 const mediaTagEmbeddingsVecTable = "media_tag_embeddings"
+
+// tagSearchNoiseWords drops common articles, prepositions, pronouns, and coordinating
+// conjunctions from keyword tokens so queries like "sunset at the beach" match tag text
+// without brittle matches on filler words.
+var tagSearchNoiseWords = map[string]struct{}{
+	"a": {}, "an": {}, "the": {}, "some": {}, "any": {}, "every": {}, "each": {}, "either": {}, "neither": {},
+	"at": {}, "by": {}, "for": {}, "from": {}, "in": {}, "into": {}, "of": {}, "on": {}, "onto": {}, "off": {},
+	"over": {}, "to": {}, "toward": {}, "towards": {}, "under": {}, "upon": {}, "up": {}, "down": {},
+	"with": {}, "within": {}, "without": {}, "via": {}, "per": {}, "near": {}, "past": {}, "about": {},
+	"across": {}, "against": {}, "along": {}, "among": {}, "around": {}, "before": {}, "behind": {}, "below": {},
+	"beneath": {}, "beside": {}, "besides": {}, "between": {}, "beyond": {}, "during": {}, "except": {}, "inside": {},
+	"outside": {}, "until": {}, "since": {}, "through": {}, "throughout": {}, "underneath": {},
+	"and": {}, "but": {}, "nor": {}, "or": {}, "yet": {}, "so": {},
+	"as": {}, "if": {}, "than": {}, "then": {}, "once": {},
+	"that": {}, "this": {}, "these": {}, "those": {},
+	"it": {}, "its": {}, "is": {}, "am": {}, "are": {}, "was": {}, "were": {}, "be": {}, "been": {}, "being": {},
+	"have": {}, "has": {}, "had": {}, "do": {}, "does": {}, "did": {},
+	"will": {}, "would": {}, "shall": {}, "should": {}, "may": {}, "might": {}, "must": {}, "can": {}, "could": {},
+	"not": {},
+}
 
 // NormalizeTagsForEmbedding splits comma-separated tags, trims, lowercases, dedupes,
 // sorts alphabetically, and rejoins with ", " for stable embedding input.
@@ -40,6 +61,53 @@ func NormalizeTagsForEmbedding(raw string) string {
 	}
 	sort.Strings(out)
 	return strings.Join(out, ", ")
+}
+
+// KeywordsForTagSearch returns distinct lowercase tokens for substring-matching the tags column:
+// comma-separated phrases from NormalizeTagsForEmbedding(raw), plus each whitespace-separated
+// word from raw (commas treated as separators). Tokens shorter than 2 runes are skipped.
+// Noise words (articles, prepositions, etc.) apply only to whitespace tokens from raw text;
+// each comma-normalized segment is kept as typed (e.g. tags "and", "or") so OR-based tag
+// search still runs. Multi-word normalized phrases are stored verbatim.
+func KeywordsForTagSearch(raw string) []string {
+	norm := NormalizeTagsForEmbedding(raw)
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	addUnique := func(s string) {
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	addNormSegment := func(s string) {
+		s = strings.TrimSpace(s)
+		if utf8.RuneCountInString(s) < 2 {
+			return
+		}
+		addUnique(strings.ToLower(s))
+	}
+	addLooseWord := func(s string) {
+		s = strings.TrimSpace(s)
+		if utf8.RuneCountInString(s) < 2 {
+			return
+		}
+		s = strings.ToLower(s)
+		if _, noise := tagSearchNoiseWords[s]; noise {
+			return
+		}
+		addUnique(s)
+	}
+	if norm != "" {
+		for _, p := range strings.Split(norm, ", ") {
+			addNormSegment(p)
+		}
+	}
+	relaxed := strings.ReplaceAll(strings.TrimSpace(raw), ",", " ")
+	for _, f := range strings.Fields(relaxed) {
+		addLooseWord(f)
+	}
+	return out
 }
 
 // TagEmbeddingSignature is a stable short fingerprint of normalized tag text stored in vec int_ids for skip-on-backfill.

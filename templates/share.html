@@ -14,7 +14,7 @@
             justify-content: center;
             min-height: 100vh;
             background: #0f1922;
-            font-family: inherit;
+            font-family: var(--font-sans-ui);
         }
         .share-card {
             background: #19264d;
@@ -26,23 +26,23 @@
             text-align: center;
         }
         .share-icon {
-            font-size: 2.5rem;
+            font-size: var(--text-icon-2xl);
             color: #3b82f6;
             margin-bottom: 16px;
         }
         .share-title {
             color: #fff;
             margin: 0 0 8px;
-            font-size: 1.6rem;
+            font-size: var(--text-screen-title);
         }
         .share-subtitle {
             color: #8fa4c8;
             margin: 0 0 8px;
-            font-size: 0.95rem;
+            font-size: var(--text-lead);
         }
         .share-expiry {
             color: #8fa4c8;
-            font-size: 0.85rem;
+            font-size: var(--text-caption);
             margin-bottom: 28px;
         }
         .share-expiry .expiry-warn {
@@ -56,7 +56,7 @@
             display: block;
             color: #cdd6e8;
             margin-bottom: 6px;
-            font-size: 0.9rem;
+            font-size: var(--text-md);
         }
         .form-group input {
             width: 100%;
@@ -65,7 +65,7 @@
             border: 1px solid #2e4068;
             background: #0f1922;
             color: #fff;
-            font-size: 1rem;
+            font-size: var(--text-base);
             box-sizing: border-box;
             outline: none;
             transition: border-color 0.15s;
@@ -80,7 +80,7 @@
             border: none;
             background: #3b82f6;
             color: #fff;
-            font-size: 1rem;
+            font-size: var(--text-base);
             font-weight: 600;
             cursor: pointer;
             margin-top: 4px;
@@ -97,7 +97,7 @@
             display: none;
             color: #f87171;
             margin-bottom: 16px;
-            font-size: 0.9rem;
+            font-size: var(--text-md);
             padding: 10px 14px;
             background: rgba(248,113,113,0.1);
             border-radius: 6px;
@@ -106,7 +106,7 @@
         }
         .loading-state {
             color: #8fa4c8;
-            font-size: 1rem;
+            font-size: var(--text-base);
         }
         #main-content { display: none; }
         #error-state { display: none; }

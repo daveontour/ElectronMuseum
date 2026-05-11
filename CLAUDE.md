@@ -355,6 +355,50 @@ const MyModule = (() => {
 - Modules loaded after `app.js` must self-initialize at the bottom of their file
 - All dates displayed should be in local format
 
+### Typography (UI)
+
+UI typography is centralised in `static/css/museum_of.css` under `:root` (same file as colour and spacing tokens).
+
+**Font stack**
+
+- **`--font-sans-ui`** — system UI stack (`ui-sans-serif`, `system-ui`, Segoe UI, Roboto, etc.). Applied on `body`, `.modal-content`, `.email-message`, `.form-control`, and `.modal-btn` so the shell, modals, and email cards share one family.
+- **`login.html`** uses `font-family: var(--font-sans-ui)` on `html` (after `museum_of.css` loads).
+
+**Type scale (rem; default UI sizing)**
+
+| Token | Typical use |
+|-------|----------------|
+| `--text-2xs` | Dense uppercase labels (e.g. image gallery sidebar section titles) |
+| `--text-xs` | Small UI copy (~12px) |
+| `--text-sm` | Compact controls (~13px) |
+| `--text-md` | Secondary body, small inputs (~14px) |
+| `--text-caption` | Helper / caption lines (~0.85rem) |
+| `--text-lead` | Slightly larger supporting copy (~15px) |
+| `--text-base` | Default body / form text (1rem) |
+| `--text-lg` … `--text-2xl` | Stepped emphasis and large controls |
+| `--text-heading`, `--text-heading-lg` | Modal subheads |
+| `--text-3xl` | Prominent in-modal or setup titles (1.8rem) |
+| `--text-emphasis` | Short emphasised blocks |
+| `--text-xl`, `--text-icon-xl`, `--text-icon-2xl`, `--text-screen-title` | Icons and hero-style titles where needed |
+
+**Line height**
+
+- **`--line-height-tight`**, **`--line-height-snug`**, **`--line-height-body`** — reuse for new blocks instead of ad-hoc numbers.
+
+**Chat (separate from UI scale)**
+
+- **`--message-font-size`** — chat bubble text size (default 16px). The Settings UI range control and `foundation.js` read/write this; do not fold chat rendering into the rem UI scale unless intentionally changing product behaviour.
+
+**Intentional exceptions (do not “normalise” away)**
+
+- User-selectable message fonts in the chat UI, VT323 / retro blocks, `monospace` / `ui-monospace` for code and technical fields, and Font Awesome icon font rules keep their own `font-family` values.
+
+**Conventions for new work**
+
+- Prefer **`font-size: var(--text-…)`** (and existing colour tokens) in HTML `style` attributes or CSS when `museum_of.css` is on the page.
+- Use **`em`** only for sizes that must track a parent’s font size (e.g. a hint span under a micro label).
+- Pages that **do not** load `museum_of.css` should not reference these variables; use plain **`rem`** (or page-local CSS) instead.
+
 ## Key Files Quick Reference
 
 | What | Where |
@@ -392,7 +436,7 @@ const MyModule = (() => {
 | Frontend auth | `static/js/museum/auth.js` |
 | Frontend chat renderer | `static/js/museum/chat.js` |
 | Constants / DOM cache | `static/js/museum/foundation.js` |
-| All styles | `static/css/museum_of.css` |
+| All styles; `:root` tokens (colours, spacing, **typography**: `--font-sans-ui`, `--text-*`, `--line-height-*`) | `static/css/museum_of.css` |
 | Main SPA template | `templates/index.template.html` |
 | Login / register page | `templates/login.html` |
 | Share visitor page | `templates/share.html` |
