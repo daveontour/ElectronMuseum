@@ -1,40 +1,10 @@
 'use strict';
 
 Modals.Contacts = (() => {
-        const DEFAULT_PAGE_SIZE = 25;
-        const MIN_PAGE_SIZE = 5;
-        const MAX_PAGE_SIZE = 500;
-        let pageSize = DEFAULT_PAGE_SIZE;
-        let currentPage = 0;
-        let totalContacts = 0;
         const selectedIds = new Set();
         let sortColumn = 'name';
         let sortOrder = 'asc';
         let profileNamesSet = new Set();
-
-        function getPageSizeFromInputs() {
-            const topVal = DOM.contactsPageSize ? parseInt(DOM.contactsPageSize.value, 10) : NaN;
-            const bottomVal = DOM.contactsPageSizeBottom ? parseInt(DOM.contactsPageSizeBottom.value, 10) : NaN;
-            const val = !isNaN(topVal) ? topVal : (!isNaN(bottomVal) ? bottomVal : DEFAULT_PAGE_SIZE);
-            return Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, val));
-        }
-
-        function syncPageSizeInputs() {
-            if (DOM.contactsPageSize) DOM.contactsPageSize.value = pageSize;
-            if (DOM.contactsPageSizeBottom) DOM.contactsPageSizeBottom.value = pageSize;
-        }
-
-        function updatePaginationUI(offset, totalPages) {
-            const start = totalContacts === 0 ? 0 : offset + 1;
-            const end = Math.min(offset + pageSize, totalContacts);
-            const info = `Showing ${start}-${end} of ${totalContacts}`;
-            if (DOM.contactsPaginationInfoTop) DOM.contactsPaginationInfoTop.textContent = info;
-            if (DOM.contactsPaginationInfoBottom) DOM.contactsPaginationInfoBottom.textContent = info;
-            const prevBtns = [DOM.contactsPrevBtn, DOM.contactsPrevBtnTop];
-            const nextBtns = [DOM.contactsNextBtn, DOM.contactsNextBtnTop];
-            prevBtns.forEach(b => { if (b) b.disabled = currentPage <= 0; });
-            nextBtns.forEach(b => { if (b) b.disabled = currentPage >= totalPages - 1; });
-        }
 
         function updateDeleteSelectedUI() {
             const count = selectedIds.size;
@@ -67,25 +37,22 @@ Modals.Contacts = (() => {
                 sortColumn = col;
                 sortOrder = 'desc';
             }
-            loadContacts(0);
+            loadContacts();
         }
 
-        async function loadContacts(page = 0) {
+        async function loadContacts() {
             if (!DOM.contactsLoading || !DOM.contactsTableContainer || !DOM.contactsTableBody) return;
-            pageSize = getPageSizeFromInputs();
-            syncPageSizeInputs();
             DOM.contactsLoading.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading contacts...';
             DOM.contactsLoading.style.display = 'block';
             DOM.contactsTableContainer.style.display = 'none';
             try {
-                const offset = page * pageSize;
                 const hasMessagesOnly = DOM.contactsHasMessagesOnly && DOM.contactsHasMessagesOnly.checked;
                 const emailContainsAt = DOM.contactsEmailContainsAt && DOM.contactsEmailContainsAt.checked;
                 const excludePhoneNumbers = DOM.contactsExcludePhoneNumbers && DOM.contactsExcludePhoneNumbers.checked;
                 const searchTerm = DOM.contactsSearch ? DOM.contactsSearch.value.trim() : '';
                 const url = new URL('/contacts', window.location.origin);
-                url.searchParams.set('limit', String(pageSize));
-                url.searchParams.set('offset', String(offset));
+                url.searchParams.set('limit', '99999');
+                url.searchParams.set('offset', '0');
                 url.searchParams.set('order_by', sortColumn);
                 url.searchParams.set('order', sortOrder);
                 if (hasMessagesOnly) url.searchParams.set('has_messages', 'true');
@@ -99,8 +66,6 @@ Modals.Contacts = (() => {
                 if (!contactsResponse.ok) throw new Error('Failed to load contacts');
                 const data = await contactsResponse.json();
                 const contacts = data.contacts || [];
-                totalContacts = data.total || 0;
-                currentPage = page;
 
                 if (profileNamesResponse.ok) {
                     const profileData = await profileNamesResponse.json();
@@ -117,7 +82,7 @@ Modals.Contacts = (() => {
                     row.dataset.contactId = c.id;
                     const canSelect = c.id !== 0;
                     const cb = canSelect ? `<input type="checkbox" class="contacts-row-cb" data-contact-id="${c.id}">` : '';
-                    const deleteBtn = canSelect ? `<button type="button" class="contacts-delete-btn modal-btn modal-btn-secondary" data-contact-id="${c.id}" title="Delete contact" style="padding: 4px 8px; font-size: 0.85em;"><i class="fas fa-trash-alt"></i></button>` : '';
+                    const deleteBtn = canSelect ? `<button type="button" class="contacts-delete-btn modal-btn modal-btn-secondary" data-contact-id="${c.id}" title="Delete contact" style="padding: 4px 8px; font-size: 0.85em; background-color: #dc3545; color: white;"><i class="fas fa-trash-alt"></i></button>` : '';
                     const contactName = c.name || '';
                     const hasProfile = contactName && profileNamesSet.has(contactName);
                     const runProfileBtn = contactName ? `<button type="button" class="contacts-run-profile-btn modal-btn modal-btn-secondary" data-contact-name="${escapeHtml(contactName)}" title="Generate complete profile" style="padding: 4px 8px; font-size: 0.85em;"><i class="fas fa-sync-alt"></i></button>` : '';
@@ -163,8 +128,6 @@ Modals.Contacts = (() => {
                     DOM.contactsSelectAll.indeterminate = false;
                 }
 
-                const totalPages = Math.ceil(totalContacts / pageSize) || 1;
-                updatePaginationUI(offset, totalPages);
                 updateDeleteSelectedUI();
                 updateSortIndicators();
 
@@ -183,6 +146,14 @@ Modals.Contacts = (() => {
             if (!btn) return;
             const id = parseInt(btn.dataset.contactId, 10);
             if (isNaN(id) || id === 0) return;
+            const row = btn.closest('tr');
+            const name = row ? (row.querySelector('td:nth-child(2)')?.textContent?.trim() || 'this contact') : 'this contact';
+            const ok = await AppDialogs.showAppConfirm(
+                'Delete contact',
+                `Delete "${name}"? This cannot be undone.`,
+                { danger: true }
+            );
+            if (!ok) return;
             try {
                 const response = await fetch(`/contacts/${id}`, { method: 'DELETE' });
                 if (!response.ok) {
@@ -190,9 +161,7 @@ Modals.Contacts = (() => {
                     throw new Error(err.detail || `HTTP ${response.status}`);
                 }
                 selectedIds.delete(id);
-                const totalPages = Math.ceil((totalContacts - 1) / pageSize) || 1;
-                const pageToLoad = currentPage >= totalPages && currentPage > 0 ? currentPage - 1 : currentPage;
-                await loadContacts(pageToLoad);
+                await loadContacts();
             } catch (err) {
                 console.error('Error deleting contact:', err);
                 await AppDialogs.showAppAlert('Error', `${err.message}`);
@@ -221,9 +190,7 @@ Modals.Contacts = (() => {
                     throw new Error(err.detail || `HTTP ${response.status}`);
                 }
                 ids.forEach(id => selectedIds.delete(id));
-                const totalPages = Math.ceil((totalContacts - ids.length) / pageSize) || 1;
-                const pageToLoad = currentPage >= totalPages && currentPage > 0 ? currentPage - 1 : currentPage;
-                await loadContacts(pageToLoad);
+                await loadContacts();
             } catch (err) {
                 console.error('Error deleting contacts:', err);
                 await AppDialogs.showAppAlert('Error', `${err.message}`);
@@ -423,7 +390,7 @@ Modals.Contacts = (() => {
         function open() {
             selectedIds.clear();
             Modals._openModal(DOM.contactsModal);
-            loadContacts(0);
+            loadContacts();
         }
         function close() {
             Modals._closeModal(DOM.contactsModal);
@@ -455,12 +422,6 @@ Modals.Contacts = (() => {
                 btn.innerHTML = origHtml;
             }
         }
-        function onPageSizeChange() {
-            pageSize = getPageSizeFromInputs();
-            syncPageSizeInputs();
-            loadContacts(0);
-        }
-
         function onSelectAllClick(e) {
             const checked = e.target.checked;
             if (!DOM.contactsTableBody) return;
@@ -482,20 +443,12 @@ Modals.Contacts = (() => {
             document.querySelectorAll('.contacts-sortable-header').forEach(th => {
                 th.addEventListener('click', onSortHeaderClick);
             });
-            [DOM.contactsPrevBtn, DOM.contactsPrevBtnTop].forEach(b => {
-                if (b) b.addEventListener('click', () => loadContacts(Math.max(0, currentPage - 1)));
-            });
-            [DOM.contactsNextBtn, DOM.contactsNextBtnTop].forEach(b => {
-                if (b) b.addEventListener('click', () => loadContacts(currentPage + 1));
-            });
-            if (DOM.contactsPageSize) DOM.contactsPageSize.addEventListener('change', onPageSizeChange);
-            if (DOM.contactsPageSizeBottom) DOM.contactsPageSizeBottom.addEventListener('change', onPageSizeChange);
-            if (DOM.contactsHasMessagesOnly) DOM.contactsHasMessagesOnly.addEventListener('change', () => loadContacts(0));
-            if (DOM.contactsEmailContainsAt) DOM.contactsEmailContainsAt.addEventListener('change', () => loadContacts(0));
-            if (DOM.contactsExcludePhoneNumbers) DOM.contactsExcludePhoneNumbers.addEventListener('change', () => loadContacts(0));
+            if (DOM.contactsHasMessagesOnly) DOM.contactsHasMessagesOnly.addEventListener('change', () => loadContacts());
+            if (DOM.contactsEmailContainsAt) DOM.contactsEmailContainsAt.addEventListener('change', () => loadContacts());
+            if (DOM.contactsExcludePhoneNumbers) DOM.contactsExcludePhoneNumbers.addEventListener('change', () => loadContacts());
             if (DOM.contactsTableBody) DOM.contactsTableBody.addEventListener('click', onCountCellClick);
             if (DOM.contactsSearch) {
-                const runSearch = () => loadContacts(0);
+                const runSearch = () => loadContacts();
                 DOM.contactsSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
                 DOM.contactsSearch.addEventListener('blur', runSearch);
             }
@@ -523,7 +476,7 @@ Modals.Contacts = (() => {
             open,
             close,
             openProfileByName: (name) => _openProfileByName(name),
-            reloadContactsPage: () => loadContacts(currentPage)
+            reloadContactsPage: () => loadContacts()
         };
 })();
 

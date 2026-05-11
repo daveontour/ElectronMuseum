@@ -11,6 +11,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 --   email_embeddings        USING vec0(embedding float[768], int_ids text)
 --   message_embeddings      USING vec0(embedding float[768], int_ids text)
 --   media_tag_embeddings    USING vec0(embedding float[768], int_ids text)
+--   facebook_post_text_embeddings USING vec0(embedding float[768], int_ids text)
+--   facebook_album_description_embeddings USING vec0(embedding float[768], int_ids text)
 -- See internal/database/migrate_sqlite.go (ensureSQLiteVecEmbeddingTables).
 
 -- ============================================================

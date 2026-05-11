@@ -721,12 +721,35 @@ Modals.NewImageGallery = (() => {
             }
         }
 
-        async function open() {
+        /** Clears metadata / similar / filter inputs only (no grid refresh). Call after _setupFilters when selects exist. */
+        function _resetGallerySearchCriteria() {
+            if (DOM.newImageGalleryTitle) DOM.newImageGalleryTitle.value = '';
+            if (DOM.newImageGalleryDescription) DOM.newImageGalleryDescription.value = '';
+            if (DOM.newImageGalleryTags) DOM.newImageGalleryTags.value = '';
+            if (DOM.newImageGallerySimilarTags) DOM.newImageGallerySimilarTags.value = '';
+            if (DOM.newImageGallerySimilarN) DOM.newImageGallerySimilarN.value = '25';
+            if (DOM.newImageGalleryAuthor) DOM.newImageGalleryAuthor.value = '';
+            if (DOM.newImageGallerySource) DOM.newImageGallerySource.value = '';
+            if (DOM.newImageGalleryYearFilter) DOM.newImageGalleryYearFilter.value = '0';
+            if (DOM.newImageGalleryMonthFilter) DOM.newImageGalleryMonthFilter.value = '0';
+            if (DOM.newImageGalleryRating) DOM.newImageGalleryRating.value = '';
+            if (DOM.newImageGalleryRatingMin) DOM.newImageGalleryRatingMin.value = '';
+            if (DOM.newImageGalleryRatingMax) DOM.newImageGalleryRatingMax.value = '';
+            if (DOM.newImageGalleryHasGps) DOM.newImageGalleryHasGps.checked = false;
+        }
+
+        /**
+         * @param {{ resetCriteriaAndSearch?: boolean }} [options]
+         * When resetCriteriaAndSearch is true (sidebar Images button), filters are cleared and GET /images/search runs with no params (all images).
+         */
+        async function open(options) {
+            const resetCriteriaAndSearch = !!(options && options.resetCriteriaAndSearch);
             DOM.newImageGalleryModal.style.display = 'flex';
             _syncGalleryPickModeZIndex();
             await _setupFilters();
-            // Don't load images automatically - wait for user to enter search criteria
-            imageData = [];
+            if (resetCriteriaAndSearch) {
+                _resetGallerySearchCriteria();
+            }
             selectedImageIndex = -1;
             selectedImageIds.clear();
             lastCtrlSelectedIndex = -1;
@@ -737,7 +760,13 @@ Modals.NewImageGallery = (() => {
             _updatePickModeBanner();
             await _updateThumbnailProcessingBanner();
             await _refreshSimilarEmbedAvailability();
-            _renderThumbnailGrid();
+            if (resetCriteriaAndSearch) {
+                await _loadImageData();
+            } else {
+                // Don't load images automatically — wait for user to enter search criteria (or pick-mode / openTaggedImages path fills later)
+                imageData = [];
+                _renderThumbnailGrid();
+            }
         }
 
         async function _refreshSimilarEmbedAvailability() {
@@ -1521,20 +1550,7 @@ Modals.NewImageGallery = (() => {
         }
 
         function _handleClear() {
-            if (DOM.newImageGalleryTitle) DOM.newImageGalleryTitle.value = '';
-            if (DOM.newImageGalleryDescription) DOM.newImageGalleryDescription.value = '';
-            if (DOM.newImageGalleryTags) DOM.newImageGalleryTags.value = '';
-            if (DOM.newImageGallerySimilarTags) DOM.newImageGallerySimilarTags.value = '';
-            if (DOM.newImageGallerySimilarN) DOM.newImageGallerySimilarN.value = 25;
-            if (DOM.newImageGalleryAuthor) DOM.newImageGalleryAuthor.value = '';
-            if (DOM.newImageGallerySource) DOM.newImageGallerySource.value = '';
-            if (DOM.newImageGalleryYearFilter) DOM.newImageGalleryYearFilter.value = 0;
-            if (DOM.newImageGalleryMonthFilter) DOM.newImageGalleryMonthFilter.value = 0;
-            if (DOM.newImageGalleryRating) DOM.newImageGalleryRating.value = '';
-            if (DOM.newImageGalleryRatingMin) DOM.newImageGalleryRatingMin.value = '';
-            if (DOM.newImageGalleryRatingMax) DOM.newImageGalleryRatingMax.value = '';
-            if (DOM.newImageGalleryHasGps) DOM.newImageGalleryHasGps.checked = false;
-            
+            _resetGallerySearchCriteria();
             selectedImageIndex = -1;
             selectedImageIds.clear();
             _updateSelectionUI();

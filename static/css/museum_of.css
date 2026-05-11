@@ -6556,6 +6556,29 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     box-sizing: border-box;
 }
 
+/* Multi-Content Vector Search modal body — matches Image Content Search sidebar block */
+.message-similarity-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 1rem 1.25rem 1.25rem;
+    border-bottom: none;
+    background: #f8f9fc;
+}
+.message-similarity-modal-body .email-gallery-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+.message-similarity-modal-body textarea.email-gallery-input {
+    resize: vertical;
+    min-height: 4rem;
+}
+#message-similarity-results {
+    background: #dde3ee;
+    border-radius: 6px;
+    padding: 0.5rem;
+}
+
 /* Sidebar: suppress email-gallery-search-section chrome (padding/border already on sidebar) */
 .new-image-gallery-sidebar.email-gallery-search-section {
     border-bottom: none;

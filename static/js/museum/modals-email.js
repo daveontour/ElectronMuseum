@@ -372,10 +372,8 @@ Modals.EmailGallery = (() => {
                         ? emailAskAIModal.querySelector('input[name="email-ask-ai-option"]:checked')?.value
                         : undefined;
                     const instruction = (emailAskAIOtherInput && emailAskAIOtherInput.value ? emailAskAIOtherInput.value : '').trim();
-                    const otherSectionVisible = emailAskAIOtherTextarea
-                        && emailAskAIOtherTextarea.style.display !== 'none';
 
-                    const useCustomPrompt = selectedOption === 'other' || (otherSectionVisible && instruction.length > 0);
+                    const useCustomPrompt = selectedOption === 'other' || instruction.length > 0;
 
                     if (useCustomPrompt) {
                         if (!instruction) {
@@ -429,18 +427,6 @@ Modals.EmailGallery = (() => {
                 });
             }
 
-            // Toggle textarea visibility based on radio selection
-            if (emailAskAIRadioButtons.length > 0 && emailAskAIOtherTextarea) {
-                emailAskAIRadioButtons.forEach(radio => {
-                    radio.addEventListener('change', () => {
-                        if (radio.value === 'other') {
-                            emailAskAIOtherTextarea.style.display = 'block';
-                        } else {
-                            emailAskAIOtherTextarea.style.display = 'none';
-                        }
-                    });
-                });
-            }
 
             // Close modal when clicking outside
             if (emailAskAIModal) {

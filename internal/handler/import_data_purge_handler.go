@@ -169,6 +169,24 @@ func (h *ImportDataPurgeHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			deleted = sqlutil.RowsAffected(tag)
 		}
+	case "facebook_post_text_embeddings":
+		tag, e := h.pool.ExecContext(ctx, `
+			DELETE FROM facebook_post_text_embeddings
+			WHERE rowid IN (SELECT id FROM facebook_posts WHERE COALESCE(user_id, 0) = ?1)
+		`, uid)
+		err = e
+		if err == nil {
+			deleted = sqlutil.RowsAffected(tag)
+		}
+	case "facebook_album_description_embeddings":
+		tag, e := h.pool.ExecContext(ctx, `
+			DELETE FROM facebook_album_description_embeddings
+			WHERE rowid IN (SELECT id FROM facebook_albums WHERE COALESCE(user_id, 0) = ?1)
+		`, uid)
+		err = e
+		if err == nil {
+			deleted = sqlutil.RowsAffected(tag)
+		}
 	default:
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown purge kind: %s", kind))
 		return
@@ -215,6 +233,13 @@ func (h *ImportDataPurgeHandler) purgeFacebookAlbums(ctx context.Context, uid in
 		return 0, fmt.Errorf("facebook albums media: %w", err)
 	}
 
+	if _, err = tx.ExecContext(ctx, `
+		DELETE FROM facebook_album_description_embeddings
+		WHERE rowid IN (SELECT id FROM facebook_albums WHERE COALESCE(user_id, 0) = ?1)
+	`, uid); err != nil {
+		return 0, fmt.Errorf("facebook album embeddings: %w", err)
+	}
+
 	tag, err := tx.ExecContext(ctx, `DELETE FROM facebook_albums WHERE user_id = ?1`, uid)
 	if err != nil {
 		return 0, fmt.Errorf("facebook albums: %w", err)
@@ -235,6 +260,13 @@ func (h *ImportDataPurgeHandler) purgeFacebookPosts(ctx context.Context, uid int
 
 	if _, err = sqlutil.DeleteMediaItemsByUserAndSourceTx(ctx, tx, uid, "facebook_post"); err != nil {
 		return 0, fmt.Errorf("facebook posts media: %w", err)
+	}
+
+	if _, err = tx.ExecContext(ctx, `
+		DELETE FROM facebook_post_text_embeddings
+		WHERE rowid IN (SELECT id FROM facebook_posts WHERE COALESCE(user_id, 0) = ?1)
+	`, uid); err != nil {
+		return 0, fmt.Errorf("facebook post embeddings: %w", err)
 	}
 
 	tag, err := tx.ExecContext(ctx, `DELETE FROM facebook_posts WHERE user_id = ?1`, uid)

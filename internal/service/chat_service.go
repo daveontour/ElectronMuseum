@@ -822,7 +822,7 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 	// generation with no messages/emails. Reading DB rows for an explicit profile job is not gated by that policy.
 	_, _, _, _, tavily := s.effectiveAIConfig(ctx, nil, authSessionID)
 	base := appai.NewToolExecutor(s.pool, "", tavily, s.pepper, getRAM)
-	msgsRaw, err := base(ctx, "get_imessages_by_chat_session", map[string]any{"chat_session": name})
+	msgsRaw, err := appai.GetMessagesForContactProfile(ctx, s.pool, name)
 	if err != nil {
 		return fmt.Errorf("get messages: %w", err)
 	}
@@ -903,7 +903,7 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 	}
 
 	if len(chunks) == 0 {
-		return fmt.Errorf("no messages or emails found for %q — use a name that matches chat_session in imported messages or appears in email from/to fields", name)
+		return fmt.Errorf("no messages or emails found for %q — use an exact contact name from your archive (messages matched by sender, thread identifiers, and contact email/IDs; emails by from/to)", name)
 	}
 
 	// Resolve provider: prefer requested, default gemini, fallback claude if gemini unavailable

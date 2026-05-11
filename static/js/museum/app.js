@@ -1533,7 +1533,7 @@ const App = (() => {
                 const response = await fetch('/api/import-control-last-run');
                 if (!response.ok) return;
                 const data = await response.json();
-                const importTypes = ['email_processing', 'imap_processing', 'filesystem', 'imported_images', 'filesystem_reference', 'reference_import', 'email_embeddings', 'message_embeddings', 'message_context_embeddings', 'image_tag_embeddings', 'image_export', 'contacts', 'image_ai_gemma_unclassified', 'zip_whatsapp', 'zip_instagram', 'zip_imessage', 'zip_facebook', 'upload_photos', 'upload_zip'];
+                const importTypes = ['email_processing', 'imap_processing', 'filesystem', 'imported_images', 'filesystem_reference', 'reference_import', 'email_embeddings', 'message_embeddings', 'message_context_embeddings', 'image_tag_embeddings', 'facebook_post_text_embeddings', 'facebook_album_description_embeddings', 'image_export', 'contacts', 'image_ai_gemma_unclassified', 'zip_whatsapp', 'zip_instagram', 'zip_imessage', 'zip_facebook', 'upload_photos', 'upload_zip'];
                 for (const importType of importTypes) {
                     const els = document.querySelectorAll(`[data-import-last-run="${importType}"]`);
                     const info = data[importType];
@@ -2048,7 +2048,9 @@ const App = (() => {
                 image_export: 'Export Images',
                 contacts: 'ProcessContacts',
                 image_ai_gemma_unclassified: 'Image AI Classification',
-                image_tag_embeddings: 'Image Tag Embeddings'
+                image_tag_embeddings: 'Image Tag Embeddings',
+                facebook_post_text_embeddings: 'Facebook Post Text Embeddings',
+                facebook_album_description_embeddings: 'Facebook Album Description Embeddings'
             };
             return SHORT[importType] || importType;
         }
@@ -2403,7 +2405,9 @@ const App = (() => {
             thumbnails: '/images/process-thumbnails/cancel',
             contacts: '/contacts/extract/cancel',
             image_ai_gemma_unclassified: '/image/ai-classification/cancel',
-            image_tag_embeddings: '/images/tag-embeddings/backfill/cancel'
+            image_tag_embeddings: '/images/tag-embeddings/backfill/cancel',
+            facebook_post_text_embeddings: '/facebook/posts/embeddings/backfill/cancel',
+            facebook_album_description_embeddings: '/facebook/albums/embeddings/backfill/cancel'
         };
 
         function setImportStatus(text, isError = false) {
@@ -2604,6 +2608,12 @@ const App = (() => {
                 case 'image_tag_embeddings':
                     if (data.status_line) return data.status_line;
                     return `Image tag embeddings: ${data.processed || 0}/${data.total || 0} | ${data.embedded || 0} embedded, ${data.skipped_unchanged || 0} skipped (unchanged), ${data.skipped || 0} skipped (empty), ${data.errors || 0} errors`;
+                case 'facebook_post_text_embeddings':
+                    if (data.status_line) return data.status_line;
+                    return `Facebook post embeddings: ${data.processed || 0}/${data.total || 0} | ${data.embedded || 0} embedded, ${data.skipped || 0} skipped | ${data.errors || 0} errors`;
+                case 'facebook_album_description_embeddings':
+                    if (data.status_line) return data.status_line;
+                    return `Facebook album embeddings: ${data.processed || 0}/${data.total || 0} | ${data.embedded || 0} embedded, ${data.skipped || 0} skipped | ${data.errors || 0} errors`;
                 default:
                     return JSON.stringify(data).substring(0, 100);
             }
@@ -2695,6 +2705,8 @@ const App = (() => {
             contacts: { needsInput: false, title: 'Contacts Merge', run: async () => { const r = await fetch('/contacts/extract', { method: 'POST' }); return r; }, stream: '/contacts/extract/stream' },
             image_ai_gemma_unclassified: { needsInput: false, title: 'AI classify images missing GemmaClassified tag', run: async () => { const r = await fetch('/image/ai-classification/missing-gemma-classified', { method: 'POST' }); return r; }, stream: '/image/ai-classification/stream' },
             image_tag_embeddings: { needsInput: false, title: 'Build image tag similarity embeddings', run: async (vals) => { const body = { reprocess_all: !!(vals && vals.reprocess_all) }; const r = await fetch('/images/tag-embeddings/backfill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }, stream: '/images/tag-embeddings/backfill/stream' },
+            facebook_post_text_embeddings: { needsInput: false, title: 'Build Facebook post text embeddings', run: async (vals) => { const body = { reprocess_all: !!(vals && vals.reprocess_all) }; const r = await fetch('/facebook/posts/embeddings/backfill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }, stream: '/facebook/posts/embeddings/backfill/stream' },
+            facebook_album_description_embeddings: { needsInput: false, title: 'Build Facebook album description embeddings', run: async (vals) => { const body = { reprocess_all: !!(vals && vals.reprocess_all) }; const r = await fetch('/facebook/albums/embeddings/backfill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return r; }, stream: '/facebook/albums/embeddings/backfill/stream' },
             imap_processing: { needsInput: true, title: 'IMAP Import', run: async (vals) => { const body = { host: vals.host, port: vals.port, username: vals.username, password: vals.password, use_ssl: vals.use_ssl !== false, all_folders: vals.all_folders || false, folders: vals.folders && vals.folders.length ? vals.folders : (vals.all_folders ? [] : ['INBOX']), new_only: vals.new_only || false, exclude_folders: vals.exclude_folders || [] }; return await fetch('/imap/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }, stream: '/imap/process/stream' }
         };
 
@@ -3295,6 +3307,21 @@ const App = (() => {
                     );
                 }
                 await runImport(importType, { reprocess_all: !!reprocessAll });
+            } else if (importType === 'facebook_post_text_embeddings' || importType === 'facebook_album_description_embeddings') {
+                let reprocessAll = false;
+                if (window.AppDialogs && typeof window.AppDialogs.showAppConfirm === 'function') {
+                    const label = importType === 'facebook_post_text_embeddings'
+                        ? 'Facebook post text embeddings'
+                        : 'Facebook album description embeddings';
+                    reprocessAll = await window.AppDialogs.showAppConfirm(
+                        label,
+                        'Do you want to reprocess all rows?\n\n' +
+                            'Reprocess all: refresh every embedding via local AI (slower).\n' +
+                            'Fill missing only: only embed rows that do not already have vectors.',
+                        { confirmLabel: 'Reprocess all', cancelLabel: 'Fill missing only' }
+                    );
+                }
+                await runImport(importType, { reprocess_all: !!reprocessAll });
             } else {
                 await showImportModal(importType, (vals) => runImport(importType, vals));
             }
@@ -3524,7 +3551,7 @@ const App = (() => {
         })();
 
         async function checkInitialImportStatus() {
-            const types = ['upload_zip','email_processing','imap_processing','filesystem','reference_import','email_embeddings','message_embeddings','message_context_embeddings','image_tag_embeddings','image_export','thumbnails','contacts','image_ai_gemma_unclassified'];
+            const types = ['upload_zip','email_processing','imap_processing','filesystem','reference_import','email_embeddings','message_embeddings','message_context_embeddings','image_tag_embeddings','facebook_post_text_embeddings','facebook_album_description_embeddings','image_export','thumbnails','contacts','image_ai_gemma_unclassified'];
             const statusEndpoints = {
                 upload_zip: '/import/upload/status',
                 email_processing: '/gmail/process/status',
@@ -3538,7 +3565,9 @@ const App = (() => {
                 thumbnails: '/images/process-thumbnails/status',
                 contacts: '/contacts/extract/status',
                 image_ai_gemma_unclassified: '/image/ai-classification/status',
-                image_tag_embeddings: '/images/tag-embeddings/backfill/status'
+                image_tag_embeddings: '/images/tag-embeddings/backfill/status',
+                facebook_post_text_embeddings: '/facebook/posts/embeddings/backfill/status',
+                facebook_album_description_embeddings: '/facebook/albums/embeddings/backfill/status'
             };
             for (const t of types) {
                 try {
@@ -3708,7 +3737,7 @@ const App = (() => {
 
         if (DOM.newImageGallerySidebarBtn) {
             DOM.newImageGallerySidebarBtn.addEventListener('click', () => {
-                Modals.NewImageGallery.open();
+                void Modals.NewImageGallery.open({ resetCriteriaAndSearch: true });
             });
         }
 
@@ -3769,7 +3798,9 @@ const App = (() => {
         const messageSimilarityText = document.getElementById('message-similarity-text');
         const messageSimilarityN = document.getElementById('message-similarity-n');
         const messageSimilarityStatus = document.getElementById('message-similarity-status');
+        const messageSimilarityTabs = document.getElementById('message-similarity-tabs');
         const messageSimilarityResults = document.getElementById('message-similarity-results');
+        const messageSimilarityClearBtn = document.getElementById('message-similarity-clear-btn');
 
         const setMessageSimilarityStatus = (msg, isError = false) => {
             if (!messageSimilarityStatus) return;
@@ -3783,61 +3814,281 @@ const App = (() => {
             messageSimilarityStatus.style.color = isError ? '#b91c1c' : '';
         };
 
-        const renderMessageSimilarityResults = (data) => {
-            if (!messageSimilarityResults) return;
-            messageSimilarityResults.innerHTML = '';
+        const messageSimilarityMediaMeta = {
+            messages: { label: 'Messages' },
+            images: { label: 'Images' },
+            facebook_posts: { label: 'Facebook Posts' },
+            facebook_albums: { label: 'Facebook Albums' }
+        };
+
+        const escapeHtml = (value) => String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        const normalizeMessageSimilarityResults = (data) => {
             const results = Array.isArray(data?.results) ? data.results : [];
             const uniqueMessages = Array.isArray(data?.unique_messages) ? data.unique_messages : [];
-            if (!results || !results.length) {
+            const distanceById = new Map();
+            results.forEach((row) => {
+                const distance = row?.distance;
+                const ids = Array.isArray(row?.int_ids) ? row.int_ids : [];
+                ids.forEach((id) => {
+                    const key = String(id);
+                    if (!distanceById.has(key)) distanceById.set(key, distance);
+                });
+            });
+            return uniqueMessages.map((m) => ({
+                mediaType: 'messages',
+                id: m?.id,
+                title: m?.chat_session || 'Conversation',
+                primaryText: m?.text || '',
+                secondaryText: '',
+                distance: distanceById.get(String(m?.id)),
+                preview: m?.text || '',
+                raw: m
+            }));
+        };
+
+        const normalizeImageSimilarityResults = (data) => {
+            const rows = Array.isArray(data?.results) ? data.results : [];
+            return rows.map((r) => ({
+                mediaType: 'images',
+                id: r?.id,
+                title: r?.title || `Image ${r?.id ?? ''}`.trim(),
+                primaryText: r?.description || r?.tags || r?.notes || 'No description',
+                secondaryText: r?.media_type || '',
+                distance: r?.distance,
+                previewImageUrl: r?.id ? `/images/${r.id}/thumbnail` : '',
+                raw: r
+            }));
+        };
+
+        const normalizeFacebookPostSimilarityResults = (data) => {
+            const rows = Array.isArray(data?.results) ? data.results : [];
+            return rows.map((r) => ({
+                mediaType: 'facebook_posts',
+                id: r?.id,
+                title: r?.title || `Post ${r?.id ?? ''}`.trim(),
+                primaryText: r?.post_text || '(no post text)',
+                secondaryText: r?.timestamp || '',
+                distance: r?.distance,
+                raw: r
+            }));
+        };
+
+        const normalizeFacebookAlbumSimilarityResults = (data) => {
+            const rows = Array.isArray(data?.results) ? data.results : [];
+            return rows.map((r) => ({
+                mediaType: 'facebook_albums',
+                id: r?.id,
+                title: r?.name || `Album ${r?.id ?? ''}`.trim(),
+                primaryText: r?.description || '(no album description)',
+                secondaryText: r?.cover_photo_uri || '',
+                distance: r?.distance,
+                raw: r
+            }));
+        };
+
+        const openMessageSimilarityResult = (item) => {
+            if (!item) return;
+            switch (item.mediaType) {
+                case 'messages':
+                    if (item.id && Modals.SMSMessages && typeof Modals.SMSMessages.openAndSelectConversation === 'function') {
+                        Modals.SMSMessages.openAndSelectConversation(item.id);
+                    }
+                    return;
+                case 'images':
+                    if (item.raw && Modals.ImageDetailModal && typeof Modals.ImageDetailModal.open === 'function') {
+                        Modals.ImageDetailModal.open(item.raw, { allowRedirects: true });
+                        return;
+                    }
+                    if (Modals.NewImageGallery && typeof Modals.NewImageGallery.open === 'function') {
+                        void Modals.NewImageGallery.open({ resetCriteriaAndSearch: true });
+                    }
+                    return;
+                case 'facebook_posts':
+                    if (item.id && Modals.FBPosts && typeof Modals.FBPosts.openAndFilterOnPosts === 'function') {
+                        void Modals.FBPosts.openAndFilterOnPosts([item.id]);
+                    }
+                    return;
+                case 'facebook_albums':
+                    if (item.id && Modals.FBAlbums && typeof Modals.FBAlbums.openAndSelectAlbum === 'function') {
+                        void Modals.FBAlbums.openAndSelectAlbum(item.id);
+                    }
+                    return;
+                default:
+                    return;
+            }
+        };
+
+        const renderMessageSimilarityResults = (payload) => {
+            if (!messageSimilarityResults) return;
+            messageSimilarityResults.innerHTML = '';
+            messageSimilarityResults.style.display = 'block';
+            if (messageSimilarityTabs) { messageSimilarityTabs.innerHTML = ''; messageSimilarityTabs.style.display = 'flex'; }
+            const grouped = payload?.grouped || {};
+            const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+            const mediaOrder = ['messages', 'images', 'facebook_posts', 'facebook_albums'];
+            const totalCount = mediaOrder.reduce((acc, key) => acc + ((grouped[key] || []).length), 0);
+            if (totalCount === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'app-card';
-                empty.textContent = 'No matches found.';
+                empty.textContent = errors.length ? 'No matches returned from available sources.' : 'No matches found.';
                 messageSimilarityResults.appendChild(empty);
+                if (errors.length) {
+                    const err = document.createElement('div');
+                    err.className = 'app-card';
+                    err.style.border = '1px solid #fecaca';
+                    err.style.background = '#fff1f2';
+                    err.style.padding = '10px';
+                    err.innerHTML = `<strong>Sources with errors:</strong><br>${errors.map(e => escapeHtml(e)).join('<br>')}`;
+                    messageSimilarityResults.appendChild(err);
+                }
                 return;
             }
-            if (uniqueMessages.length > 0) {
-                const groupCard = document.createElement('div');
-                groupCard.className = 'app-card';
-                groupCard.style.padding = '10px';
-                groupCard.style.border = '1px solid var(--color-border)';
-                groupCard.style.borderRadius = '8px';
+            const tabsBar = document.createElement('div');
+            tabsBar.style.display = 'flex';
+            tabsBar.style.flexWrap = 'wrap';
+            tabsBar.style.gap = '8px';
+            tabsBar.style.marginBottom = '10px';
 
-                const groupHdr = document.createElement('div');
-                groupHdr.style.fontWeight = 'bold';
-                groupHdr.style.marginBottom = '6px';
-                groupHdr.textContent = `Unique grouped messages (${uniqueMessages.length})`;
-                groupCard.appendChild(groupHdr);
+            const panelsWrap = document.createElement('div');
+            const panelByType = {};
+            const tabByType = {};
+            let firstType = '';
 
-                uniqueMessages.forEach((m) => {
+            mediaOrder.forEach((mediaType) => {
+                const items = grouped[mediaType] || [];
+                const label = (messageSimilarityMediaMeta[mediaType] && messageSimilarityMediaMeta[mediaType].label) || mediaType;
+                if (!firstType) firstType = mediaType;
+
+                const tabBtn = document.createElement('button');
+                tabBtn.type = 'button';
+                tabBtn.className = 'modal-btn modal-btn-secondary';
+                tabBtn.textContent = `${label} (${items.length})`;
+                tabBtn.style.padding = '6px 10px';
+                tabBtn.style.fontSize = '0.9em';
+                tabByType[mediaType] = tabBtn;
+                tabsBar.appendChild(tabBtn);
+
+                const section = document.createElement('div');
+                section.className = 'app-card';
+                section.style.padding = '10px';
+                section.style.border = '1px solid var(--color-border)';
+                section.style.borderRadius = '8px';
+                section.style.display = 'none';
+                panelByType[mediaType] = section;
+
+                if (!items.length) {
+                    const empty = document.createElement('div');
+                    empty.style.color = 'var(--color-text-muted)';
+                    empty.style.fontSize = '0.9em';
+                    empty.textContent = 'No matches in this media type.';
+                    section.appendChild(empty);
+                    panelsWrap.appendChild(section);
+                    return;
+                }
+
+                items.forEach((item) => {
                     const row = document.createElement('div');
-                    row.style.padding = '6px 8px';
-                    row.style.marginBottom = '6px';
-                    row.style.borderLeft = '3px solid var(--color-blue)';
-                    row.style.background = 'var(--color-bg-alt)';
-                    row.textContent = `[${m.id}] ${m.chat_session || '(no chat)'}: ${m.text || ''}`;
-                    groupCard.appendChild(row);
+                    row.style.display = 'flex';
+                    row.style.gap = '10px';
+                    row.style.alignItems = 'flex-start';
+                    row.style.justifyContent = 'space-between';
+                    row.style.padding = '8px';
+                    row.style.marginBottom = '8px';
+                    row.style.borderRadius = '8px';
+                    row.style.background = '#ffffff';
+                    row.style.border = '1px solid #b8c4d8';
+
+                    const left = document.createElement('div');
+                    left.style.flex = '1 1 auto';
+                    if (item.previewImageUrl) {
+                        const thumb = document.createElement('img');
+                        thumb.src = item.previewImageUrl;
+                        thumb.alt = item.title || 'Image preview';
+                        thumb.style.width = '56px';
+                        thumb.style.height = '56px';
+                        thumb.style.objectFit = 'cover';
+                        thumb.style.borderRadius = '6px';
+                        thumb.style.float = 'left';
+                        thumb.style.marginRight = '8px';
+                        thumb.style.border = '1px solid var(--color-border)';
+                        left.appendChild(thumb);
+                    }
+                    const title = document.createElement('div');
+                    title.style.fontWeight = '600';
+                    title.textContent = item.title || `${label} item`;
+                    left.appendChild(title);
+
+                    const preview = document.createElement('div');
+                    preview.style.fontSize = '0.9em';
+                    preview.style.marginTop = '4px';
+                    preview.style.whiteSpace = 'pre-wrap';
+                    preview.style.wordBreak = 'break-word';
+                    preview.textContent = item.primaryText || '';
+                    left.appendChild(preview);
+
+                    if (item.secondaryText) {
+                        const sub = document.createElement('div');
+                        sub.style.fontSize = '0.82em';
+                        sub.style.marginTop = '4px';
+                        sub.style.color = 'var(--color-text-muted)';
+                        sub.textContent = item.secondaryText;
+                        left.appendChild(sub);
+                    }
+
+                    const right = document.createElement('div');
+                    right.style.flex = '0 0 auto';
+                    const openBtn = document.createElement('button');
+                    openBtn.type = 'button';
+                    openBtn.className = 'modal-btn modal-btn-secondary';
+                    openBtn.textContent = 'Open';
+                    openBtn.addEventListener('click', () => openMessageSimilarityResult(item));
+                    right.appendChild(openBtn);
+
+                    row.appendChild(left);
+                    row.appendChild(right);
+                    section.appendChild(row);
                 });
-                messageSimilarityResults.appendChild(groupCard);
-            }
-            results.forEach((item, idx) => {
-                const card = document.createElement('div');
-                card.className = 'app-card';
-                card.style.padding = '10px';
-                card.style.border = '1px solid var(--color-border)';
-                card.style.borderRadius = '8px';
-                const hdr = document.createElement('div');
-                hdr.style.fontWeight = 'bold';
-                hdr.style.marginBottom = '6px';
-                hdr.textContent = `Match ${idx + 1} | row ${item.row_id} | distance ${item.distance}`;
-                card.appendChild(hdr);
-                const ids = Array.isArray(item.int_ids) ? item.int_ids : [];
-                const idsRow = document.createElement('div');
-                idsRow.style.fontSize = '0.9em';
-                idsRow.style.color = 'var(--color-text-muted)';
-                idsRow.textContent = `message ids: ${ids.join(', ')}`;
-                card.appendChild(idsRow);
-                messageSimilarityResults.appendChild(card);
+
+                panelsWrap.appendChild(section);
             });
+
+            const activateTab = (mediaType) => {
+                mediaOrder.forEach((key) => {
+                    const panel = panelByType[key];
+                    const tab = tabByType[key];
+                    const active = key === mediaType;
+                    if (panel) panel.style.display = active ? 'block' : 'none';
+                    if (tab) {
+                        tab.style.background = active ? 'var(--color-bg-alt)' : '';
+                        tab.style.borderColor = active ? 'var(--color-blue)' : '';
+                    }
+                });
+            };
+
+            mediaOrder.forEach((mediaType) => {
+                const tab = tabByType[mediaType];
+                if (tab) tab.addEventListener('click', () => activateTab(mediaType));
+            });
+            if (firstType) activateTab(firstType);
+
+            if (messageSimilarityTabs) messageSimilarityTabs.appendChild(tabsBar);
+            messageSimilarityResults.appendChild(panelsWrap);
+
+            if (errors.length) {
+                const err = document.createElement('div');
+                err.className = 'app-card';
+                err.style.border = '1px solid #fecaca';
+                err.style.background = '#fff1f2';
+                err.style.padding = '10px';
+                err.innerHTML = `<strong>Some sources failed:</strong><br>${errors.map(e => escapeHtml(e)).join('<br>')}`;
+                messageSimilarityResults.appendChild(err);
+            }
         };
 
         const closeMessageSimilarityModal = () => {
@@ -3853,6 +4104,15 @@ const App = (() => {
         }
         if (closeMessageSimilarityModalBtn) closeMessageSimilarityModalBtn.addEventListener('click', closeMessageSimilarityModal);
         if (messageSimilarityCancelBtn) messageSimilarityCancelBtn.addEventListener('click', closeMessageSimilarityModal);
+        if (messageSimilarityClearBtn) {
+            messageSimilarityClearBtn.addEventListener('click', () => {
+                if (messageSimilarityText) messageSimilarityText.value = '';
+                if (messageSimilarityN) messageSimilarityN.value = '25';
+                setMessageSimilarityStatus('');
+                if (messageSimilarityTabs) { messageSimilarityTabs.innerHTML = ''; messageSimilarityTabs.style.display = 'none'; }
+                if (messageSimilarityResults) { messageSimilarityResults.innerHTML = ''; messageSimilarityResults.style.display = 'none'; }
+            });
+        }
         if (messageSimilarityModal) {
             messageSimilarityModal.addEventListener('click', (e) => {
                 if (e.target === messageSimilarityModal) closeMessageSimilarityModal();
@@ -3861,31 +4121,101 @@ const App = (() => {
         if (messageSimilarityRunBtn) {
             messageSimilarityRunBtn.addEventListener('click', async () => {
                 const text = (messageSimilarityText?.value || '').trim();
-                const nVal = parseInt(messageSimilarityN?.value || '3', 10);
-                const n = Number.isFinite(nVal) && nVal > 0 ? nVal : 3;
+                const nVal = parseInt(messageSimilarityN?.value || '10', 10);
+                const n = Number.isFinite(nVal) && nVal > 0 ? nVal : 10;
                 if (!text) {
                     setMessageSimilarityStatus('Please enter text to search.', true);
                     return;
                 }
-                setMessageSimilarityStatus('Searching...');
-                renderMessageSimilarityResults({ results: [] });
+                setMessageSimilarityStatus('');
+                if (messageSimilarityResults) messageSimilarityResults.innerHTML = '';
+                if (messageSimilarityTabs) messageSimilarityTabs.innerHTML = '';
+                const originalBtnHTML = messageSimilarityRunBtn.innerHTML;
                 messageSimilarityRunBtn.disabled = true;
+                messageSimilarityRunBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching…';
                 try {
-                    const res = await fetch('/imessages/similarity-search/unique', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({ text, n })
+                    const sources = [
+                        {
+                            id: 'messages',
+                            label: 'Messages',
+                            endpoint: '/imessages/similarity-search/unique',
+                            normalize: normalizeMessageSimilarityResults
+                        },
+                        {
+                            id: 'images',
+                            label: 'Images',
+                            endpoint: '/images/similar-by-tags',
+                            normalize: normalizeImageSimilarityResults
+                        },
+                        {
+                            id: 'facebook_posts',
+                            label: 'Facebook Posts',
+                            endpoint: '/facebook/posts/similar-by-text',
+                            normalize: normalizeFacebookPostSimilarityResults
+                        },
+                        {
+                            id: 'facebook_albums',
+                            label: 'Facebook Albums',
+                            endpoint: '/facebook/albums/similar-by-description',
+                            normalize: normalizeFacebookAlbumSimilarityResults
+                        }
+                    ];
+
+                    const settled = await Promise.allSettled(sources.map(async (src) => {
+                        const res = await fetch(src.endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ text, n })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            throw new Error(data.detail || data.error || `${src.label} request failed (${res.status})`);
+                        }
+                        const items = src.normalize(data || {});
+                        return { source: src, items };
+                    }));
+
+                    const grouped = {
+                        messages: [],
+                        images: [],
+                        facebook_posts: [],
+                        facebook_albums: []
+                    };
+                    const errors = [];
+                    settled.forEach((entry, idx) => {
+                        const src = sources[idx];
+                        if (entry.status === 'fulfilled') {
+                            const items = Array.isArray(entry.value.items) ? entry.value.items.slice() : [];
+                            items.sort((a, b) => {
+                                const da = Number(a?.distance);
+                                const db = Number(b?.distance);
+                                const fa = Number.isFinite(da);
+                                const fb = Number.isFinite(db);
+                                if (fa && fb) return da - db;
+                                if (fa) return -1;
+                                if (fb) return 1;
+                                return String(a?.title || '').localeCompare(String(b?.title || ''));
+                            });
+                            grouped[src.id] = items;
+                        } else {
+                            grouped[src.id] = [];
+                            errors.push(`${src.label}: ${entry.reason?.message || entry.reason || 'Unknown error'}`);
+                        }
                     });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                        throw new Error(data.detail || data.error || `Request failed (${res.status})`);
+
+                    const total = Object.values(grouped).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
+                    const okSourceCount = sources.length - errors.length;
+                    if (errors.length > 0) {
+                        setMessageSimilarityStatus(`Found ${total} match(es) across ${okSourceCount}/${sources.length} sources.`, false);
+                    } else {
+                        setMessageSimilarityStatus(`Found ${total} match(es) across ${sources.length} sources.`, false);
                     }
-                    setMessageSimilarityStatus(`Found ${data.count || 0} match(es).`);
-                    renderMessageSimilarityResults(data || {});
+                    renderMessageSimilarityResults({ grouped, errors });
                 } catch (err) {
                     setMessageSimilarityStatus(`Search failed: ${err.message || err}`, true);
                 } finally {
+                    messageSimilarityRunBtn.innerHTML = originalBtnHTML;
                     messageSimilarityRunBtn.disabled = false;
                 }
             });

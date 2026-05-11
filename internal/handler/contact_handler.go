@@ -203,6 +203,11 @@ func (h *ContactHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]map[string]any, 0, len(contacts))
 	for _, c := range contacts {
+		//exclude entries where email contains \
+		if c.Email != nil && strings.Contains(*c.Email, "\\") {
+			continue
+		}
+
 		out = append(out, map[string]any{
 			"id":           c.ID,
 			"name":         c.Name,

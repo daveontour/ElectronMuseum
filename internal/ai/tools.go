@@ -19,6 +19,7 @@ import (
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/daveontour/aimuseum/internal/appctx"
 	appcrypto "github.com/daveontour/aimuseum/internal/crypto"
+	"github.com/daveontour/aimuseum/internal/sqlutil"
 )
 
 // RAMMasterGetter returns the session master password when the browser has unlocked the keyring.
@@ -421,20 +422,12 @@ func getAvailableReferenceDocuments(ctx context.Context, pool *sql.DB) (map[stri
 	return map[string]any{"documents": documents}, nil
 }
 
-func getMessagesByChatSession(ctx context.Context, pool *sql.DB, chatSession string) (map[string]any, error) {
-	q, args := toolsUIDFilter(ctx,
-		`SELECT id, message_date, sender_name, sender_id, type, text, service, subject
-		 FROM messages WHERE chat_session LIKE ? ORDER BY message_date ASC LIMIT 500`,
-		[]any{"%" + chatSession + "%"})
-	rows, err := pool.QueryContext(ctx, q, args...)
-	if err != nil {
-		return map[string]any{"error": err.Error(), "chat_session": chatSession, "message_count": 0, "messages": []any{}}, nil
-	}
-	defer rows.Close()
+// scanStandardMessageRows reads rows from SELECT id, message_date, sender_name, sender_id, type, text, service, subject.
+func scanStandardMessageRows(rows *sql.Rows) ([]map[string]any, error) {
 	var msgs []map[string]any
 	for rows.Next() {
 		var id int64
-		var msgDate *time.Time
+		var msgDate sqlutil.NullDBTime
 		var senderName, senderID, typ, text, service, subject *string
 		if err := rows.Scan(&id, &msgDate, &senderName, &senderID, &typ, &text, &service, &subject); err != nil {
 			continue
@@ -449,16 +442,117 @@ func getMessagesByChatSession(ctx context.Context, pool *sql.DB, chatSession str
 			"service":      strVal(service, ""),
 			"subject":      strVal(subject, ""),
 		}
-		if msgDate != nil {
-			m["message_date"] = msgDate.Format(time.RFC3339)
+		if msgDate.Valid {
+			m["message_date"] = msgDate.Time.Format(time.RFC3339)
 		}
 		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if msgs == nil {
 		msgs = []map[string]any{}
 	}
+	return msgs, nil
+}
+
+func getMessagesByChatSession(ctx context.Context, pool *sql.DB, chatSession string) (map[string]any, error) {
+	q, args := toolsUIDFilter(ctx,
+		`SELECT id, message_date, sender_name, sender_id, type, text, service, subject FROM messages WHERE chat_session LIKE ? ORDER BY message_date ASC LIMIT 500`,
+		[]any{"%" + chatSession + "%"})
+	rows, err := pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return map[string]any{"error": err.Error(), "chat_session": chatSession, "message_count": 0, "messages": []any{}}, nil
+	}
+	defer rows.Close()
+	msgs, scanErr := scanStandardMessageRows(rows)
+	if scanErr != nil {
+		return map[string]any{"error": scanErr.Error(), "chat_session": chatSession, "message_count": 0, "messages": []any{}}, nil
+	}
 	return map[string]any{
 		"chat_session":  chatSession,
+		"message_count": len(msgs),
+		"messages":      msgs,
+	}, nil
+}
+
+// GetMessagesForContactProfile returns messages for relationship / complete-profile generation.
+// It matches chat_session, sender_name, and sender_id against the display name, and — when a
+// contacts row exists with that exact name — also matches email, messenger IDs, and alternative_names.
+// This fixes the case where get_imessages_by_chat_session alone returned nothing because thread
+// titles do not contain the contact's display name.
+func GetMessagesForContactProfile(ctx context.Context, pool *sql.DB, name string) (map[string]any, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return map[string]any{"contact_name": name, "message_count": 0, "messages": []any{}}, nil
+	}
+	pat := "%" + name + "%"
+	orParts := []string{"chat_session LIKE ?", "sender_name LIKE ?", "sender_id LIKE ?"}
+	args := []any{pat, pat, pat}
+
+	cq, cargs := toolsUIDFilter(ctx,
+		`SELECT email, facebookid, whatsappid, imessageid, smsid, instagramid, alternative_names FROM contacts WHERE name = ?`,
+		[]any{name})
+	var email, fb, wa, im, sms, ig, altNames sql.NullString
+	if err := pool.QueryRowContext(ctx, cq, cargs...).Scan(&email, &fb, &wa, &im, &sms, &ig, &altNames); err == nil {
+		addIDPatterns := func(s string) {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				return
+			}
+			p := "%" + s + "%"
+			orParts = append(orParts, "sender_id LIKE ?", "chat_session LIKE ?")
+			args = append(args, p, p)
+		}
+		addIDPatterns(name)
+		if email.Valid {
+			addIDPatterns(email.String)
+		}
+		if fb.Valid {
+			addIDPatterns(fb.String)
+		}
+		if wa.Valid {
+			addIDPatterns(wa.String)
+		}
+		if im.Valid {
+			addIDPatterns(im.String)
+		}
+		if sms.Valid {
+			addIDPatterns(sms.String)
+		}
+		if ig.Valid {
+			addIDPatterns(ig.String)
+		}
+		if altNames.Valid {
+			for _, alt := range strings.Split(altNames.String, ",") {
+				alt = strings.TrimSpace(alt)
+				if alt == "" {
+					continue
+				}
+				ap := "%" + alt + "%"
+				orParts = append(orParts, "sender_name LIKE ?", "sender_id LIKE ?", "chat_session LIKE ?")
+				args = append(args, ap, ap, ap)
+			}
+		}
+	}
+
+	where := "(" + strings.Join(orParts, " OR ") + ")"
+	baseQ := `SELECT id, message_date, sender_name, sender_id, type, text, service, subject FROM messages WHERE ` + where + ` ORDER BY message_date ASC LIMIT 500`
+	q, args := toolsUIDFilter(ctx, baseQ, args)
+
+	// create the fully expanded sql query string
+	slog.Info("getMessagesForContactProfile: query", "q", q, "args", args)
+	rows, err := pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return map[string]any{"error": err.Error(), "contact_name": name, "message_count": 0, "messages": []any{}}, nil
+	}
+	defer rows.Close()
+	msgs, scanErr := scanStandardMessageRows(rows)
+	if scanErr != nil {
+		return map[string]any{"error": scanErr.Error(), "contact_name": name, "message_count": 0, "messages": []any{}}, nil
+	}
+	return map[string]any{
+		"contact_name":  name,
 		"message_count": len(msgs),
 		"messages":      msgs,
 	}, nil
@@ -522,7 +616,7 @@ func getMessagesAroundInChat(ctx context.Context, pool *sql.DB, chatSession stri
 		var id int64
 		var rn int64
 		var anchorR int64
-		var msgDate *time.Time
+		var msgDate sqlutil.NullDBTime
 		var senderName, senderID, typ, text, service, subject *string
 		if err := rows.Scan(&id, &msgDate, &senderName, &senderID, &typ, &text, &service, &subject, &rn, &anchorR); err != nil {
 			continue
@@ -543,8 +637,8 @@ func getMessagesAroundInChat(ctx context.Context, pool *sql.DB, chatSession stri
 			"subject":      strVal(subject, ""),
 			"is_anchor":    id == messageID,
 		}
-		if msgDate != nil {
-			m["message_date"] = msgDate.Format(time.RFC3339)
+		if msgDate.Valid {
+			m["message_date"] = msgDate.Time.Format(time.RFC3339)
 		}
 		msgs = append(msgs, m)
 	}
@@ -592,7 +686,7 @@ func getEmailsByContact(ctx context.Context, pool *sql.DB, name string) (map[str
 	var emails []map[string]any
 	for rows.Next() {
 		var id int64
-		var date *time.Time
+		var date sqlutil.NullDBTime
 		var from, to, subject, plainText, snippet *string
 		var hasAttachments bool
 		if err := rows.Scan(&id, &date, &from, &to, &subject, &plainText, &snippet, &hasAttachments); err != nil {
@@ -613,8 +707,8 @@ func getEmailsByContact(ctx context.Context, pool *sql.DB, name string) (map[str
 			"plain_text":      text,
 			"has_attachments": hasAttachments,
 		}
-		if date != nil {
-			e["date"] = date.Format(time.RFC3339)
+		if date.Valid {
+			e["date"] = date.Time.Format(time.RFC3339)
 		}
 		emails = append(emails, e)
 	}
@@ -641,7 +735,7 @@ func getSubjectWritingExamples(ctx context.Context, pool *sql.DB, subjectName st
 	var msgs []map[string]any
 	for rows.Next() {
 		var id int64
-		var msgDate *time.Time
+		var msgDate sqlutil.NullDBTime
 		var senderName, senderID, typ, text, service, subject *string
 		if err := rows.Scan(&id, &msgDate, &senderName, &senderID, &typ, &text, &service, &subject); err != nil {
 			continue
@@ -656,8 +750,8 @@ func getSubjectWritingExamples(ctx context.Context, pool *sql.DB, subjectName st
 			"service":      strVal(service, ""),
 			"subject":      strVal(subject, ""),
 		}
-		if msgDate != nil {
-			m["message_date"] = msgDate.Format(time.RFC3339)
+		if msgDate.Valid {
+			m["message_date"] = msgDate.Time.Format(time.RFC3339)
 		}
 		msgs = append(msgs, m)
 	}
@@ -668,7 +762,7 @@ func getSubjectWritingExamples(ctx context.Context, pool *sql.DB, subjectName st
 }
 
 func getAllMessagesByContact(ctx context.Context, pool *sql.DB, name string) (map[string]any, error) {
-	messages, _ := getMessagesByChatSession(ctx, pool, name)
+	messages, _ := GetMessagesForContactProfile(ctx, pool, name)
 	emails, _ := getEmailsByContact(ctx, pool, name)
 	messagesJSON, _ := json.Marshal(messages)
 	emailsJSON, _ := json.Marshal(emails)

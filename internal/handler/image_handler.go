@@ -3,8 +3,10 @@ package handler
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -41,6 +43,16 @@ var imageTagEmbeddingJob = importer.NewImportJob("Image tag embeddings", map[str
 	"total": 0, "processed": 0,
 })
 
+var facebookPostEmbeddingJob = importer.NewImportJob("Facebook post text embeddings", map[string]any{
+	"status": "idle", "status_line": nil, "error_message": nil,
+	"total": 0, "processed": 0,
+})
+
+var facebookAlbumEmbeddingJob = importer.NewImportJob("Facebook album description embeddings", map[string]any{
+	"status": "idle", "status_line": nil, "error_message": nil,
+	"total": 0, "processed": 0,
+})
+
 // ImageHandler handles all /images/*, /getLocations, and /facebook/albums/* read endpoints.
 type ImageHandler struct {
 	svc          *service.ImageService
@@ -68,6 +80,16 @@ func (h *ImageHandler) RegisterRoutes(r chi.Router) {
 	r.Post("/images/tag-embeddings/backfill/cancel", h.ImageTagEmbeddingsBackfillCancel)
 	r.Get("/images/tag-embeddings/backfill/status", h.ImageTagEmbeddingsBackfillStatus)
 	r.Post("/images/similar-by-tags", h.SimilarByTagsSearch)
+	r.Post("/facebook/posts/embeddings/backfill", h.FacebookPostEmbeddingsBackfillStart)
+	r.Get("/facebook/posts/embeddings/backfill/stream", h.FacebookPostEmbeddingsBackfillStream)
+	r.Post("/facebook/posts/embeddings/backfill/cancel", h.FacebookPostEmbeddingsBackfillCancel)
+	r.Get("/facebook/posts/embeddings/backfill/status", h.FacebookPostEmbeddingsBackfillStatus)
+	r.Post("/facebook/posts/similar-by-text", h.SimilarFacebookPostsByText)
+	r.Post("/facebook/albums/embeddings/backfill", h.FacebookAlbumEmbeddingsBackfillStart)
+	r.Get("/facebook/albums/embeddings/backfill/stream", h.FacebookAlbumEmbeddingsBackfillStream)
+	r.Post("/facebook/albums/embeddings/backfill/cancel", h.FacebookAlbumEmbeddingsBackfillCancel)
+	r.Get("/facebook/albums/embeddings/backfill/status", h.FacebookAlbumEmbeddingsBackfillStatus)
+	r.Post("/facebook/albums/similar-by-description", h.SimilarFacebookAlbumsByDescription)
 
 	r.Get("/images/search", h.Search)
 	r.Get("/images/years", h.GetYears)
@@ -1470,6 +1492,477 @@ func (h *ImageHandler) SimilarByTagsSearch(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	writeJSON(w, map[string]any{"results": results, "count": len(results), "query_normalized": norm})
+}
+
+func normalizeFreeTextForEmbedding(raw string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(raw)), " ")
+}
+
+func shortTextEmbeddingSignature(norm string) string {
+	sum := sha256.Sum256([]byte(norm))
+	return hex.EncodeToString(sum[:])
+}
+
+func vecKCandidate(n int) int {
+	k := n * 25
+	if k < 80 {
+		return 80
+	}
+	if k > 500 {
+		return 500
+	}
+	return k
+}
+
+func (h *ImageHandler) FacebookPostEmbeddingsBackfillStart(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	if err := facebookPostEmbeddingJob.AssertNotRunning(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not configured")
+		return
+	}
+	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
+		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
+		return
+	}
+	var reqBody struct {
+		ReprocessAll bool `json:"reprocess_all"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&reqBody)
+	uid := appctx.UserIDFromCtx(r.Context())
+	facebookPostEmbeddingJob.Start()
+	facebookPostEmbeddingJob.UpdateState(map[string]any{
+		"status": "in_progress", "status_line": "Starting Facebook post text embeddings backfill...",
+		"total": 0, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0, "error_message": nil,
+		"reprocess_all": reqBody.ReprocessAll,
+	})
+	facebookPostEmbeddingJob.Broadcast("status", map[string]any{"status_line": "Starting Facebook post text embeddings backfill..."})
+	go runFacebookPostEmbeddingBackfill(h.pool, h.embeddingSvc, facebookPostEmbeddingJob, uid, reqBody.ReprocessAll)
+	writeJSON(w, map[string]any{"message": "Facebook post embedding backfill started", "status": "started", "reprocess_all": reqBody.ReprocessAll})
+}
+
+func (h *ImageHandler) FacebookPostEmbeddingsBackfillStream(w http.ResponseWriter, r *http.Request) {
+	facebookPostEmbeddingJob.ServeSSE(w, r)
+}
+
+func (h *ImageHandler) FacebookPostEmbeddingsBackfillCancel(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	writeJSON(w, facebookPostEmbeddingJob.Cancel())
+}
+
+func (h *ImageHandler) FacebookPostEmbeddingsBackfillStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, facebookPostEmbeddingJob.Status())
+}
+
+func runFacebookPostEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingService, job *importer.ImportJob, uid int64, reprocessAll bool) {
+	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
+	defer job.Finish()
+	if pool == nil || embeddingSvc == nil || !embeddingSvc.IsAvailable() {
+		job.UpdateState(map[string]any{"status": "failed", "status_line": "Embedding service not available", "error_message": "embedding service unavailable"})
+		job.Broadcast("failed", job.GetState())
+		return
+	}
+
+	q := `
+		SELECT fp.id, COALESCE(fp.post_text, '')
+		FROM facebook_posts fp
+		WHERE COALESCE(fp.user_id, 0) = ?1
+		  AND TRIM(COALESCE(fp.post_text, '')) != ''`
+	if !reprocessAll {
+		q += ` AND NOT EXISTS (SELECT 1 FROM facebook_post_text_embeddings e WHERE e.rowid = fp.id)`
+	}
+	q += ` ORDER BY fp.id ASC`
+	rows, err := pool.QueryContext(ctx, q, uid)
+	if err != nil {
+		job.UpdateState(map[string]any{"status": "failed", "status_line": fmt.Sprintf("Failed to list Facebook posts: %v", err), "error_message": err.Error()})
+		job.Broadcast("failed", job.GetState())
+		return
+	}
+	defer rows.Close()
+
+	type row struct {
+		id   int64
+		text string
+	}
+	var list []row
+	for rows.Next() {
+		var rr row
+		if scanErr := rows.Scan(&rr.id, &rr.text); scanErr != nil {
+			job.UpdateState(map[string]any{"status": "failed", "status_line": fmt.Sprintf("Scan error: %v", scanErr), "error_message": scanErr.Error()})
+			job.Broadcast("failed", job.GetState())
+			return
+		}
+		list = append(list, rr)
+	}
+	if err := rows.Err(); err != nil {
+		job.UpdateState(map[string]any{"status": "failed", "status_line": fmt.Sprintf("Iterate error: %v", err), "error_message": err.Error()})
+		job.Broadcast("failed", job.GetState())
+		return
+	}
+
+	total := len(list)
+	job.UpdateState(map[string]any{"total": total, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0, "status_line": fmt.Sprintf("Facebook post embeddings: %d row(s) queued", total)})
+	job.Broadcast("progress", job.GetState())
+
+	embedded, skipped, errorsCount := 0, 0, 0
+	for i, rr := range list {
+		if job.IsCancelled() {
+			_ = recordImportControlLastRun(ctx, pool, uid, "facebook_post_text_embeddings", "cancelled", "cancelled")
+			job.UpdateState(map[string]any{"status": "cancelled", "status_line": "Facebook post embeddings backfill cancelled.", "processed": i, "embedded": embedded, "skipped": skipped, "errors": errorsCount})
+			job.Broadcast("cancelled", job.GetState())
+			return
+		}
+		norm := normalizeFreeTextForEmbedding(rr.text)
+		if norm == "" {
+			skipped++
+			job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (skipped empty text)", i+1, total)})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		vec, err := embeddingSvc.EmbedText(ctx, norm)
+		if err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (embedding failed id %d)", i+1, total, rr.id), "error_message": err.Error()})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		vecBlob, err := sqlite_vec.SerializeFloat32(vec)
+		if err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (serialize failed id %d)", i+1, total, rr.id), "error_message": err.Error()})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		if _, err := pool.ExecContext(ctx, `INSERT OR REPLACE INTO facebook_post_text_embeddings (rowid, embedding, int_ids) VALUES (?, ?, ?)`, rr.id, vecBlob, shortTextEmbeddingSignature(norm)); err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (upsert failed id %d)", i+1, total, rr.id), "error_message": err.Error()})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		embedded++
+		job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (embedded post id %d)", i+1, total, rr.id)})
+		job.Broadcast("progress", job.GetState())
+	}
+
+	_ = recordImportControlLastRun(ctx, pool, uid, "facebook_post_text_embeddings", "completed", "")
+	job.UpdateState(map[string]any{"status": "completed", "status_line": fmt.Sprintf("Facebook post embedding backfill complete: %d embedded, %d skipped, %d errors", embedded, skipped, errorsCount), "processed": total, "embedded": embedded, "skipped": skipped, "errors": errorsCount})
+	job.Broadcast("completed", job.GetState())
+}
+
+func (h *ImageHandler) SimilarFacebookPostsByText(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not configured")
+		return
+	}
+	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
+		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+		N    int    `json:"n"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	norm := normalizeFreeTextForEmbedding(req.Text)
+	if norm == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	if req.N <= 0 {
+		req.N = 25
+	}
+	if req.N > 50 {
+		req.N = 50
+	}
+	ctx := r.Context()
+	uid := appctx.UserIDFromCtx(ctx)
+	if uid == 0 {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	vec, err := h.embeddingSvc.EmbedText(ctx, norm)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("embedding failed: %v", err))
+		return
+	}
+	vecBlob, err := sqlite_vec.SerializeFloat32(vec)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("serialize embedding: %v", err))
+		return
+	}
+	rows, err := h.pool.QueryContext(ctx, `
+		SELECT fp.id, CAST(fp.timestamp AS TEXT), fp.title, fp.post_text, fp.external_url, fp.post_type, emb.distance
+		FROM facebook_post_text_embeddings emb
+		JOIN facebook_posts fp ON fp.id = emb.rowid
+		WHERE emb.embedding MATCH ? AND emb.k = ?
+		  AND COALESCE(fp.user_id, 0) = ?
+		ORDER BY emb.distance ASC
+		LIMIT ?`, vecBlob, vecKCandidate(req.N), uid, req.N)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("vector search failed: %v", err))
+		return
+	}
+	defer rows.Close()
+	results := make([]map[string]any, 0, req.N)
+	for rows.Next() {
+		var id int64
+		var ts sql.NullString
+		var title, postText, externalURL, postType *string
+		var distance any
+		if err := rows.Scan(&id, &ts, &title, &postText, &externalURL, &postType, &distance); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("scan: %v", err))
+			return
+		}
+		var tsOut any
+		if ts.Valid {
+			tsOut = ts.String
+		}
+		results = append(results, map[string]any{
+			"id":           id,
+			"timestamp":    tsOut,
+			"title":        title,
+			"post_text":    postText,
+			"external_url": externalURL,
+			"post_type":    postType,
+			"distance":     jsonSafeVecDistance(distance),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("iterate: %v", err))
+		return
+	}
+	writeJSON(w, map[string]any{"results": results, "count": len(results), "query_normalized": norm})
+}
+
+func (h *ImageHandler) FacebookAlbumEmbeddingsBackfillStart(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	if err := facebookAlbumEmbeddingJob.AssertNotRunning(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not configured")
+		return
+	}
+	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
+		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
+		return
+	}
+	var reqBody struct {
+		ReprocessAll bool `json:"reprocess_all"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&reqBody)
+	uid := appctx.UserIDFromCtx(r.Context())
+	facebookAlbumEmbeddingJob.Start()
+	facebookAlbumEmbeddingJob.UpdateState(map[string]any{
+		"status": "in_progress", "status_line": "Starting Facebook album description embeddings backfill...",
+		"total": 0, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0, "error_message": nil,
+		"reprocess_all": reqBody.ReprocessAll,
+	})
+	facebookAlbumEmbeddingJob.Broadcast("status", map[string]any{"status_line": "Starting Facebook album description embeddings backfill..."})
+	go runFacebookAlbumEmbeddingBackfill(h.pool, h.embeddingSvc, facebookAlbumEmbeddingJob, uid, reqBody.ReprocessAll)
+	writeJSON(w, map[string]any{"message": "Facebook album embedding backfill started", "status": "started", "reprocess_all": reqBody.ReprocessAll})
+}
+
+func (h *ImageHandler) FacebookAlbumEmbeddingsBackfillStream(w http.ResponseWriter, r *http.Request) {
+	facebookAlbumEmbeddingJob.ServeSSE(w, r)
+}
+
+func (h *ImageHandler) FacebookAlbumEmbeddingsBackfillCancel(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	writeJSON(w, facebookAlbumEmbeddingJob.Cancel())
+}
+
+func (h *ImageHandler) FacebookAlbumEmbeddingsBackfillStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, facebookAlbumEmbeddingJob.Status())
+}
+
+func runFacebookAlbumEmbeddingBackfill(pool *sql.DB, embeddingSvc *service.EmbeddingService, job *importer.ImportJob, uid int64, reprocessAll bool) {
+	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
+	defer job.Finish()
+	if pool == nil || embeddingSvc == nil || !embeddingSvc.IsAvailable() {
+		job.UpdateState(map[string]any{"status": "failed", "status_line": "Embedding service not available", "error_message": "embedding service unavailable"})
+		job.Broadcast("failed", job.GetState())
+		return
+	}
+	q := `
+		SELECT fa.id, COALESCE(fa.description, '')
+		FROM facebook_albums fa
+		WHERE COALESCE(fa.user_id, 0) = ?1
+		  AND TRIM(COALESCE(fa.description, '')) != ''`
+	if !reprocessAll {
+		q += ` AND NOT EXISTS (SELECT 1 FROM facebook_album_description_embeddings e WHERE e.rowid = fa.id)`
+	}
+	q += ` ORDER BY fa.id ASC`
+	rows, err := pool.QueryContext(ctx, q, uid)
+	if err != nil {
+		job.UpdateState(map[string]any{"status": "failed", "status_line": fmt.Sprintf("Failed to list Facebook albums: %v", err), "error_message": err.Error()})
+		job.Broadcast("failed", job.GetState())
+		return
+	}
+	defer rows.Close()
+	type row struct {
+		id   int64
+		text string
+	}
+	var list []row
+	for rows.Next() {
+		var rr row
+		if scanErr := rows.Scan(&rr.id, &rr.text); scanErr != nil {
+			job.UpdateState(map[string]any{"status": "failed", "status_line": fmt.Sprintf("Scan error: %v", scanErr), "error_message": scanErr.Error()})
+			job.Broadcast("failed", job.GetState())
+			return
+		}
+		list = append(list, rr)
+	}
+	if err := rows.Err(); err != nil {
+		job.UpdateState(map[string]any{"status": "failed", "status_line": fmt.Sprintf("Iterate error: %v", err), "error_message": err.Error()})
+		job.Broadcast("failed", job.GetState())
+		return
+	}
+	total := len(list)
+	job.UpdateState(map[string]any{"total": total, "processed": 0, "embedded": 0, "skipped": 0, "errors": 0, "status_line": fmt.Sprintf("Facebook album embeddings: %d row(s) queued", total)})
+	job.Broadcast("progress", job.GetState())
+
+	embedded, skipped, errorsCount := 0, 0, 0
+	for i, rr := range list {
+		if job.IsCancelled() {
+			_ = recordImportControlLastRun(ctx, pool, uid, "facebook_album_description_embeddings", "cancelled", "cancelled")
+			job.UpdateState(map[string]any{"status": "cancelled", "status_line": "Facebook album embeddings backfill cancelled.", "processed": i, "embedded": embedded, "skipped": skipped, "errors": errorsCount})
+			job.Broadcast("cancelled", job.GetState())
+			return
+		}
+		norm := normalizeFreeTextForEmbedding(rr.text)
+		if norm == "" {
+			skipped++
+			job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (skipped empty description)", i+1, total)})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		vec, err := embeddingSvc.EmbedText(ctx, norm)
+		if err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (embedding failed id %d)", i+1, total, rr.id), "error_message": err.Error()})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		vecBlob, err := sqlite_vec.SerializeFloat32(vec)
+		if err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (serialize failed id %d)", i+1, total, rr.id), "error_message": err.Error()})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		if _, err := pool.ExecContext(ctx, `INSERT OR REPLACE INTO facebook_album_description_embeddings (rowid, embedding, int_ids) VALUES (?, ?, ?)`, rr.id, vecBlob, shortTextEmbeddingSignature(norm)); err != nil {
+			errorsCount++
+			job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (upsert failed id %d)", i+1, total, rr.id), "error_message": err.Error()})
+			job.Broadcast("progress", job.GetState())
+			continue
+		}
+		embedded++
+		job.UpdateState(map[string]any{"processed": i + 1, "embedded": embedded, "skipped": skipped, "errors": errorsCount, "status_line": fmt.Sprintf("Processed %d/%d (embedded album id %d)", i+1, total, rr.id)})
+		job.Broadcast("progress", job.GetState())
+	}
+
+	_ = recordImportControlLastRun(ctx, pool, uid, "facebook_album_description_embeddings", "completed", "")
+	job.UpdateState(map[string]any{"status": "completed", "status_line": fmt.Sprintf("Facebook album embedding backfill complete: %d embedded, %d skipped, %d errors", embedded, skipped, errorsCount), "processed": total, "embedded": embedded, "skipped": skipped, "errors": errorsCount})
+	job.Broadcast("completed", job.GetState())
+}
+
+func (h *ImageHandler) SimilarFacebookAlbumsByDescription(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not configured")
+		return
+	}
+	if h.embeddingSvc == nil || !h.embeddingSvc.IsAvailable() {
+		writeError(w, http.StatusServiceUnavailable, "embedding service not available — set LOCALAI_BASE_URL and LOCALAI_EMBEDDING_MODEL")
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+		N    int    `json:"n"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	norm := normalizeFreeTextForEmbedding(req.Text)
+	if norm == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	if req.N <= 0 {
+		req.N = 25
+	}
+	if req.N > 50 {
+		req.N = 50
+	}
+	ctx := r.Context()
+	uid := appctx.UserIDFromCtx(ctx)
+	if uid == 0 {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	vec, err := h.embeddingSvc.EmbedText(ctx, norm)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("embedding failed: %v", err))
+		return
+	}
+	vecBlob, err := sqlite_vec.SerializeFloat32(vec)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("serialize embedding: %v", err))
+		return
+	}
+	rows, err := h.pool.QueryContext(ctx, `
+		SELECT fa.id, fa.name, fa.description, fa.cover_photo_uri, emb.distance
+		FROM facebook_album_description_embeddings emb
+		JOIN facebook_albums fa ON fa.id = emb.rowid
+		WHERE emb.embedding MATCH ? AND emb.k = ?
+		  AND COALESCE(fa.user_id, 0) = ?
+		ORDER BY emb.distance ASC
+		LIMIT ?`, vecBlob, vecKCandidate(req.N), uid, req.N)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("vector search failed: %v", err))
+		return
+	}
+	defer rows.Close()
+	results := make([]map[string]any, 0, req.N)
+	for rows.Next() {
+		var id int64
+		var name string
+		var description, coverPhotoURI *string
+		var distance any
+		if err := rows.Scan(&id, &name, &description, &coverPhotoURI, &distance); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("scan: %v", err))
+			return
+		}
+		results = append(results, map[string]any{
+			"id":              id,
+			"name":            name,
+			"description":     description,
+			"cover_photo_uri": coverPhotoURI,
+			"distance":        jsonSafeVecDistance(distance),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("iterate: %v", err))
+		return
+	}
 	writeJSON(w, map[string]any{"results": results, "count": len(results), "query_normalized": norm})
 }
 

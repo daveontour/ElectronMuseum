@@ -29,7 +29,13 @@ func TestEnsureSQLiteVecEmbeddingTables_CreatesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("second ensureSQLiteVecEmbeddingTables: %v", err)
 	}
 
-	for _, table := range []string{"email_embeddings", "message_embeddings", "media_tag_embeddings"} {
+	for _, table := range []string{
+		"email_embeddings",
+		"message_embeddings",
+		"media_tag_embeddings",
+		"facebook_post_text_embeddings",
+		"facebook_album_description_embeddings",
+	} {
 		var n int
 		if err := db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`,

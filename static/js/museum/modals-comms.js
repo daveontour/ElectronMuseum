@@ -1657,10 +1657,8 @@ Modals.SMSMessages = (() => {
                         ? askAIModal.querySelector('input[name="sms-ask-ai-option"]:checked')?.value
                         : undefined;
                     const instruction = (askAIOtherInput && askAIOtherInput.value ? askAIOtherInput.value : '').trim();
-                    const otherSectionVisible = askAIOtherTextarea
-                        && askAIOtherTextarea.style.display !== 'none';
 
-                    const useCustomPrompt = selectedOption === 'other' || (otherSectionVisible && instruction.length > 0);
+                    const useCustomPrompt = selectedOption === 'other' || instruction.length > 0;
 
                     if (useCustomPrompt) {
                         if (!instruction) {
@@ -1711,18 +1709,6 @@ Modals.SMSMessages = (() => {
                 });
             }
 
-            // Toggle textarea visibility based on radio selection
-            if (askAIRadioButtons.length > 0 && askAIOtherTextarea) {
-                askAIRadioButtons.forEach(radio => {
-                    radio.addEventListener('change', () => {
-                        if (radio.value === 'other') {
-                            askAIOtherTextarea.style.display = 'block';
-                        } else {
-                            askAIOtherTextarea.style.display = 'none';
-                        }
-                    });
-                });
-            }
 
             // Close modal when clicking outside
             if (askAIModal) {
