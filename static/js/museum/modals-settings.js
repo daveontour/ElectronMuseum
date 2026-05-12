@@ -1420,6 +1420,114 @@ Modals.SubjectConfiguration = (() => {
         let loadedPhoneNumbers = '';
         let loadedWhatsappHandle = '';
         let loadedInstagramHandle = '';
+        let ownerContactSuggestions = [];
+        let ownerContactAllCache = null;
+        /** Saved subject_contact_id from last successful GET / POST response; generate buttons require this. */
+        let persistedSubjectContactId = null;
+
+        function setPersistedOwnerContactFromConfig(config) {
+            if (!config || config.subject_contact_id == null || config.subject_contact_id === undefined) {
+                persistedSubjectContactId = null;
+                return;
+            }
+            const n = Number(config.subject_contact_id, 10);
+            persistedSubjectContactId = Number.isFinite(n) && n > 0 ? n : null;
+        }
+
+        function hasPersistedOwnerContact() {
+            return persistedSubjectContactId != null && Number(persistedSubjectContactId) > 0;
+        }
+
+        function syncSubjectProfileGenerateButtons() {
+            const ok = hasPersistedOwnerContact();
+            if (DOM.requestWritingStyleBtn) {
+                DOM.requestWritingStyleBtn.disabled = !ok;
+            }
+            if (DOM.requestPsychologicalProfileBtn) {
+                DOM.requestPsychologicalProfileBtn.disabled = !ok;
+            }
+            if (DOM.writingStyleRequireContactHint) {
+                DOM.writingStyleRequireContactHint.style.display = ok ? 'none' : 'block';
+            }
+            if (DOM.psychologicalProfileRequireContactHint) {
+                DOM.psychologicalProfileRequireContactHint.style.display = ok ? 'none' : 'block';
+            }
+        }
+
+        function _ownerContactLabel(c) {
+            const name = (c && c.name ? String(c.name) : '').trim() || 'Unnamed';
+            const em = c && c.email != null && String(c.email).trim() ? String(c.email).trim() : '';
+            return em ? `${name} — ${em}` : name;
+        }
+
+        function _ensureSelectedInOwnerRows(rows, selectedId) {
+            const id = selectedId === '' || selectedId == null ? 0 : Number(selectedId, 10);
+            if (!id || Number.isNaN(id)) {
+                return Array.isArray(rows) ? rows.slice() : [];
+            }
+            const r = Array.isArray(rows) ? rows.slice() : [];
+            if (r.some((x) => x && Number(x.id) === id)) {
+                return r;
+            }
+            r.push({ id, name: `Contact #${id}`, email: null });
+            return r;
+        }
+
+        async function _fetchAllContactsRows() {
+            if (ownerContactAllCache) {
+                return ownerContactAllCache;
+            }
+            const res = await fetch('/contacts?limit=50000&offset=0&order_by=name');
+            if (!res.ok) {
+                throw new Error('Could not load contacts');
+            }
+            const data = await res.json();
+            const contacts = Array.isArray(data.contacts) ? data.contacts : [];
+            ownerContactAllCache = contacts.map((row) => ({
+                id: row.id,
+                name: row.name || '',
+                email: row.email != null ? String(row.email) : null
+            }));
+            return ownerContactAllCache;
+        }
+
+        async function fillOwnerContactSelect(selectedId) {
+            const sel = DOM.subjectOwnerContactSelect;
+            if (!sel) {
+                return;
+            }
+            const showAll = !!(DOM.subjectOwnerContactShowAll && DOM.subjectOwnerContactShowAll.checked);
+            let rows = ownerContactSuggestions;
+            try {
+                if (showAll) {
+                    rows = await _fetchAllContactsRows();
+                }
+            } catch (e) {
+                console.error('Owner contact full list:', e);
+                rows = ownerContactSuggestions;
+            }
+            rows = _ensureSelectedInOwnerRows(rows, selectedId);
+            rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+            const keep = selectedId == null || selectedId === '' ? '' : String(selectedId);
+            sel.innerHTML = '<option value="">None (not linked)</option>';
+            for (const c of rows) {
+                if (!c || c.id == null) {
+                    continue;
+                }
+                const opt = document.createElement('option');
+                opt.value = String(c.id);
+                opt.textContent = _ownerContactLabel(c);
+                sel.appendChild(opt);
+            }
+            sel.value = keep;
+            if (keep !== '' && sel.value !== keep) {
+                const opt = document.createElement('option');
+                opt.value = keep;
+                opt.textContent = `Contact #${keep}`;
+                sel.appendChild(opt);
+                sel.value = keep;
+            }
+        }
 
         async function loadConfiguration() {
             try {
@@ -1481,6 +1589,9 @@ Modals.SubjectConfiguration = (() => {
         }
 
         async function requestWritingStyle() {
+            if (!hasPersistedOwnerContact()) {
+                return;
+            }
             if (!DOM.requestWritingStyleBtn || !DOM.writingStyleLoading || !DOM.writingStyleDisplay) return;
             DOM.requestWritingStyleBtn.disabled = true;
             DOM.writingStyleLoading.style.display = 'block';
@@ -1498,10 +1609,14 @@ Modals.SubjectConfiguration = (() => {
             } finally {
                 DOM.requestWritingStyleBtn.disabled = false;
                 DOM.writingStyleLoading.style.display = 'none';
+                syncSubjectProfileGenerateButtons();
             }
         }
 
         async function requestPsychologicalProfile() {
+            if (!hasPersistedOwnerContact()) {
+                return;
+            }
             if (!DOM.requestPsychologicalProfileBtn || !DOM.psychologicalProfileLoading || !DOM.psychologicalProfileDisplay) return;
             DOM.requestPsychologicalProfileBtn.disabled = true;
             DOM.psychologicalProfileLoading.style.display = 'block';
@@ -1519,6 +1634,7 @@ Modals.SubjectConfiguration = (() => {
             } finally {
                 DOM.requestPsychologicalProfileBtn.disabled = false;
                 DOM.psychologicalProfileLoading.style.display = 'none';
+                syncSubjectProfileGenerateButtons();
             }
         }
 
@@ -1537,6 +1653,17 @@ Modals.SubjectConfiguration = (() => {
                     whatsapp_handle: whatsappHandle || null,
                     instagram_handle: instagramHandle || null
                 };
+                let subjectContactId = null;
+                if (DOM.subjectOwnerContactSelect) {
+                    const raw = DOM.subjectOwnerContactSelect.value.trim();
+                    if (raw !== '') {
+                        const n = Number(raw, 10);
+                        if (Number.isFinite(n) && n > 0) {
+                            subjectContactId = n;
+                        }
+                    }
+                }
+                payload.subject_contact_id = subjectContactId;
                 const response = await fetch('/api/subject-configuration', {
                     method: 'POST',
                     headers: {
@@ -1583,12 +1710,21 @@ Modals.SubjectConfiguration = (() => {
 
 
         async function populateFormFromConfig(config) {
-            if (!config) return;
+            if (!config) {
+                setPersistedOwnerContactFromConfig(null);
+                syncSubjectProfileGenerateButtons();
+                return;
+            }
             if (DOM.subjectNameInput) DOM.subjectNameInput.value = config.subject_name || '';
             if (DOM.subjectGenderSelect) DOM.subjectGenderSelect.value = config.gender || 'Male';
             if (DOM.familyNameInput) DOM.familyNameInput.value = config.family_name || '';
             if (DOM.otherNamesInput) DOM.otherNamesInput.value = config.other_names || '';
             if (DOM.emailAddressesInput) DOM.emailAddressesInput.value = config.email_addresses || '';
+            ownerContactSuggestions = Array.isArray(config.owner_contact_suggestions) ? config.owner_contact_suggestions : [];
+            const chosen = config.subject_contact_id != null && config.subject_contact_id !== undefined
+                ? String(config.subject_contact_id)
+                : '';
+            await fillOwnerContactSelect(chosen);
             loadedPhoneNumbers = config.phone_numbers != null ? String(config.phone_numbers) : '';
             loadedWhatsappHandle = config.whatsapp_handle != null ? String(config.whatsapp_handle) : '';
             loadedInstagramHandle = config.instagram_handle != null ? String(config.instagram_handle) : '';
@@ -1598,6 +1734,8 @@ Modals.SubjectConfiguration = (() => {
             const coreVal = config.core_system_instructions || '';
             loadedCoreSystemInstructions = coreVal;
             loadedQuestionSystemInstructions = config.question_system_instructions || '';
+            setPersistedOwnerContactFromConfig(config);
+            syncSubjectProfileGenerateButtons();
         }
 
         async function loadAndPopulateForm() {
@@ -1645,6 +1783,8 @@ Modals.SubjectConfiguration = (() => {
                     if (DOM.psychologicalProfileDisplay) {
                         _renderPsychologicalProfileMarkdown(config.psychological_profile_ai || '');
                     }
+                    setPersistedOwnerContactFromConfig(config);
+                    syncSubjectProfileGenerateButtons();
                     return;
                 }
             } catch (err) {
@@ -1720,6 +1860,7 @@ Modals.SubjectConfiguration = (() => {
 
             if (DOM.cancelSubjectConfigBtn) {
                 DOM.cancelSubjectConfigBtn.addEventListener('click', () => {
+                    ownerContactAllCache = null;
                     loadAndPopulateForm();
                 });
             }
@@ -1731,6 +1872,16 @@ Modals.SubjectConfiguration = (() => {
             if (DOM.requestPsychologicalProfileBtn) {
                 DOM.requestPsychologicalProfileBtn.addEventListener('click', () => requestPsychologicalProfile());
             }
+
+            if (DOM.subjectOwnerContactShowAll) {
+                DOM.subjectOwnerContactShowAll.addEventListener('change', () => {
+                    const sel = DOM.subjectOwnerContactSelect;
+                    const v = sel ? sel.value : '';
+                    void fillOwnerContactSelect(v);
+                });
+            }
+
+            syncSubjectProfileGenerateButtons();
 
             // Check and show config with Subject Configuration tab on page load if no config exists
             checkAndShow();

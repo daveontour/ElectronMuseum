@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,40 +11,57 @@ import (
 	"github.com/daveontour/aimuseum/internal/repository"
 )
 
+// ErrSubjectContactNotFound is returned when subject_contact_id does not match a contact for the user.
+var ErrSubjectContactNotFound = errors.New("subject_contact_id does not match a contact in this archive")
+
 // SubjectConfigService handles GET /api/subject-configuration.
 type SubjectConfigService struct {
 	repo     *repository.SubjectConfigRepo
 	appInstr *repository.AppSystemInstructionsRepo
+	contacts *repository.ContactRepo
 }
 
 // NewSubjectConfigService creates a SubjectConfigService.
-func NewSubjectConfigService(repo *repository.SubjectConfigRepo, appInstr *repository.AppSystemInstructionsRepo) *SubjectConfigService {
-	return &SubjectConfigService{repo: repo, appInstr: appInstr}
+func NewSubjectConfigService(repo *repository.SubjectConfigRepo, appInstr *repository.AppSystemInstructionsRepo, contacts *repository.ContactRepo) *SubjectConfigService {
+	return &SubjectConfigService{repo: repo, appInstr: appInstr, contacts: contacts}
 }
 
 // SubjectConfigUpdateParams mirrors the POST body fields for subject_configuration only.
 type SubjectConfigUpdateParams struct {
-	SubjectName     string
-	Gender          *string
-	FamilyName      *string
-	OtherNames      *string
-	EmailAddresses  *string
-	PhoneNumbers    *string
-	WhatsAppHandle  *string
-	InstagramHandle *string
+	SubjectName         string
+	Gender              *string
+	FamilyName          *string
+	OtherNames          *string
+	EmailAddresses      *string
+	PhoneNumbers        *string
+	WhatsAppHandle      *string
+	InstagramHandle     *string
+	SubjectContactIDSet bool
+	SubjectContactID    sql.NullInt64
 }
 
 // CreateOrUpdate upserts the singleton subject configuration row.
 func (s *SubjectConfigService) CreateOrUpdate(ctx context.Context, p SubjectConfigUpdateParams) (*model.SubjectConfigResponse, error) {
+	if p.SubjectContactIDSet && p.SubjectContactID.Valid && s.contacts != nil {
+		ok, err := s.contacts.ContactExistsForUser(ctx, p.SubjectContactID.Int64)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, ErrSubjectContactNotFound
+		}
+	}
 	cfg, err := s.repo.Upsert(ctx, repository.UpsertSubjectConfigParams{
-		SubjectName:     p.SubjectName,
-		Gender:          p.Gender,
-		FamilyName:      p.FamilyName,
-		OtherNames:      p.OtherNames,
-		EmailAddresses:  p.EmailAddresses,
-		PhoneNumbers:    p.PhoneNumbers,
-		WhatsAppHandle:  p.WhatsAppHandle,
-		InstagramHandle: p.InstagramHandle,
+		SubjectName:         p.SubjectName,
+		Gender:              p.Gender,
+		FamilyName:          p.FamilyName,
+		OtherNames:          p.OtherNames,
+		EmailAddresses:      p.EmailAddresses,
+		PhoneNumbers:        p.PhoneNumbers,
+		WhatsAppHandle:      p.WhatsAppHandle,
+		InstagramHandle:     p.InstagramHandle,
+		SubjectContactIDSet: p.SubjectContactIDSet,
+		SubjectContactID:    p.SubjectContactID,
 	})
 	if err != nil {
 		return nil, err
@@ -64,6 +83,15 @@ func (s *SubjectConfigService) GetConfiguration(ctx context.Context) (*model.Sub
 
 func (s *SubjectConfigService) mergedResponse(ctx context.Context, cfg *model.SubjectConfig) (*model.SubjectConfigResponse, error) {
 	resp := toSubjectConfigResponse(cfg)
+	if s.contacts != nil {
+		sug, err := s.contacts.ListOwnerContactSuggestions(ctx, cfg.SubjectName, strPtr(cfg.FamilyName), cfg.OtherNames, cfg.EmailAddresses)
+		if err != nil {
+			return nil, err
+		}
+		resp.OwnerContactSuggestions = sug
+	} else {
+		resp.OwnerContactSuggestions = []model.OwnerContactSuggestion{}
+	}
 	if s.appInstr == nil {
 		return resp, nil
 	}
@@ -94,8 +122,15 @@ func (s *SubjectConfigService) UpdateAppSystemInstructions(ctx context.Context, 
 	return s.appInstr.Upsert(ctx, p.ChatInstructions, p.CoreInstructions, p.QuestionInstructions)
 }
 
+func strPtr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 func toSubjectConfigResponse(cfg *model.SubjectConfig) *model.SubjectConfigResponse {
-	return &model.SubjectConfigResponse{
+	resp := &model.SubjectConfigResponse{
 		ID:                     cfg.ID,
 		SubjectName:            cfg.SubjectName,
 		Gender:                 cfg.Gender,
@@ -110,6 +145,11 @@ func toSubjectConfigResponse(cfg *model.SubjectConfig) *model.SubjectConfigRespo
 		CreatedAt:              isoString(ptrTime(cfg.CreatedAt.Time)),
 		UpdatedAt:              isoString(ptrTime(cfg.UpdatedAt.Time)),
 	}
+	if cfg.SubjectContactID.Valid {
+		v := cfg.SubjectContactID.Int64
+		resp.SubjectContactID = &v
+	}
+	return resp
 }
 
 // ptrTime converts a value time.Time to *time.Time so isoString can accept it.

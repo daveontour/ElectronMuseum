@@ -122,8 +122,9 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	dashboardRepo := repository.NewDashboardRepo(pool)
 	subjectConfigRepo := repository.NewSubjectConfigRepo(pool)
 	appInstrRepo := repository.NewAppSystemInstructionsRepo(pool)
+	contactRepo := repository.NewContactRepo(pool)
 	dashboardSvc := service.NewDashboardService(dashboardRepo, subjectConfigRepo)
-	subjectConfigSvc := service.NewSubjectConfigService(subjectConfigRepo, appInstrRepo)
+	subjectConfigSvc := service.NewSubjectConfigService(subjectConfigRepo, appInstrRepo, contactRepo)
 
 	// ── Auth HTTP endpoints ────────────────────────────────────────────────────
 	authHandler := handler.NewAuthHandler(authSvc, sensitiveSvc, subjectConfigSvc, sessionMasterStore, cfg.Server.SessionCookieSecure)
@@ -185,7 +186,6 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	configHandler.RegisterRoutes(r)
 
 	// ── Contacts, email-matches, exclusions, classifications ──────────────────
-	contactRepo := repository.NewContactRepo(pool)
 	contactSvc := service.NewContactService(contactRepo, subjectConfigRepo)
 	contactHandler := handler.NewContactHandler(contactSvc, sessionMasterStore)
 	contactHandler.RegisterRoutes(r)
@@ -226,7 +226,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	messageSvc.WithGemini(geminiProvider)
 
 	// ── Admin & AI summarization ───────────────────────────────────────────────
-	adminHandler := handler.NewAdminHandler(pool, subjectConfigRepo, sessionMasterStore)
+	adminHandler := handler.NewAdminHandler(pool, subjectConfigRepo, contactRepo, sessionMasterStore)
 	adminHandler.WithGemini(geminiProvider)
 	adminHandler.WithBilling(billingRepo, userRepo)
 	adminHandler.RegisterRoutes(r)

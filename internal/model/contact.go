@@ -20,6 +20,14 @@ type Contact struct {
 	NumInstagram *int
 }
 
+// ContactDetail is a contact row loaded by id (owner / admin helpers).
+type ContactDetail struct {
+	ID               int64
+	Name             string
+	Email            *string
+	AlternativeNames *string
+}
+
 // ContactGraph is used for the relationship graph query.
 type ContactGraph struct {
 	ID           int64

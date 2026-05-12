@@ -27,6 +27,19 @@ func TestSqliteSessionsHasVisitorKeyHintColumn(t *testing.T) {
 	t.Fatal("sessions CREATE not found")
 }
 
+func TestSqliteSubjectConfigurationHasOwnerContactColumn(t *testing.T) {
+	for _, stmt := range sqliteStatements() {
+		if !strings.Contains(stmt, "CREATE TABLE IF NOT EXISTS subject_configuration") {
+			continue
+		}
+		if !strings.Contains(stmt, "subject_contact_id") {
+			t.Fatalf("subject_configuration DDL must include subject_contact_id:\n%s", stmt)
+		}
+		return
+	}
+	t.Fatal("subject_configuration CREATE not found in sqliteStatements")
+}
+
 func TestRegexpTimestampInCurrentTimestamp(t *testing.T) {
 	re := regexp.MustCompile(`(?i)\bTIMESTAMP\b`)
 	for _, s := range []string{

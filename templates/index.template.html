@@ -846,11 +846,24 @@
                             <input id="email-addresses-input" type="text" placeholder="Enter email addresses, separated by commas..." class="form-control" />
                         </div>
                         <div style="margin-bottom: 1.5em;">
+                            <label for="subject-owner-contact-select" style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Archive owner contact:</label>
+                            <p style="color: #666; font-size: var(--text-md); margin: 0 0 0.5em 0; max-width: 42rem;">Choose the contact record that represents {{owner}} in your contacts list. The list below is guessed from the subject name, family name, other names, and email fields (saved values). You can widen the list to every contact if needed.</p>
+                            <select id="subject-owner-contact-select" class="form-control" aria-describedby="subject-owner-contact-hint">
+                                <option value="">None (not linked)</option>
+                            </select>
+                            <p id="subject-owner-contact-hint" class="config-tab-lead" style="margin: 0.5em 0 0 0; max-width: none;">Tip: save name and email details first, then reopen this tab for better guesses.</p>
+                            <label style="display: flex; align-items: flex-start; gap: 8px; margin-top: 0.75em; cursor: pointer; font-size: var(--text-md); color: #444;">
+                                <input type="checkbox" id="subject-owner-contact-show-all" style="margin-top: 0.2em;" />
+                                <span>Show all contacts in this list (can be slow for very large archives)</span>
+                            </label>
+                        </div>
+                        <div style="margin-bottom: 1.5em;">
                             <label style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Writing Style (AI-generated):</label>
                             <p style="color: #666; font-size: var(--text-md); margin-bottom: 0.5em;">Analyzes a random sample of 5000 messages from {{owner}} to summarize writing style.</p>
                             <button type="button" id="request-writing-style-btn" class="modal-btn modal-btn-primary" style="margin-bottom: 0.7em;">
                                 <i class="fas fa-magic"></i> Generate Writing Style
                             </button>
+                            <p id="writing-style-require-contact-hint" class="config-tab-lead" style="display: none; margin: 0 0 0.75em 0; max-width: 42rem; color: #555;">Link the archive owner to a contact in the list above, then click <strong>Save</strong>, before generating a writing style summary.</p>
                             <div id="writing-style-loading" style="display: none; color: #666; margin-bottom: 0.5em;">
                                 <i class="fas fa-spinner fa-spin"></i> Analyzing messages...
                             </div>
@@ -862,6 +875,7 @@
                             <button type="button" id="request-psychological-profile-btn" class="modal-btn modal-btn-primary" style="margin-bottom: 0.7em;">
                                 <i class="fas fa-brain"></i> Generate Psychological Profile
                             </button>
+                            <p id="psychological-profile-require-contact-hint" class="config-tab-lead" style="display: none; margin: 0 0 0.75em 0; max-width: 42rem; color: #555;">Link the archive owner to a contact in the list above, then click <strong>Save</strong>, before generating a psychological profile.</p>
                             <div id="psychological-profile-loading" style="display: none; color: #666; margin-bottom: 0.5em;">
                                 <i class="fas fa-spinner fa-spin"></i> Analyzing messages...
                             </div>

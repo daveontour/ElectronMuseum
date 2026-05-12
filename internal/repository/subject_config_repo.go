@@ -51,14 +51,16 @@ func (r *SubjectConfigRepo) UpdatePsychologicalProfileAI(ctx context.Context, pr
 
 // UpsertParams holds the fields the caller wants to write.
 type UpsertSubjectConfigParams struct {
-	SubjectName     string
-	Gender          *string // defaults to "Male" if nil
-	FamilyName      *string
-	OtherNames      *string
-	EmailAddresses  *string
-	PhoneNumbers    *string
-	WhatsAppHandle  *string
-	InstagramHandle *string
+	SubjectName         string
+	Gender              *string // defaults to "Male" if nil
+	FamilyName          *string
+	OtherNames          *string
+	EmailAddresses      *string
+	PhoneNumbers        *string
+	WhatsAppHandle      *string
+	InstagramHandle     *string
+	SubjectContactIDSet bool
+	SubjectContactID    sql.NullInt64
 }
 
 // Upsert creates the subject configuration row if it doesn't exist, or updates
@@ -83,16 +85,26 @@ func (r *SubjectConfigRepo) Upsert(ctx context.Context, p UpsertSubjectConfigPar
 	}
 
 	if noRow {
+		var insSubjContact any
+		if p.SubjectContactIDSet {
+			if p.SubjectContactID.Valid {
+				insSubjContact = p.SubjectContactID.Int64
+			} else {
+				insSubjContact = nil
+			}
+		} else {
+			insSubjContact = nil
+		}
 		err = r.pool.QueryRowContext(ctx, `
 			INSERT INTO subject_configuration
 				(subject_name, gender,
 				 family_name, other_names, email_addresses, phone_numbers,
-				 whatsapp_handle, instagram_handle, user_id)
-			VALUES (?,?,?,?,?,?,?,?,?)
+				 whatsapp_handle, instagram_handle, subject_contact_id, user_id)
+			VALUES (?,?,?,?,?,?,?,?,?,?)
 			RETURNING id`,
 			p.SubjectName, gender,
 			p.FamilyName, p.OtherNames, p.EmailAddresses,
-			p.PhoneNumbers, p.WhatsAppHandle, p.InstagramHandle, uidVal(uid),
+			p.PhoneNumbers, p.WhatsAppHandle, p.InstagramHandle, insSubjContact, uidVal(uid),
 		).Scan(&id)
 		if err != nil {
 			return nil, fmt.Errorf("Upsert insert: %w", err)
@@ -114,6 +126,14 @@ func (r *SubjectConfigRepo) Upsert(ctx context.Context, p UpsertSubjectConfigPar
 		addOpt("phone_numbers", p.PhoneNumbers)
 		addOpt("whatsapp_handle", p.WhatsAppHandle)
 		addOpt("instagram_handle", p.InstagramHandle)
+		if p.SubjectContactIDSet {
+			if p.SubjectContactID.Valid {
+				set = append(set, "subject_contact_id = ?")
+				args = append(args, p.SubjectContactID.Int64)
+			} else {
+				set = append(set, "subject_contact_id = NULL")
+			}
+		}
 
 		args = append(args, id)
 		_, err = r.pool.ExecContext(ctx,
@@ -134,6 +154,7 @@ func (r *SubjectConfigRepo) GetFirst(ctx context.Context) (*model.SubjectConfig,
 	q := `
 		SELECT id, subject_name, gender, family_name, other_names,
 		       email_addresses, phone_numbers, whatsapp_handle, instagram_handle,
+		       subject_contact_id,
 		       writing_style_ai, psychological_profile_ai,
 		       created_at, updated_at
 		FROM subject_configuration
@@ -148,6 +169,7 @@ func (r *SubjectConfigRepo) GetFirst(ctx context.Context) (*model.SubjectConfig,
 	err := row.Scan(
 		&cfg.ID, &cfg.SubjectName, &cfg.Gender, &cfg.FamilyName, &cfg.OtherNames,
 		&cfg.EmailAddresses, &cfg.PhoneNumbers, &cfg.WhatsAppHandle, &cfg.InstagramHandle,
+		&cfg.SubjectContactID,
 		&cfg.WritingStyleAI, &cfg.PsychologicalProfileAI,
 		&cfg.CreatedAt, &cfg.UpdatedAt,
 	)
@@ -158,6 +180,28 @@ func (r *SubjectConfigRepo) GetFirst(ctx context.Context) (*model.SubjectConfig,
 		return nil, fmt.Errorf("GetFirst subject_configuration: %w", err)
 	}
 	return cfg, nil
+}
+
+// GetContactID returns subject_contact_id for the current user's subject_configuration row.
+// Returns (0, nil) when there is no row or subject_contact_id is unset.
+func (r *SubjectConfigRepo) GetContactID(ctx context.Context) (int64, error) {
+	uid := uidFromCtx(ctx)
+	q := `SELECT subject_contact_id FROM subject_configuration WHERE TRUE`
+	args := []any{}
+	q, args = addUIDFilter(q, args, uid)
+	q += " LIMIT 1"
+	var nid sql.NullInt64
+	err := r.pool.QueryRowContext(ctx, q, args...).Scan(&nid)
+	if err != nil {
+		if isNoRows(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("GetContactID: %w", err)
+	}
+	if !nid.Valid {
+		return 0, nil
+	}
+	return nid.Int64, nil
 }
 
 // FindUserIDBySubjectName returns (userID, found, error) for the archive whose

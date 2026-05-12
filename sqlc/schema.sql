@@ -527,6 +527,7 @@ CREATE TABLE IF NOT EXISTS subject_configuration (
     phone_numbers            TEXT,
     whatsapp_handle          VARCHAR(255),
     instagram_handle         VARCHAR(255),
+    subject_contact_id       BIGINT REFERENCES contacts(id) ON DELETE SET NULL,
     writing_style_ai         TEXT,
     psychological_profile_ai TEXT,
     personality_profile_ai   TEXT,

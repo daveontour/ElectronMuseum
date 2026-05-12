@@ -1,6 +1,10 @@
 package model
 
-import "github.com/daveontour/aimuseum/internal/sqlutil"
+import (
+	"database/sql"
+
+	"github.com/daveontour/aimuseum/internal/sqlutil"
+)
 
 // DashboardResponse is the shape returned by GET /api/dashboard.
 type DashboardResponse struct {
@@ -41,6 +45,13 @@ type ContactCount struct {
 	Count int64  `json:"count"`
 }
 
+// OwnerContactSuggestion is a short contact row for linking the archive owner.
+type OwnerContactSuggestion struct {
+	ID    int64   `json:"id"`
+	Name  string  `json:"name"`
+	Email *string `json:"email,omitempty"`
+}
+
 // SubjectConfig is the domain type for a row in subject_configuration.
 type SubjectConfig struct {
 	ID                     int64
@@ -52,6 +63,7 @@ type SubjectConfig struct {
 	PhoneNumbers           *string
 	WhatsAppHandle         *string
 	InstagramHandle        *string
+	SubjectContactID       sql.NullInt64
 	WritingStyleAI         *string
 	PsychologicalProfileAI *string
 	CreatedAt              sqlutil.DBTime
@@ -60,22 +72,24 @@ type SubjectConfig struct {
 
 // SubjectConfigResponse is the shape returned by GET /api/subject-configuration.
 type SubjectConfigResponse struct {
-	ID                         int64   `json:"id"`
-	SubjectName                string  `json:"subject_name"`
-	Gender                     string  `json:"gender"`
-	FamilyName                 *string `json:"family_name"`
-	OtherNames                 *string `json:"other_names"`
-	EmailAddresses             *string `json:"email_addresses"`
-	PhoneNumbers               *string `json:"phone_numbers"`
-	WhatsAppHandle             *string `json:"whatsapp_handle"`
-	InstagramHandle            *string `json:"instagram_handle"`
-	WritingStyleAI             *string `json:"writing_style_ai"`
-	PsychologicalProfileAI     *string `json:"psychological_profile_ai"`
-	SystemInstructions         string  `json:"system_instructions"`
-	CoreSystemInstructions     string  `json:"core_system_instructions"`
-	QuestionSystemInstructions string  `json:"question_system_instructions"`
-	CreatedAt                  *string `json:"created_at"`
-	UpdatedAt                  *string `json:"updated_at"`
+	ID                         int64                    `json:"id"`
+	SubjectName                string                   `json:"subject_name"`
+	Gender                     string                   `json:"gender"`
+	FamilyName                 *string                  `json:"family_name"`
+	OtherNames                 *string                  `json:"other_names"`
+	EmailAddresses             *string                  `json:"email_addresses"`
+	PhoneNumbers               *string                  `json:"phone_numbers"`
+	WhatsAppHandle             *string                  `json:"whatsapp_handle"`
+	InstagramHandle            *string                  `json:"instagram_handle"`
+	SubjectContactID           *int64                   `json:"subject_contact_id,omitempty"`
+	OwnerContactSuggestions    []OwnerContactSuggestion `json:"owner_contact_suggestions"`
+	WritingStyleAI             *string                  `json:"writing_style_ai"`
+	PsychologicalProfileAI     *string                  `json:"psychological_profile_ai"`
+	SystemInstructions         string                   `json:"system_instructions"`
+	CoreSystemInstructions     string                   `json:"core_system_instructions"`
+	QuestionSystemInstructions string                   `json:"question_system_instructions"`
+	CreatedAt                  *string                  `json:"created_at"`
+	UpdatedAt                  *string                  `json:"updated_at"`
 }
 
 // DashboardRaw holds data collected by the repo before service-layer assembly.

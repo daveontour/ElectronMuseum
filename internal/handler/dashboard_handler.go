@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/daveontour/aimuseum/internal/keystore"
 	"github.com/daveontour/aimuseum/internal/service"
@@ -46,14 +49,15 @@ func (h *DashboardHandler) UpsertSubjectConfiguration(w http.ResponseWriter, r *
 		return
 	}
 	var body struct {
-		SubjectName     string  `json:"subject_name"`
-		Gender          *string `json:"gender"`
-		FamilyName      *string `json:"family_name"`
-		OtherNames      *string `json:"other_names"`
-		EmailAddresses  *string `json:"email_addresses"`
-		PhoneNumbers    *string `json:"phone_numbers"`
-		WhatsAppHandle  *string `json:"whatsapp_handle"`
-		InstagramHandle *string `json:"instagram_handle"`
+		SubjectName      string          `json:"subject_name"`
+		Gender           *string         `json:"gender"`
+		FamilyName       *string         `json:"family_name"`
+		OtherNames       *string         `json:"other_names"`
+		EmailAddresses   *string         `json:"email_addresses"`
+		PhoneNumbers     *string         `json:"phone_numbers"`
+		WhatsAppHandle   *string         `json:"whatsapp_handle"`
+		InstagramHandle  *string         `json:"instagram_handle"`
+		SubjectContactID json.RawMessage `json:"subject_contact_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -63,17 +67,44 @@ func (h *DashboardHandler) UpsertSubjectConfiguration(w http.ResponseWriter, r *
 		writeError(w, http.StatusBadRequest, "subject_name is required")
 		return
 	}
+
+	contactIDSet := len(body.SubjectContactID) > 0
+	var cid sql.NullInt64
+	if contactIDSet {
+		raw := strings.TrimSpace(string(body.SubjectContactID))
+		if raw == "" || raw == "null" {
+			cid = sql.NullInt64{Valid: false}
+		} else {
+			var v int64
+			if err := json.Unmarshal(body.SubjectContactID, &v); err != nil {
+				writeError(w, http.StatusBadRequest, "subject_contact_id must be a number or null")
+				return
+			}
+			if v <= 0 {
+				cid = sql.NullInt64{Valid: false}
+			} else {
+				cid = sql.NullInt64{Valid: true, Int64: v}
+			}
+		}
+	}
+
 	resp, err := h.subjectSvc.CreateOrUpdate(r.Context(), service.SubjectConfigUpdateParams{
-		SubjectName:     body.SubjectName,
-		Gender:          body.Gender,
-		FamilyName:      body.FamilyName,
-		OtherNames:      body.OtherNames,
-		EmailAddresses:  body.EmailAddresses,
-		PhoneNumbers:    body.PhoneNumbers,
-		WhatsAppHandle:  body.WhatsAppHandle,
-		InstagramHandle: body.InstagramHandle,
+		SubjectName:         body.SubjectName,
+		Gender:              body.Gender,
+		FamilyName:          body.FamilyName,
+		OtherNames:          body.OtherNames,
+		EmailAddresses:      body.EmailAddresses,
+		PhoneNumbers:        body.PhoneNumbers,
+		WhatsAppHandle:      body.WhatsAppHandle,
+		InstagramHandle:     body.InstagramHandle,
+		SubjectContactIDSet: contactIDSet,
+		SubjectContactID:    cid,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrSubjectContactNotFound) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error saving subject configuration: %s", err))
 		return
 	}

@@ -188,6 +188,152 @@ func (r *ContactRepo) ListNames(ctx context.Context) ([]struct {
 	return out, rows.Err()
 }
 
+// ContactExistsForUser reports whether a contact row exists for the current user.
+func (r *ContactRepo) ContactExistsForUser(ctx context.Context, contactID int64) (bool, error) {
+	if contactID <= 0 {
+		return false, nil
+	}
+	uid := uidFromCtx(ctx)
+	q := `SELECT 1 FROM contacts WHERE id = ?`
+	args := []any{contactID}
+	q, args = addUIDFilter(q, args, uid)
+	q += " LIMIT 1"
+	var one int
+	err := r.pool.QueryRowContext(ctx, q, args...).Scan(&one)
+	if err != nil {
+		if isNoRows(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("ContactExistsForUser: %w", err)
+	}
+	return true, nil
+}
+
+// GetContact loads one contact by id for the current user (id, name, email, alternative_names).
+// Returns (nil, nil) when not found or id <= 0.
+func (r *ContactRepo) GetContact(ctx context.Context, id int64) (*model.ContactDetail, error) {
+	if id <= 0 {
+		return nil, nil
+	}
+	uid := uidFromCtx(ctx)
+	q := `SELECT id, name, email, alternative_names FROM contacts WHERE id = ?`
+	args := []any{id}
+	q, args = addUIDFilter(q, args, uid)
+	var (
+		out      model.ContactDetail
+		em       sql.NullString
+		altNames sql.NullString
+	)
+	err := r.pool.QueryRowContext(ctx, q, args...).Scan(&out.ID, &out.Name, &em, &altNames)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetContact: %w", err)
+	}
+	if em.Valid {
+		s := em.String
+		out.Email = &s
+	}
+	if altNames.Valid {
+		s := altNames.String
+		out.AlternativeNames = &s
+	}
+	return &out, nil
+}
+
+const maxOwnerContactTokens = 32
+
+func ownerContactMatchTokens(subjectName, familyName string, otherNames, emails *string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	add := func(s string) {
+		t := strings.ToLower(strings.TrimSpace(s))
+		if len(t) < 2 {
+			return
+		}
+		if _, ok := seen[t]; ok {
+			return
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	add(subjectName)
+	add(familyName)
+	full := strings.TrimSpace(strings.Join([]string{strings.TrimSpace(subjectName), strings.TrimSpace(familyName)}, " "))
+	add(full)
+	if otherNames != nil {
+		for _, p := range strings.Split(*otherNames, ",") {
+			add(p)
+			for _, w := range strings.Fields(p) {
+				add(w)
+			}
+		}
+	}
+	if emails != nil {
+		for _, p := range strings.Split(*emails, ",") {
+			add(p)
+			if i := strings.IndexByte(p, '@'); i > 0 {
+				add(p[:i])
+			}
+		}
+	}
+	if len(out) > maxOwnerContactTokens {
+		out = out[:maxOwnerContactTokens]
+	}
+	return out
+}
+
+// ListOwnerContactSuggestions returns contacts whose name or email likely match the subject profile.
+func (r *ContactRepo) ListOwnerContactSuggestions(ctx context.Context, subjectName, familyName string, otherNames, emails *string) ([]model.OwnerContactSuggestion, error) {
+	tokens := ownerContactMatchTokens(subjectName, familyName, otherNames, emails)
+	if len(tokens) == 0 {
+		return []model.OwnerContactSuggestion{}, nil
+	}
+	var orConds []string
+	var args []any
+	for _, tok := range tokens {
+		pat := "%" + tok + "%"
+		orConds = append(orConds, "(LOWER(COALESCE(name,'')) LIKE ? OR LOWER(COALESCE(email,'')) LIKE ?)")
+		args = append(args, pat, pat)
+	}
+	q := `SELECT DISTINCT id, name, email FROM contacts WHERE id <> 0 AND (` + strings.Join(orConds, " OR ") + `)`
+	q, args = addUIDFilter(q, args, uidFromCtx(ctx))
+	q += ` ORDER BY name COLLATE NOCASE LIMIT 200`
+
+	rows, err := r.pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ListOwnerContactSuggestions: %w", err)
+	}
+	defer rows.Close()
+
+	var out []model.OwnerContactSuggestion
+	for rows.Next() {
+		var id int64
+		var name string
+		var em sql.NullString
+		if err := rows.Scan(&id, &name, &em); err != nil {
+			return nil, err
+		}
+		row := model.OwnerContactSuggestion{ID: id, Name: name}
+		if em.Valid {
+			s := em.String
+			row.Email = &s
+		}
+		if row.Email != nil && strings.Contains(*row.Email, "\\") {
+			continue
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []model.OwnerContactSuggestion{}
+	}
+	return out, nil
+}
+
 // GetByName returns the first contact matching name (for classification update).
 func (r *ContactRepo) GetByName(ctx context.Context, name string) (*struct {
 	ID      int64

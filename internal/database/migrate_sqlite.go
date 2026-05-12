@@ -122,6 +122,10 @@ func MigrateSQLite(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
+	if err := addSubjectConfigurationSubjectContactIDColumn(ctx, db); err != nil {
+		return err
+	}
+
 	if err := ensureSQLiteVecEmbeddingTables(ctx, db); err != nil {
 		return err
 	}
@@ -196,6 +200,35 @@ func addUserDeepSeekLLMColumns(ctx context.Context, db *sql.DB) error {
 		}
 		slog.Info("sqlite migration: added users." + col.name)
 	}
+	return nil
+}
+
+func addSubjectConfigurationSubjectContactIDColumn(ctx context.Context, db *sql.DB) error {
+	var n int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'subject_configuration'`,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("sqlite_master subject_configuration: %w", err)
+	}
+	if n == 0 {
+		return nil
+	}
+	var has int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('subject_configuration') WHERE name = 'subject_contact_id'`,
+	).Scan(&has); err != nil {
+		return fmt.Errorf("pragma_table_info subject_configuration.subject_contact_id: %w", err)
+	}
+	if has > 0 {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE subject_configuration ADD COLUMN subject_contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL`); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "duplicate column") && !strings.Contains(msg, "already exists") {
+			return fmt.Errorf("add subject_configuration.subject_contact_id: %w", err)
+		}
+	}
+	slog.Info("sqlite migration: added subject_configuration.subject_contact_id")
 	return nil
 }
 

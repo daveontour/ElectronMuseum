@@ -11,6 +11,7 @@ import (
 	appai "github.com/daveontour/aimuseum/internal/ai"
 	"github.com/daveontour/aimuseum/internal/appctx"
 	"github.com/daveontour/aimuseum/internal/keystore"
+	"github.com/daveontour/aimuseum/internal/model"
 	"github.com/daveontour/aimuseum/internal/repository"
 	"github.com/daveontour/aimuseum/internal/service"
 	"github.com/daveontour/aimuseum/internal/sqlutil"
@@ -21,6 +22,7 @@ import (
 type AdminHandler struct {
 	pool              *sql.DB
 	subjectConfigRepo *repository.SubjectConfigRepo
+	contactRepo       *repository.ContactRepo
 	gemini            *appai.GeminiProvider
 	sessionStore      *keystore.SessionMasterStore
 	billing           *repository.BillingRepo
@@ -28,8 +30,13 @@ type AdminHandler struct {
 }
 
 // NewAdminHandler creates an AdminHandler.
-func NewAdminHandler(pool *sql.DB, subjectConfigRepo *repository.SubjectConfigRepo, sessionStore *keystore.SessionMasterStore) *AdminHandler {
-	return &AdminHandler{pool: pool, subjectConfigRepo: subjectConfigRepo, sessionStore: sessionStore}
+func NewAdminHandler(pool *sql.DB, subjectConfigRepo *repository.SubjectConfigRepo, contactRepo *repository.ContactRepo, sessionStore *keystore.SessionMasterStore) *AdminHandler {
+	return &AdminHandler{
+		pool:              pool,
+		subjectConfigRepo: subjectConfigRepo,
+		contactRepo:       contactRepo,
+		sessionStore:      sessionStore,
+	}
 }
 
 // WithGemini injects a GeminiProvider for AI summarization.
@@ -230,8 +237,17 @@ func (h *AdminHandler) SummarizeWritingStyle(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusUnprocessableEntity, "no emails available for analysis")
 		return
 	}
+	msgs, err := h.sampleMessagesFromArchiveOwner(ctx, 50)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading message samples: %s", err))
+		return
+	}
+	if msgs == "" {
+		writeError(w, http.StatusUnprocessableEntity, "no messages available for analysis")
+		return
+	}
 
-	prompt := fmt.Sprintf(`Analyse the writing style of the person who sent these emails. Describe their:
+	prompt := fmt.Sprintf(`Analyse the writing style of the person who sent these emails and messages. Describe their:
 - Vocabulary and language complexity
 - Sentence structure and length preferences
 - Tone (formal/informal, warm/professional)
@@ -240,7 +256,10 @@ func (h *AdminHandler) SummarizeWritingStyle(w http.ResponseWriter, r *http.Requ
 - Overall communication style
 
 Email samples:
-%s`, sample)
+%s
+
+Message samples:
+%s`, sample, msgs)
 
 	result, err := h.gemini.GenerateResponse(ctx, appai.GenerateRequest{UserInput: prompt}, "", nil, nil, nil)
 	if err != nil {
@@ -290,7 +309,17 @@ func (h *AdminHandler) SummarizePsychologicalProfile(w http.ResponseWriter, r *h
 		return
 	}
 
-	prompt := fmt.Sprintf(`Based on the emails below, provide a psychological profile of the sender. Include:
+	msgs, err := h.sampleMessagesFromArchiveOwner(ctx, 100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading message samples: %s", err))
+		return
+	}
+	if msgs == "" {
+		writeError(w, http.StatusUnprocessableEntity, "no messages available for analysis")
+		return
+	}
+
+	prompt := fmt.Sprintf(`Based on the emails and messages below, provide a psychological profile of the sender. Include:
 - Personality traits (Big Five: openness, conscientiousness, extraversion, agreeableness, neuroticism)
 - Values and priorities
 - Emotional patterns
@@ -298,8 +327,13 @@ func (h *AdminHandler) SummarizePsychologicalProfile(w http.ResponseWriter, r *h
 - Decision-making approach
 - Potential strengths and challenges
 
+Assesment must not be made based on a single email or message, but rather a consideration of the entire dataset.
+
 Email samples:
-%s`, sample)
+%s
+
+Message samples:
+%s`, sample, msgs)
 
 	result, err := h.gemini.GenerateResponse(ctx, appai.GenerateRequest{UserInput: prompt}, "", nil, nil, nil)
 	if err != nil {
@@ -326,15 +360,88 @@ Email samples:
 	})
 }
 
+// contactEmailMatchOrSQL builds a fragment matching emails where from_address
+// suggests the linked contact (address tokens and display name).
+func contactEmailMatchOrSQL(c *model.ContactDetail) (string, []any, bool) {
+	var ors []string
+	var args []any
+	addAddr := func(addr string) {
+		addr = strings.TrimSpace(strings.ToLower(addr))
+		if addr == "" {
+			return
+		}
+		pat := "%" + addr + "%"
+		ors = append(ors, `LOWER(COALESCE(from_address,'')) LIKE ?`)
+		args = append(args, pat)
+	}
+	addName := func(name string) {
+		name = strings.TrimSpace(strings.ToLower(name))
+		if len(name) < 2 {
+			return
+		}
+		pat := "%" + name + "%"
+		ors = append(ors, `LOWER(COALESCE(from_address,'')) LIKE ?`)
+		args = append(args, pat)
+	}
+	if c.Email != nil {
+		for _, p := range strings.Split(*c.Email, ",") {
+			addAddr(p)
+		}
+	}
+	if c.AlternativeNames != nil {
+		for _, p := range strings.Split(*c.AlternativeNames, ",") {
+			t := strings.TrimSpace(p)
+			if t == "" {
+				continue
+			}
+			if strings.Contains(t, "@") {
+				addAddr(t)
+			} else {
+				addName(t)
+			}
+		}
+	}
+	addName(c.Name)
+	if len(ors) == 0 {
+		return "", nil, false
+	}
+	return "(" + strings.Join(ors, " OR ") + ")", args, true
+}
+
 // sampleEmailsForAI returns a formatted block of recent email subjects + plain text
 // suitable for AI analysis. Each email body is capped at 500 characters.
 func (h *AdminHandler) sampleEmailsForAI(ctx context.Context, limit int) (string, error) {
-	rows, err := h.pool.QueryContext(ctx, `
-		SELECT subject, plain_text
-		FROM emails
-		WHERE plain_text IS NOT NULL AND user_deleted = FALSE
-		ORDER BY date DESC
-		LIMIT ?1`, limit)
+	contactID, err := h.subjectConfigRepo.GetContactID(ctx)
+	if err != nil {
+		return "", err
+	}
+	if contactID == 0 {
+		return "", errors.New("subject_configuration has no subject_contact_id; link the archive owner to a contact first")
+	}
+
+	contact, err := h.contactRepo.GetContact(ctx, contactID)
+	if err != nil {
+		return "", err
+	}
+	if contact == nil {
+		return "", fmt.Errorf("linked contact id %d not found", contactID)
+	}
+	matchSQL, matchArgs, ok := contactEmailMatchOrSQL(contact)
+	if !ok {
+		return "", errors.New("linked contact has no usable name or email for matching messages")
+	}
+
+	uid := appctx.UserIDFromCtx(ctx)
+	q := `SELECT subject, plain_text FROM emails WHERE plain_text IS NOT NULL AND user_deleted = FALSE AND ` + matchSQL
+	args := append([]any{}, matchArgs...)
+	if uid > 0 {
+		q += ` AND user_id = ?`
+		args = append(args, uid)
+	}
+	q += ` ORDER BY date DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := h.pool.QueryContext(ctx, q, args...)
 	if err != nil {
 		return "", err
 	}
@@ -359,6 +466,102 @@ func (h *AdminHandler) sampleEmailsForAI(ctx context.Context, limit int) (string
 			}
 			sb.WriteString(body)
 		}
+		sb.WriteString("\n\n")
+	}
+	if i == 0 {
+		return "", rows.Err()
+	}
+	return sb.String(), rows.Err()
+}
+
+// ownerFirstFamilyName loads first_name and family_name from users for the given id
+// and returns them as a single trimmed "First Family" string.
+func ownerFirstFamilyName(ctx context.Context, db *sql.DB, userID int64) (string, error) {
+	if userID <= 0 {
+		return "", errors.New("invalid user id for owner name lookup")
+	}
+	var fn, fam sql.NullString
+	err := db.QueryRowContext(ctx,
+		`SELECT first_name, family_name FROM users WHERE id = ?`,
+		userID,
+	).Scan(&fn, &fam)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("users row id %d not found", userID)
+		}
+		return "", err
+	}
+	var parts []string
+	if fn.Valid && strings.TrimSpace(fn.String) != "" {
+		parts = append(parts, strings.TrimSpace(fn.String))
+	}
+	if fam.Valid && strings.TrimSpace(fam.String) != "" {
+		parts = append(parts, strings.TrimSpace(fam.String))
+	}
+	return strings.TrimSpace(strings.Join(parts, " ")), nil
+}
+
+// sampleMessagesFromArchiveOwner returns a formatted block of recent messages whose
+// sender_name matches the concatenation of first_name + family_name from users.id = 2.
+// Messages are limited to the authenticated archive (messages.user_id = session user).
+// Each body is capped at 500 characters.
+func (h *AdminHandler) sampleMessagesFromArchiveOwner(ctx context.Context, limit int) (string, error) {
+	const ownerNameSourceUsersID int64 = 2
+
+	uid := appctx.UserIDFromCtx(ctx)
+	if uid <= 0 {
+		return "", errors.New("not authenticated")
+	}
+	ownerName, err := ownerFirstFamilyName(ctx, h.pool, ownerNameSourceUsersID)
+	if err != nil {
+		return "", err
+	}
+	if len(ownerName) < 2 {
+		return "", errors.New("archive owner has no first and family name in users; set them on the user profile first")
+	}
+	pat := "%" + strings.ToLower(ownerName) + "%"
+
+	q := `SELECT service, sender_name, subject, text FROM messages
+		WHERE text IS NOT NULL AND TRIM(text) <> ''
+		  AND LOWER(COALESCE(sender_name,'')) LIKE ?
+		  AND user_id = ?
+		ORDER BY id DESC
+		LIMIT ?`
+	args := []any{pat, uid, limit}
+
+	rows, err := h.pool.QueryContext(ctx, q, args...)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var sb strings.Builder
+	i := 0
+	for rows.Next() {
+		var service, senderName, subject, text sql.NullString
+		if err := rows.Scan(&service, &senderName, &subject, &text); err != nil {
+			continue
+		}
+		if !text.Valid || strings.TrimSpace(text.String) == "" {
+			continue
+		}
+		i++
+		svc := "message"
+		if service.Valid && strings.TrimSpace(service.String) != "" {
+			svc = strings.TrimSpace(service.String)
+		}
+		sb.WriteString(fmt.Sprintf("--- Message %d (%s) ---\n", i, svc))
+		if senderName.Valid && strings.TrimSpace(senderName.String) != "" {
+			sb.WriteString(fmt.Sprintf("From: %s\n", strings.TrimSpace(senderName.String)))
+		}
+		if subject.Valid && strings.TrimSpace(subject.String) != "" {
+			sb.WriteString(fmt.Sprintf("Subject: %s\n", strings.TrimSpace(subject.String)))
+		}
+		body := text.String
+		if len(body) > 500 {
+			body = body[:500] + "..."
+		}
+		sb.WriteString(body)
 		sb.WriteString("\n\n")
 	}
 	if i == 0 {
