@@ -114,6 +114,14 @@ func MigrateSQLite(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
+	if err := addUserDeepSeekLLMColumns(ctx, db); err != nil {
+		return err
+	}
+
+	if err := addUserRunpodElevenlabsAPIColumns(ctx, db); err != nil {
+		return err
+	}
+
 	if err := ensureSQLiteVecEmbeddingTables(ctx, db); err != nil {
 		return err
 	}
@@ -151,6 +159,80 @@ func addMediaItemsRequireClassificationColumn(ctx context.Context, db *sql.DB) e
 		}
 	}
 	slog.Info("sqlite migration: added media_items.require_classification")
+	return nil
+}
+
+func addUserDeepSeekLLMColumns(ctx context.Context, db *sql.DB) error {
+	var n int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'users'`,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("sqlite_master users: %w", err)
+	}
+	if n == 0 {
+		return nil
+	}
+	for _, col := range []struct {
+		name string
+		stmt string
+	}{
+		{"user_deepseek_api_key", `ALTER TABLE users ADD COLUMN user_deepseek_api_key TEXT`},
+		{"user_deepseek_model", `ALTER TABLE users ADD COLUMN user_deepseek_model TEXT`},
+	} {
+		var has int
+		if err := db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = ?`, col.name,
+		).Scan(&has); err != nil {
+			return fmt.Errorf("pragma_table_info users.%s: %w", col.name, err)
+		}
+		if has > 0 {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, col.stmt); err != nil {
+			msg := strings.ToLower(err.Error())
+			if !strings.Contains(msg, "duplicate column") && !strings.Contains(msg, "already exists") {
+				return fmt.Errorf("add users.%s: %w", col.name, err)
+			}
+		}
+		slog.Info("sqlite migration: added users." + col.name)
+	}
+	return nil
+}
+
+func addUserRunpodElevenlabsAPIColumns(ctx context.Context, db *sql.DB) error {
+	var n int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'users'`,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("sqlite_master users: %w", err)
+	}
+	if n == 0 {
+		return nil
+	}
+	for _, col := range []struct {
+		name string
+		stmt string
+	}{
+		{"user_runpod_api_key", `ALTER TABLE users ADD COLUMN user_runpod_api_key TEXT`},
+		{"user_elevenlabs_api_key", `ALTER TABLE users ADD COLUMN user_elevenlabs_api_key TEXT`},
+	} {
+		var has int
+		if err := db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = ?`, col.name,
+		).Scan(&has); err != nil {
+			return fmt.Errorf("pragma_table_info users.%s: %w", col.name, err)
+		}
+		if has > 0 {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, col.stmt); err != nil {
+			msg := strings.ToLower(err.Error())
+			if !strings.Contains(msg, "duplicate column") && !strings.Contains(msg, "already exists") {
+				return fmt.Errorf("add users.%s: %w", col.name, err)
+			}
+		}
+		slog.Info("sqlite migration: added users." + col.name)
+	}
 	return nil
 }
 

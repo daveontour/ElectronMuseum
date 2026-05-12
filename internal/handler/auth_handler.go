@@ -248,26 +248,38 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 			vis = &repository.UserLLMStored{}
 		}
 		out["llm_settings"] = map[string]any{
-			"session_scoped":             true,
-			"gemini_api_key_set":         vis.GeminiAPIKey != "",
-			"anthropic_api_key_set":      vis.AnthropicAPIKey != "",
-			"tavily_api_key_set":         vis.TavilyAPIKey != "",
-			"gemini_model":               vis.GeminiModel,
-			"claude_model":               vis.ClaudeModel,
-			"subject_gemini_api_key_set": owner.GeminiAPIKey != "",
-			"subject_anthropic_key_set":  owner.AnthropicAPIKey != "",
-			"subject_tavily_key_set":     owner.TavilyAPIKey != "",
-			"subject_gemini_model":       owner.GeminiModel,
-			"subject_claude_model":       owner.ClaudeModel,
+			"session_scoped":               true,
+			"gemini_api_key_set":           vis.GeminiAPIKey != "",
+			"anthropic_api_key_set":        vis.AnthropicAPIKey != "",
+			"deepseek_api_key_set":         vis.DeepSeekAPIKey != "",
+			"tavily_api_key_set":           vis.TavilyAPIKey != "",
+			"runpod_api_key_set":           vis.RunpodAPIKey != "",
+			"elevenlabs_api_key_set":       vis.ElevenLabsAPIKey != "",
+			"gemini_model":                 vis.GeminiModel,
+			"claude_model":                 vis.ClaudeModel,
+			"deepseek_model":               vis.DeepSeekModel,
+			"subject_gemini_api_key_set":   owner.GeminiAPIKey != "",
+			"subject_anthropic_key_set":    owner.AnthropicAPIKey != "",
+			"subject_deepseek_key_set":     owner.DeepSeekAPIKey != "",
+			"subject_tavily_key_set":       owner.TavilyAPIKey != "",
+			"subject_runpod_key_set":       owner.RunpodAPIKey != "",
+			"subject_elevenlabs_key_set":   owner.ElevenLabsAPIKey != "",
+			"subject_gemini_model":         owner.GeminiModel,
+			"subject_claude_model":         owner.ClaudeModel,
+			"subject_deepseek_model":       owner.DeepSeekModel,
 		}
 	} else {
 		out["llm_settings"] = map[string]any{
-			"session_scoped":        false,
-			"gemini_api_key_set":    owner.GeminiAPIKey != "",
-			"anthropic_api_key_set": owner.AnthropicAPIKey != "",
-			"tavily_api_key_set":    owner.TavilyAPIKey != "",
-			"gemini_model":          owner.GeminiModel,
-			"claude_model":          owner.ClaudeModel,
+			"session_scoped":         false,
+			"gemini_api_key_set":     owner.GeminiAPIKey != "",
+			"anthropic_api_key_set":  owner.AnthropicAPIKey != "",
+			"deepseek_api_key_set":   owner.DeepSeekAPIKey != "",
+			"tavily_api_key_set":     owner.TavilyAPIKey != "",
+			"runpod_api_key_set":     owner.RunpodAPIKey != "",
+			"elevenlabs_api_key_set": owner.ElevenLabsAPIKey != "",
+			"gemini_model":           owner.GeminiModel,
+			"claude_model":           owner.ClaudeModel,
+			"deepseek_model":         owner.DeepSeekModel,
 		}
 	}
 	writeJSON(w, out)
@@ -314,6 +326,18 @@ func (h *AuthHandler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if ptr, ok := decodeLLMJSONString(raw, "tavily_api_key"); ok {
 		patch.TavilyAPIKey = ptr
+	}
+	if ptr, ok := decodeLLMJSONString(raw, "deepseek_api_key"); ok {
+		patch.DeepSeekAPIKey = ptr
+	}
+	if ptr, ok := decodeLLMJSONString(raw, "deepseek_model"); ok {
+		patch.DeepSeekModel = ptr
+	}
+	if ptr, ok := decodeLLMJSONString(raw, "runpod_api_key"); ok {
+		patch.RunpodAPIKey = ptr
+	}
+	if ptr, ok := decodeLLMJSONString(raw, "elevenlabs_api_key"); ok {
+		patch.ElevenLabsAPIKey = ptr
 	}
 	if isVisitor {
 		sid := h.readSessionCookie(r)

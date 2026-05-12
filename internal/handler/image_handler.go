@@ -53,6 +53,37 @@ var facebookAlbumEmbeddingJob = importer.NewImportJob("Facebook album descriptio
 	"total": 0, "processed": 0,
 })
 
+// ctxKeyRunpodAPI carries a resolved RunPod bearer token for image classification workers.
+type ctxKeyRunpodAPI struct{}
+
+func withRunpodAPIKey(ctx context.Context, apiKey string) context.Context {
+	return context.WithValue(ctx, ctxKeyRunpodAPI{}, strings.TrimSpace(apiKey))
+}
+
+func runpodAPIKeyFromCtx(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyRunpodAPI{}).(string)
+	return v
+}
+
+func effectiveRunpodAPIKey(ctx context.Context, pool *sql.DB, uid int64) string {
+	env := strings.TrimSpace(os.Getenv("RUNPOD_API_KEY"))
+	if pool == nil || uid == 0 {
+		return env
+	}
+	ur := repository.NewUserRepo(pool)
+	stored, err := ur.GetUserLLMStored(ctx, uid)
+	if err != nil || stored == nil {
+		return env
+	}
+	if strings.TrimSpace(stored.RunpodAPIKey) != "" {
+		return strings.TrimSpace(stored.RunpodAPIKey)
+	}
+	if !stored.AllowServerLLMKeys {
+		return ""
+	}
+	return env
+}
+
 // ImageHandler handles all /images/*, /getLocations, and /facebook/albums/* read endpoints.
 type ImageHandler struct {
 	svc          *service.ImageService
@@ -549,7 +580,7 @@ func (h *ImageHandler) ImageAIClassificationStart(w http.ResponseWriter, r *http
 	if req.Workers != nil {
 		workerArg = clampRunPodImageAIWorkers(*req.Workers)
 	}
-	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, idsCopy, workerArg)
+	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, h.pool, uid, idsCopy, workerArg)
 
 	writeJSON(w, map[string]any{"message": "Image AI classification started", "status": "started", "count": len(idsCopy)})
 }
@@ -590,7 +621,7 @@ func (h *ImageHandler) ImageAIClassificationGemmaUnclassifiedStart(w http.Respon
 		"status_line": fmt.Sprintf("Starting AI classification for %d queued image(s)...", len(ids)),
 	})
 
-	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, uid, append([]int64(nil), ids...), 0)
+	go runImageAIClassificationStub(h.svc, imageAIClassificationJob, h.pool, uid, append([]int64(nil), ids...), 0)
 
 	writeJSON(w, map[string]any{
 		"message": "Image AI classification job started for queued images",
@@ -873,9 +904,12 @@ func extractRunPodAssistantContentForKeywords(result map[string]any) (string, er
 // classifyImageKeywordsWithRunPod POSTs base64 JPEG bytes (no data: prefix) to RunPod serverless
 // with input key imageClassifyRequest, same contract as internal/handler/runpod_image_classify.py.
 func classifyImageKeywordsWithRunPod(ctx context.Context, encodedImageB64 string) (string, error) {
-	apiKey := strings.TrimSpace(os.Getenv("RUNPOD_API_KEY"))
+	apiKey := strings.TrimSpace(runpodAPIKeyFromCtx(ctx))
 	if apiKey == "" {
-		return "", fmt.Errorf("RUNPOD_API_KEY is not set")
+		apiKey = strings.TrimSpace(os.Getenv("RUNPOD_API_KEY"))
+	}
+	if apiKey == "" {
+		return "", fmt.Errorf("RunPod API key is not set (set RUNPOD_API_KEY or save a key under Settings → API Keys)")
 	}
 	url, err := runPodImageClassifyRunsyncURL()
 	if err != nil {
@@ -929,7 +963,7 @@ func classifyImageKeywordsWithRunPod(ctx context.Context, encodedImageB64 string
 }
 
 // classifyImageAIOneRunPod is like classifyImageAIOne but sends the JPEG to RunPod (imageClassifyRequest / runsync)
-// instead of calling local Ollama. Requires RUNPOD_API_KEY and RUNPOD_IMAGE_CLASSIFY_URL or RUNPOD_IMAGE_CLASSIFY_ENDPOINT_ID.
+// instead of calling local Ollama. Requires a RunPod bearer token (RUNPOD_API_KEY or per-user key in Settings) and RUNPOD_IMAGE_CLASSIFY_URL or RUNPOD_IMAGE_CLASSIFY_ENDPOINT_ID.
 func classifyImageAIOneRunPod(ctx context.Context, svc *service.ImageService, id int64) imageAIClassifyOutcome {
 	content, err := svc.GetImageContent(ctx, id, "metadata", false)
 	if err != nil || content == nil || len(content.Data) == 0 {
@@ -1014,8 +1048,9 @@ func classifyImageAIOneWithRunPodFallback(ctx context.Context, svc *service.Imag
 	return out
 }
 
-func runImageAIClassificationStub(svc *service.ImageService, job *importer.ImportJob, uid int64, imageIDs []int64, workers int) {
+func runImageAIClassificationStub(svc *service.ImageService, job *importer.ImportJob, pool *sql.DB, uid int64, imageIDs []int64, workers int) {
 	ctx := context.WithValue(context.Background(), appctx.ContextKeyUserID, uid)
+	ctx = withRunpodAPIKey(ctx, effectiveRunpodAPIKey(ctx, pool, uid))
 	defer job.Finish()
 
 	var runPodWorkers int

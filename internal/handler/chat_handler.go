@@ -61,8 +61,14 @@ func (h *ChatHandler) GetAvailability(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"gemini_available":                    h.svc.GeminiAvailable(r.Context(), r),
 		"claude_available":                    h.svc.ClaudeAvailable(r.Context(), r),
-		"deepseek_available":                  h.svc.DeepSeekAvailable(),
+		"deepseek_available":                  h.svc.DeepSeekAvailable(r.Context(), r),
 		"localai_available":                   h.svc.LocalAIAvailable(),
+		"tavily_env_configured":               h.svc.ServerTavilyKeyConfigured(),
+		"runpod_env_configured":               h.svc.ServerRunpodKeyConfigured(),
+		"elevenlabs_env_configured":           h.svc.ServerElevenLabsKeyConfigured(),
+		"server_gemini_model_default_set":     h.svc.ServerGeminiModelDefaultSet(),
+		"server_claude_model_default_set":     h.svc.ServerClaudeModelDefaultSet(),
+		"server_deepseek_model_default_set":   h.svc.ServerDeepSeekModelDefaultSet(),
 		"llm_tools_count":                     tools,
 		"reference_documents_available_count": refDocs,
 	})

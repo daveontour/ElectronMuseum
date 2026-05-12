@@ -207,7 +207,7 @@ func (r *backgroundJobsRunner) startImageAIClassification(ctx context.Context, u
 	imageAIClassificationJob.Broadcast("status", map[string]any{
 		"status_line": fmt.Sprintf("Starting AI classification for %d queued image(s) (background scheduler)...", len(ids)),
 	})
-	go runImageAIClassificationStub(r.imageSvc, imageAIClassificationJob, uid, append([]int64(nil), ids...), 0)
+	go runImageAIClassificationStub(r.imageSvc, imageAIClassificationJob, r.pool, uid, append([]int64(nil), ids...), 0)
 	return nil
 }
 

@@ -507,7 +507,7 @@ func (s *ChatService) pickInterviewProvider(ctx context.Context, r *http.Request
 		}
 	}
 	if preferred == "deepseek" {
-		dp := s.effectiveDeepSeekProvider()
+		dp := s.effectiveDeepSeekProvider(ctx, r, "")
 		if dp != nil && dp.IsAvailable() {
 			return dp, "deepseek"
 		}

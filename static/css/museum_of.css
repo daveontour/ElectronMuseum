@@ -4181,25 +4181,214 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     margin-right: 8px;
 }
 
-/* Settings → Your API keys & models: same label→control gap for rows with or without Clear button.
-   Without this, inline input+button share one line box (baseline/line-height) vs a lone input, so the
-   gap under the label looks inconsistent. */
-#user-llm-settings-section .user-llm-field-row label {
-    margin-bottom: 6px;
+/* Settings → API Keys tab: three-column grid (key / model 25% narrower than equal split + fixed Clear); single-key rows span key+model. */
+#user-llm-settings-section {
+    --user-llm-actions-col: 12.5rem;
+    --user-llm-field-bg-ok: #d1fae5;
+    --user-llm-field-bg-warn: #fef3c7;
+}
+#user-llm-settings-section .user-llm-provider-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.6fr) var(--user-llm-actions-col);
+    column-gap: 1rem;
+    row-gap: 0.35rem;
+    align-items: stretch;
+    margin-bottom: 1.1rem;
+}
+#user-llm-settings-section .user-llm-provider-row--tavily .user-llm-field-col--span-2,
+#user-llm-settings-section .user-llm-provider-row--runpod .user-llm-field-col--span-2,
+#user-llm-settings-section .user-llm-provider-row--elevenlabs .user-llm-field-col--span-2 {
+    grid-column: 1 / span 2;
+    min-width: 0;
+}
+#user-llm-settings-section .user-llm-field-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+#user-llm-settings-section .user-llm-field-col--actions {
+    min-width: 0;
+}
+#user-llm-settings-section .user-llm-field-row label,
+#user-llm-settings-section .user-llm-field-col > label {
+    display: block;
+    margin-bottom: 0;
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--color-navy-dark, #1e293b);
+    line-height: var(--line-height-snug, 1.35);
+}
+#user-llm-settings-section .user-llm-field-label-with-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem;
+    width: 100%;
+    box-sizing: border-box;
+    cursor: default;
+    margin-bottom: 0;
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--color-navy-dark, #1e293b);
+    line-height: var(--line-height-snug, 1.35);
+}
+#user-llm-settings-section .user-llm-field-label-with-info .user-llm-field-label-lead {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+#user-llm-settings-section .user-llm-label-hint {
+    font-weight: 400;
+    color: var(--color-text-muted);
+    font-size: var(--text-caption);
+}
+#user-llm-settings-section .user-llm-field-label-with-info .user-llm-field-hint-after-info {
+    font-weight: 400;
+}
+#user-llm-settings-section .user-llm-field-info-btn {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0.15rem 0.25rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-blue);
+    font-size: var(--text-sm);
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+#user-llm-settings-section .user-llm-field-info-btn:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-blue-dark);
+}
+#user-llm-settings-section .user-llm-field-info-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+/* LLM field help — above configuration overlay; card anchored beside icon via JS */
+#user-llm-info-popover.user-llm-info-popover {
+    position: fixed;
+    inset: 0;
+    z-index: 5500;
+    display: block;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+#user-llm-info-popover.user-llm-info-popover[hidden] {
+    display: none !important;
+}
+.user-llm-info-popover-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: auto;
+    background: rgba(15, 23, 42, 0.45);
+    cursor: pointer;
+}
+.user-llm-info-popover-card {
+    position: fixed;
+    z-index: 1;
+    width: auto;
+    max-width: min(28rem, calc(100vw - 16px));
+    min-width: 12rem;
+    max-height: min(70vh, 28rem);
+    overflow: auto;
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg);
+    box-shadow: var(--shadow-modal);
+    border: 1px solid var(--color-border);
+    font-family: var(--font-sans-ui);
+}
+.user-llm-info-popover-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+}
+.user-llm-info-popover-title {
+    font-size: var(--text-heading);
+    font-weight: 700;
+    color: var(--color-navy-dark);
+    line-height: var(--line-height-snug);
+}
+.user-llm-info-popover-close {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0.2rem 0.45rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: var(--text-lg);
+    line-height: 1;
+    cursor: pointer;
+}
+.user-llm-info-popover-close:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text);
+}
+.user-llm-info-popover-body {
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: 400;
+    color: var(--color-text);
+    line-height: var(--line-height-body);
+    white-space: pre-wrap;
 }
 #user-llm-settings-section .user-llm-field-controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+    width: 100%;
+}
+#user-llm-settings-section .user-llm-field-col--actions .user-llm-field-controls--action-only {
+    margin-top: auto;
 }
 #user-llm-settings-section .user-llm-field-input {
-    flex: 1 1 12rem;
-    min-width: 10rem;
-    max-width: 32rem;
     width: 100%;
+    max-width: none;
+    flex: 0 0 auto;
+    min-width: 0;
     height: 2.2rem;
     box-sizing: border-box;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+#user-llm-settings-section .user-llm-field-input.user-llm-field-input--state-ok {
+    background-color: var(--user-llm-field-bg-ok);
+}
+#user-llm-settings-section .user-llm-field-input.user-llm-field-input--state-warn {
+    background-color: var(--user-llm-field-bg-warn);
+}
+#user-llm-settings-section .user-llm-field-input.user-llm-field-input--state-ok:focus,
+#user-llm-settings-section .user-llm-field-input.user-llm-field-input--state-warn:focus {
+    background-color: var(--color-bg);
+}
+#user-llm-settings-section .user-llm-clear-btn {
+    width: 100%;
+    min-height: 2.2rem;
+    box-sizing: border-box;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+@media (max-width: 768px) {
+    #user-llm-settings-section .user-llm-provider-row {
+        grid-template-columns: 1fr;
+    }
+    #user-llm-settings-section .user-llm-provider-row--tavily .user-llm-field-col--span-2,
+    #user-llm-settings-section .user-llm-provider-row--runpod .user-llm-field-col--span-2,
+    #user-llm-settings-section .user-llm-provider-row--elevenlabs .user-llm-field-col--span-2 {
+        grid-column: 1;
+    }
+    #user-llm-settings-section .user-llm-field-col--actions .user-llm-field-controls--action-only {
+        margin-top: 0;
+    }
 }
 
 /* --- Tool Selector Styling (Currently Hidden) --- */
@@ -4427,8 +4616,8 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     cursor: not-allowed;
 }
 
-/* Settings & Data Import modal: owner master key not unlocked — hide all tab panels except Settings */
-#config-modal-overlay.config-modal-master-unlock-required .config-tab-content:not(#settings-tab) {
+/* Settings & Data Import modal: owner master key not unlocked — hide all tab panels except Appearance and API Keys */
+#config-modal-overlay.config-modal-master-unlock-required .config-tab-content:not(#settings-tab):not(#api-keys-tab) {
     display: none !important;
 }
 
@@ -5438,7 +5627,7 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     height:200px;
     width:240px;
 }
-#map-view{
+/* #map-view{
     position: absolute;
     z-index: 10;
     bottom: 5%;
@@ -5446,6 +5635,16 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     right: 5%;
     height:90%;
     width:90%;
+} */
+
+#map-view{
+    position: absolute;
+    z-index: 10;
+    bottom: 0%;
+    display: block;
+    right: 0%;
+    height:100%;
+    width:100%;
 }
 
 /* Email Gallery Modal Styles */

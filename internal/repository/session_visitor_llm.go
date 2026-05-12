@@ -45,30 +45,42 @@ var ErrVisitorSessionLLMNotUpdated = errors.New("session not found, expired, or 
 
 // sessionLLMJSON is the JSON shape stored in sessions.visitor_llm_overrides.
 type sessionLLMJSON struct {
-	GeminiAPIKey    string `json:"gemini_api_key,omitempty"`
-	AnthropicAPIKey string `json:"anthropic_api_key,omitempty"`
-	GeminiModel     string `json:"gemini_model,omitempty"`
-	ClaudeModel     string `json:"claude_model,omitempty"`
-	TavilyAPIKey    string `json:"tavily_api_key,omitempty"`
+	GeminiAPIKey     string `json:"gemini_api_key,omitempty"`
+	AnthropicAPIKey  string `json:"anthropic_api_key,omitempty"`
+	GeminiModel      string `json:"gemini_model,omitempty"`
+	ClaudeModel      string `json:"claude_model,omitempty"`
+	TavilyAPIKey     string `json:"tavily_api_key,omitempty"`
+	DeepSeekAPIKey   string `json:"deepseek_api_key,omitempty"`
+	DeepSeekModel    string `json:"deepseek_model,omitempty"`
+	RunpodAPIKey     string `json:"runpod_api_key,omitempty"`
+	ElevenLabsAPIKey string `json:"elevenlabs_api_key,omitempty"`
 }
 
 func sessionLLMFromStored(s UserLLMStored) sessionLLMJSON {
 	return sessionLLMJSON{
-		GeminiAPIKey:    s.GeminiAPIKey,
-		AnthropicAPIKey: s.AnthropicAPIKey,
-		GeminiModel:     s.GeminiModel,
-		ClaudeModel:     s.ClaudeModel,
-		TavilyAPIKey:    s.TavilyAPIKey,
+		GeminiAPIKey:     s.GeminiAPIKey,
+		AnthropicAPIKey:  s.AnthropicAPIKey,
+		GeminiModel:      s.GeminiModel,
+		ClaudeModel:      s.ClaudeModel,
+		TavilyAPIKey:     s.TavilyAPIKey,
+		DeepSeekAPIKey:   s.DeepSeekAPIKey,
+		DeepSeekModel:    s.DeepSeekModel,
+		RunpodAPIKey:     s.RunpodAPIKey,
+		ElevenLabsAPIKey: s.ElevenLabsAPIKey,
 	}
 }
 
 func (j sessionLLMJSON) toStored() UserLLMStored {
 	return UserLLMStored{
-		GeminiAPIKey:    j.GeminiAPIKey,
-		AnthropicAPIKey: j.AnthropicAPIKey,
-		GeminiModel:     j.GeminiModel,
-		ClaudeModel:     j.ClaudeModel,
-		TavilyAPIKey:    j.TavilyAPIKey,
+		GeminiAPIKey:     j.GeminiAPIKey,
+		AnthropicAPIKey:  j.AnthropicAPIKey,
+		GeminiModel:      j.GeminiModel,
+		ClaudeModel:      j.ClaudeModel,
+		TavilyAPIKey:     j.TavilyAPIKey,
+		DeepSeekAPIKey:   j.DeepSeekAPIKey,
+		DeepSeekModel:    j.DeepSeekModel,
+		RunpodAPIKey:     j.RunpodAPIKey,
+		ElevenLabsAPIKey: j.ElevenLabsAPIKey,
 	}
 }
 

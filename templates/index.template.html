@@ -624,9 +624,11 @@
                 </div>
                 <div class="config-modal-body">
                     <div class="config-tabs-sidebar">
-                        <label class="config-tab-label">App & Subject Settings</label>
                         <button type="button" class="config-tab-button active" data-tab="settings">
-                            <i class="fas fa-cog"></i> Appearance and API Keys
+                            <i class="fas fa-sliders-h"></i> Appearance
+                        </button>
+                        <button type="button" class="config-tab-button" data-tab="api-keys">
+                            <i class="fas fa-plug"></i> API Keys
                         </button>
                         <button type="button" class="config-tab-button config-sidebar-requires-master" data-tab="subject-configuration">
                             <i class="fas fa-user"></i> Subject Configuration
@@ -637,7 +639,6 @@
                         <button type="button" class="config-tab-button config-sidebar-requires-master" data-tab="manage-contacts">
                             <i class="fas fa-address-book"></i> Manage Contacts
                         </button>
-                        <label class="config-tab-label config-sidebar-requires-master">Manage Secure Data Access</label>
                         <button type="button" class="config-tab-button config-sidebar-requires-master" data-tab="manage-keys">
                             <i class="fas fa-key"></i> Manage Visitor Keys
                         </button>
@@ -651,7 +652,7 @@
                     <div class="config-content">
                 <div class="config-tab-content active" id="settings-tab">
                     <section class="section-config">
-                        <h1>Appearance and API Keys</h1>
+                        <h1>Appearance</h1>
                     </section>
                     <div style="display: flex; gap: 2em; flex-wrap: wrap; background-color: #f8f9fa;">
                    <section class="config-section"> 
@@ -696,46 +697,113 @@
                         </div>
                     </section>
                     </div>
+                </div>
+                <div class="config-tab-content" id="api-keys-tab">
+                    <section class="section-config">
+                        <h1>AI API Keys & Models</h1>
+                    </section>
                     <section class="config-section" id="user-llm-settings-section" style="display:none;">
-                        <h3>Your API keys &amp; models</h3>
                         <p id="user-llm-intro" style="color:#666; font-size:var(--text-md); margin-bottom:8px; max-width:52rem;"></p>
                         <p id="user-llm-subject-hints" style="color:#555; font-size:var(--text-caption); margin-bottom:12px; max-width:52rem;"></p>
-                        <div class="setting-group user-llm-field-row">
-                            <label for="user-llm-gemini-key">Gemini API key <span id="user-llm-gemini-key-hint" style="color:#888;font-weight:normal;"></span></label>
-                            <div class="user-llm-field-controls">
-                                <input type="password" id="user-llm-gemini-key" class="modal-input user-llm-field-input" autocomplete="off">
-                                <button type="button" class="modal-btn modal-btn-secondary" id="user-llm-clear-gemini">Clear Gemini key override</button>
+                        <div class="setting-group user-llm-provider-row">
+                            <div class="user-llm-field-col">
+                                <label for="user-llm-gemini-key" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">GoogleGemini API key</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-gemini-key" aria-label="Information about Gemini API key"><i class="fas fa-info-circle" aria-hidden="true"></i></button><span id="user-llm-gemini-key-hint" class="user-llm-field-hint-after-info" style="color:#888;font-weight:normal;"></span></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="password" id="user-llm-gemini-key" class="modal-input user-llm-field-input" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col">
+                                <label for="user-llm-gemini-model" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">Google Gemini model name</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-gemini-model" aria-label="Information about Gemini model name"><i class="fas fa-info-circle" aria-hidden="true"></i></button></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="text" id="user-llm-gemini-model" class="modal-input user-llm-field-input user-llm-field-input--model">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col user-llm-field-col--actions">
+                                <div class="user-llm-field-controls user-llm-field-controls--action-only">
+                                    <button type="button" class="modal-btn modal-btn-secondary user-llm-clear-btn" id="user-llm-clear-gemini" aria-label="Clear Gemini API key and model overrides">Clear Gemini</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="setting-group user-llm-field-row">
-                            <label for="user-llm-gemini-model">Gemini model name</label>
-                            <div class="user-llm-field-controls">
-                                <input type="text" id="user-llm-gemini-model" class="modal-input user-llm-field-input">
+                        <div class="setting-group user-llm-provider-row">
+                            <div class="user-llm-field-col">
+                                <label for="user-llm-anthropic-key" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">Anthropic Claude API key</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-anthropic-key" aria-label="Information about Anthropic API key"><i class="fas fa-info-circle" aria-hidden="true"></i></button><span id="user-llm-anthropic-key-hint" class="user-llm-field-hint-after-info" style="color:#888;font-weight:normal;"></span></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="password" id="user-llm-anthropic-key" class="modal-input user-llm-field-input" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col">
+                                <label for="user-llm-claude-model" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">AnthropicClaude model name</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-claude-model" aria-label="Information about Claude model name"><i class="fas fa-info-circle" aria-hidden="true"></i></button></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="text" id="user-llm-claude-model" class="modal-input user-llm-field-input user-llm-field-input--model">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col user-llm-field-col--actions">
+                                <div class="user-llm-field-controls user-llm-field-controls--action-only">
+                                    <button type="button" class="modal-btn modal-btn-secondary user-llm-clear-btn" id="user-llm-clear-anthropic" aria-label="Clear Anthropic API key and Claude model overrides">Clear Anthropic</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="setting-group user-llm-field-row">
-                            <label for="user-llm-anthropic-key">Anthropic API key <span id="user-llm-anthropic-key-hint" style="color:#888;font-weight:normal;"></span></label>
-                            <div class="user-llm-field-controls">
-                                <input type="password" id="user-llm-anthropic-key" class="modal-input user-llm-field-input" autocomplete="off">
-                                <button type="button" class="modal-btn modal-btn-secondary" id="user-llm-clear-anthropic">Clear Anthropic key override</button>
+                        <div class="setting-group user-llm-provider-row">
+                            <div class="user-llm-field-col">
+                                <label for="user-llm-deepseek-key" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">DeepSeek API key</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-deepseek-key" aria-label="Information about DeepSeek API key"><i class="fas fa-info-circle" aria-hidden="true"></i></button><span id="user-llm-deepseek-key-hint" class="user-llm-field-hint-after-info" style="color:#888;font-weight:normal;"></span></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="password" id="user-llm-deepseek-key" class="modal-input user-llm-field-input" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col">
+                                <label for="user-llm-deepseek-model" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">DeepSeek model name</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-deepseek-model" aria-label="Information about DeepSeek model name"><i class="fas fa-info-circle" aria-hidden="true"></i></button></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="text" id="user-llm-deepseek-model" class="modal-input user-llm-field-input user-llm-field-input--model">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col user-llm-field-col--actions">
+                                <div class="user-llm-field-controls user-llm-field-controls--action-only">
+                                    <button type="button" class="modal-btn modal-btn-secondary user-llm-clear-btn" id="user-llm-clear-deepseek" aria-label="Clear DeepSeek API key and model overrides">Clear DeepSeek</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="setting-group user-llm-field-row">
-                            <label for="user-llm-claude-model">Claude model name</label>
-                            <div class="user-llm-field-controls">
-                                <input type="text" id="user-llm-claude-model" class="modal-input user-llm-field-input">
+                        <div class="setting-group user-llm-provider-row user-llm-provider-row--tavily">
+                            <div class="user-llm-field-col user-llm-field-col--span-2">
+                                <label for="user-llm-tavily-key" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">Tavily API key</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-tavily-key" aria-label="Information about Tavily API key"><i class="fas fa-info-circle" aria-hidden="true"></i></button><span class="user-llm-label-hint">(web search)</span><span id="user-llm-tavily-key-hint" class="user-llm-field-hint-after-info" style="color:#888;font-weight:normal;"></span></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="password" id="user-llm-tavily-key" class="modal-input user-llm-field-input" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col user-llm-field-col--actions">
+                                <div class="user-llm-field-controls user-llm-field-controls--action-only">
+                                    <button type="button" class="modal-btn modal-btn-secondary user-llm-clear-btn" id="user-llm-clear-tavily" aria-label="Clear Tavily API key override">Clear Tavily</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="setting-group user-llm-field-row">
-                            <label for="user-llm-tavily-key">Tavily API key <span id="user-llm-tavily-key-hint" style="color:#888;font-weight:normal;"></span></label>
-                            <div class="user-llm-field-controls">
-                                <input type="password" id="user-llm-tavily-key" class="modal-input user-llm-field-input" autocomplete="off">
-                                <button type="button" class="modal-btn modal-btn-secondary" id="user-llm-clear-tavily">Clear Tavily key override</button>
+                        <div class="setting-group user-llm-provider-row user-llm-provider-row--runpod">
+                            <div class="user-llm-field-col user-llm-field-col--span-2">
+                                <label for="user-llm-runpod-key" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">RunPod API key</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-runpod-key" aria-label="Information about RunPod API key"><i class="fas fa-info-circle" aria-hidden="true"></i></button><span class="user-llm-label-hint">(image AI classification)</span><span id="user-llm-runpod-key-hint" class="user-llm-field-hint-after-info" style="color:#888;font-weight:normal;"></span></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="password" id="user-llm-runpod-key" class="modal-input user-llm-field-input" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col user-llm-field-col--actions">
+                                <div class="user-llm-field-controls user-llm-field-controls--action-only">
+                                    <button type="button" class="modal-btn modal-btn-secondary user-llm-clear-btn" id="user-llm-clear-runpod" aria-label="Clear RunPod API key override">Clear RunPod</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setting-group user-llm-provider-row user-llm-provider-row--elevenlabs">
+                            <div class="user-llm-field-col user-llm-field-col--span-2">
+                                <label for="user-llm-elevenlabs-key" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">ElevenLabs API key</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-elevenlabs-key" aria-label="Information about ElevenLabs API key"><i class="fas fa-info-circle" aria-hidden="true"></i></button><span class="user-llm-label-hint">(speech / voice)</span><span id="user-llm-elevenlabs-key-hint" class="user-llm-field-hint-after-info" style="color:#888;font-weight:normal;"></span></label>
+                                <div class="user-llm-field-controls">
+                                    <input type="password" id="user-llm-elevenlabs-key" class="modal-input user-llm-field-input" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="user-llm-field-col user-llm-field-col--actions">
+                                <div class="user-llm-field-controls user-llm-field-controls--action-only">
+                                    <button type="button" class="modal-btn modal-btn-secondary user-llm-clear-btn" id="user-llm-clear-elevenlabs" aria-label="Clear ElevenLabs API key override">Clear ElevenLabs</button>
+                                </div>
                             </div>
                         </div>
                         <div class="setting-group" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                            <button type="button" class="modal-btn modal-btn-primary" id="user-llm-save-btn">Save LLM settings</button>
-                            <span id="user-llm-status" style="font-size:var(--text-md);color:#666;"></span>
+                            <button type="button" class="modal-btn modal-btn-primary" id="user-llm-save-btn">Save AI API Settings</button>
+                            <span id="user-llm-status" role="status" aria-live="polite" style="font-size:var(--text-md);color:#666;min-height:1.35em;display:inline-block;"></span>
                         </div>
                     </section>
                 </div>
@@ -4329,9 +4397,25 @@
             <label for="overview-llm-claude-model">Claude model <span style="color:#94a3b8;font-weight:normal;">(optional)</span></label>
             <input type="text" id="overview-llm-claude-model" class="modal-input" style="width:100%;box-sizing:border-box;" placeholder="e.g. claude-sonnet-4-6">
         </div>
-        <div class="setting-group" style="margin-bottom:16px;">
-            <label for="overview-llm-tavily-key">Tavily API key <span style="color:#94a3b8;font-weight:normal;">(optional, for web search)</span></label>
+        <div class="setting-group" style="margin-bottom:12px;">
+            <label for="overview-llm-deepseek-key">DeepSeek API key</label>
+            <input type="password" id="overview-llm-deepseek-key" class="modal-input" style="width:100%;box-sizing:border-box;" autocomplete="off">
+        </div>
+        <div class="setting-group" style="margin-bottom:12px;">
+            <label for="overview-llm-deepseek-model">DeepSeek model <span style="color:#94a3b8;font-weight:normal;">(optional)</span></label>
+            <input type="text" id="overview-llm-deepseek-model" class="modal-input" style="width:100%;box-sizing:border-box;" placeholder="e.g. deepseek-chat">
+        </div>
+        <div class="setting-group" style="margin-bottom:12px;">
+            <label for="overview-llm-tavily-key">Tavily API key <span style="color:#94a3b8;font-weight:normal;">(optional, web search)</span></label>
             <input type="password" id="overview-llm-tavily-key" class="modal-input" style="width:100%;box-sizing:border-box;" autocomplete="off">
+        </div>
+        <div class="setting-group" style="margin-bottom:12px;">
+            <label for="overview-llm-runpod-key">RunPod API key <span style="color:#94a3b8;font-weight:normal;">(optional, image AI classification)</span></label>
+            <input type="password" id="overview-llm-runpod-key" class="modal-input" style="width:100%;box-sizing:border-box;" autocomplete="off">
+        </div>
+        <div class="setting-group" style="margin-bottom:16px;">
+            <label for="overview-llm-elevenlabs-key">ElevenLabs API key <span style="color:#94a3b8;font-weight:normal;">(optional, speech / voice)</span></label>
+            <input type="password" id="overview-llm-elevenlabs-key" class="modal-input" style="width:100%;box-sizing:border-box;" autocomplete="off">
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;">
             <button type="button" id="archive-overview-llm-save-btn" class="modal-btn modal-btn-primary">Save</button>
@@ -4385,6 +4469,18 @@
     </div>
     <div id="pam-bot-photo-body">
         <img id="pam-bot-photo-img" src="" alt="Memory photo" />
+    </div>
+</div>
+
+<!-- LLM API Keys field help (fixed layer; must stay outside overflow:auto config tabs) -->
+<div id="user-llm-info-popover" class="user-llm-info-popover" hidden>
+    <div class="user-llm-info-popover-backdrop" aria-hidden="true"></div>
+    <div class="user-llm-info-popover-card" role="dialog" aria-modal="true" aria-labelledby="user-llm-info-popover-title" aria-describedby="user-llm-info-popover-body">
+        <div class="user-llm-info-popover-header">
+            <span id="user-llm-info-popover-title" class="user-llm-info-popover-title"></span>
+            <button type="button" class="user-llm-info-popover-close" aria-label="Close information"><i class="fas fa-times" aria-hidden="true"></i></button>
+        </div>
+        <p id="user-llm-info-popover-body" class="user-llm-info-popover-body"></p>
     </div>
 </div>
 

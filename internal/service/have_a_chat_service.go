@@ -52,7 +52,7 @@ func (s *ChatService) GenerateHaveAChatTurn(
 			providerName = "claude"
 		}
 	} else if speakingProviderKey == "deepseek" {
-		dp := s.effectiveDeepSeekProvider()
+		dp := s.effectiveDeepSeekProvider(ctx, r, "")
 		if dp != nil && dp.IsAvailable() {
 			provider = dp
 			providerName = "deepseek"

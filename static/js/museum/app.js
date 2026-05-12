@@ -428,7 +428,7 @@ const App = (() => {
                 }
             });
 
-            // Settings & Data Import modal: without owner master unlock, only Settings tab is available.
+            // Settings & Data Import modal: without owner master unlock, only Appearance and API Keys tabs are available.
             const configOverlay = document.getElementById('config-modal-overlay');
             if (configOverlay) {
                 configOverlay.classList.toggle('config-modal-master-unlock-required', !masterOk);
@@ -890,9 +890,9 @@ const App = (() => {
                 if (targetTab === 'background-jobs') {
                     if (Modals.BackgroundJobs && Modals.BackgroundJobs.load) void Modals.BackgroundJobs.load();
                 }
-                if (targetTab === 'settings') {
+                if (targetTab === 'settings' || targetTab === 'api-keys') {
                     if (Modals.UserLLMSettings && Modals.UserLLMSettings.load) void Modals.UserLLMSettings.load();
-                    void loadLLMProviderAvailability();
+                    if (targetTab === 'settings') void loadLLMProviderAvailability();
                 }
             });
         });
@@ -1271,7 +1271,7 @@ const App = (() => {
                     : '<strong style="color:#b91c1c;">Not available</strong> — configure an Anthropic API key';
                 const deepVal = dOk
                     ? '<strong style="color:#15803d;">Ready</strong> — DeepSeek can be selected as AI Provider'
-                    : '<strong style="color:#b91c1c;">Not available</strong> — configure DEEPSEEK_API_KEY in server config';
+                    : '<strong style="color:#b91c1c;">Not available</strong> — configure a DeepSeek API key';
                 const localVal = lOk
                     ? '<strong style="color:#15803d;">Ready</strong> — Local AI can be selected as AI Provider'
                     : '<strong style="color:#b91c1c;">Not available</strong> — set LOCALAI_BASE_URL in server config';
@@ -1290,10 +1290,25 @@ const App = (() => {
                     if (ls.claude_model) {
                         parts.push(row2(`<span style="color:#64748b;">Claude model${scope}</span>`, `<code style="background:#e2e8f0;padding:2px 6px;border-radius:4px;font-size:0.85rem;">${esc(ls.claude_model)}</code>`));
                     }
+                    if (ls.deepseek_model) {
+                        parts.push(row2(`<span style="color:#64748b;">DeepSeek model${scope}</span>`, `<code style="background:#e2e8f0;padding:2px 6px;border-radius:4px;font-size:0.85rem;">${esc(ls.deepseek_model)}</code>`));
+                    }
                     const tavVal = ls.tavily_api_key_set
                         ? '<strong style="color:#15803d;">Key set</strong> — search tool can use your Tavily key' + (sess ? ' <span style="color:#64748b;font-weight:normal;">(this session)</span>' : '')
                         : '<span style="color:#64748b;">No personal Tavily key in Settings — server default or none</span>';
                     parts.push(row2('<span style="color:#64748b;">Tavily (web search)</span>', `<span>${tavVal}</span>`));
+                    const runpodVal = ls.runpod_api_key_set
+                        ? '<strong style="color:#15803d;">Key set</strong> — RunPod image classification can use your API key' + (sess ? ' <span style="color:#64748b;font-weight:normal;">(this session)</span>' : '')
+                        : '<span style="color:#64748b;">No personal RunPod key in Settings — server default or none</span>';
+                    parts.push(row2('<span style="color:#64748b;">RunPod</span>', `<span>${runpodVal}</span>`));
+                    const elVal = ls.elevenlabs_api_key_set
+                        ? '<strong style="color:#15803d;">Key set</strong> — ElevenLabs integrations can use your API key' + (sess ? ' <span style="color:#64748b;font-weight:normal;">(this session)</span>' : '')
+                        : '<span style="color:#64748b;">No personal ElevenLabs key in Settings — server default or none</span>';
+                    parts.push(row2('<span style="color:#64748b;">ElevenLabs</span>', `<span>${elVal}</span>`));
+                    const deepKeyVal = ls.deepseek_api_key_set
+                        ? '<strong style="color:#15803d;">Key set</strong> — DeepSeek can use your API key' + (sess ? ' <span style="color:#64748b;font-weight:normal;">(this session)</span>' : '')
+                        : '<span style="color:#64748b;">No personal DeepSeek key in Settings — server default or none</span>';
+                    parts.push(row2('<span style="color:#64748b;">DeepSeek (API key)</span>', `<span>${deepKeyVal}</span>`));
                     // if (sess) {
                     //     parts.push('<div style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:0.85rem;color:#64748b;">Visitor session: keys you leave blank use the archive owner’s saved keys when available, then server defaults.</div>');
                     // }
@@ -1348,14 +1363,18 @@ const App = (() => {
                 if (titleEl) titleEl.textContent = sess ? 'API keys for this visit' : 'Add your API keys';
                 if (introEl) {
                     introEl.textContent = sess
-                        ? 'Keys are stored on this browser session only and clear when the session ends. Enter at least a Gemini or Anthropic API key to use chat.'
-                        : 'Keys are saved to your account. Enter at least a Gemini or Anthropic API key when no server key is available for you.';
+                        ? 'Keys are stored on this browser session only and clear when the session ends. Enter at least one cloud API key (Gemini, Anthropic, or DeepSeek) to use chat.'
+                        : 'Keys are saved to your account. Enter at least one cloud API key (Gemini, Anthropic, or DeepSeek) when no server key is available for you.';
                 }
                 const gk = document.getElementById('overview-llm-gemini-key');
                 const ak = document.getElementById('overview-llm-anthropic-key');
+                const dk = document.getElementById('overview-llm-deepseek-key');
                 const tk = document.getElementById('overview-llm-tavily-key');
+                const rk = document.getElementById('overview-llm-runpod-key');
+                const elK = document.getElementById('overview-llm-elevenlabs-key');
                 const gm = document.getElementById('overview-llm-gemini-model');
                 const cm = document.getElementById('overview-llm-claude-model');
+                const dsm = document.getElementById('overview-llm-deepseek-model');
                 if (gk) {
                     gk.value = '';
                     gk.placeholder = sess ? 'Leave blank to use owner or server default' : 'Paste key to save';
@@ -1364,12 +1383,25 @@ const App = (() => {
                     ak.value = '';
                     ak.placeholder = sess ? 'Leave blank to use owner or server default' : 'Paste key to save';
                 }
+                if (dk) {
+                    dk.value = '';
+                    dk.placeholder = sess ? 'Leave blank to use owner or server default' : 'Paste key to save';
+                }
                 if (tk) {
                     tk.value = '';
-                    tk.placeholder = 'Optional — web search';
+                    tk.placeholder = 'Optional — Tavily web search';
+                }
+                if (rk) {
+                    rk.value = '';
+                    rk.placeholder = 'Optional — RunPod image AI';
+                }
+                if (elK) {
+                    elK.value = '';
+                    elK.placeholder = 'Optional — ElevenLabs speech';
                 }
                 if (gm) gm.value = ls.gemini_model || '';
                 if (cm) cm.value = ls.claude_model || '';
+                if (dsm) dsm.value = ls.deepseek_model || '';
                 const st = document.getElementById('archive-overview-llm-save-status');
                 if (st) st.textContent = '';
                 modal.style.display = 'flex';
@@ -1386,15 +1418,22 @@ const App = (() => {
                     const st = document.getElementById('archive-overview-llm-save-status');
                     const gkEl = document.getElementById('overview-llm-gemini-key');
                     const akEl = document.getElementById('overview-llm-anthropic-key');
+                    const dkEl = document.getElementById('overview-llm-deepseek-key');
                     const tkEl = document.getElementById('overview-llm-tavily-key');
+                    const rkEl = document.getElementById('overview-llm-runpod-key');
+                    const elKEl = document.getElementById('overview-llm-elevenlabs-key');
                     const gmEl = document.getElementById('overview-llm-gemini-model');
                     const cmEl = document.getElementById('overview-llm-claude-model');
+                    const dsmEl = document.getElementById('overview-llm-deepseek-model');
                     const gk = (gkEl && gkEl.value.trim()) || '';
                     const ak = (akEl && akEl.value.trim()) || '';
+                    const dk = (dkEl && dkEl.value.trim()) || '';
                     const tk = (tkEl && tkEl.value.trim()) || '';
-                    if (!gk && !ak) {
+                    const rp = (rkEl && rkEl.value.trim()) || '';
+                    const elK = (elKEl && elKEl.value.trim()) || '';
+                    if (!gk && !ak && !dk) {
                         if (st) {
-                            st.textContent = 'Enter a Gemini and/or Anthropic API key.';
+                            st.textContent = 'Enter at least one API key: Gemini, Anthropic, or DeepSeek.';
                             st.style.color = '#b91c1c';
                         }
                         return;
@@ -1402,9 +1441,13 @@ const App = (() => {
                     const body = {};
                     if (gk) body.gemini_api_key = gk;
                     if (ak) body.anthropic_api_key = ak;
+                    if (dk) body.deepseek_api_key = dk;
                     if (tk) body.tavily_api_key = tk;
+                    if (rp) body.runpod_api_key = rp;
+                    if (elK) body.elevenlabs_api_key = elK;
                     body.gemini_model = (gmEl && gmEl.value.trim()) || '';
                     body.claude_model = (cmEl && cmEl.value.trim()) || '';
+                    body.deepseek_model = (dsmEl && dsmEl.value.trim()) || '';
                     saveBtn.disabled = true;
                     if (st) {
                         st.textContent = 'Saving…';

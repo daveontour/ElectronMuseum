@@ -39,6 +39,8 @@ var knownKeys = func() []KnownKey {
 		{"DEEPSEEK_API_KEY", nil, false, "DeepSeek API key (Anthropic-compatible Messages API)"},
 		{"DEEPSEEK_MODEL_NAME", str("deepseek-chat"), false, "DeepSeek model name"},
 		{"TAVILY_API_KEY", nil, false, "Tavily web search API key"},
+		{"RUNPOD_API_KEY", nil, false, "RunPod API key (serverless image AI classification)"},
+		{"ELEVENLABS_API_KEY", nil, false, "ElevenLabs API key (speech / voice integrations)"},
 		{"PAGE_TITLE", str("Digital Museum of SUBJECT_NAME"), false, "Browser page title"},
 		{"ATTACHMENT_ALLOWED_TYPES", str(""), false, "Comma-separated allowed attachment MIME/ext types"},
 		{"ATTACHMENT_MIN_SIZE", str("0"), false, "Minimum attachment size in bytes"},

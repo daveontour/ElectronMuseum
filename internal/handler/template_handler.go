@@ -205,6 +205,7 @@ func (h *TemplateHandler) GetFoundationJS(w http.ResponseWriter, r *http.Request
 	ctx := h.buildContext(r)
 	geminiOK := h.defaultGeminiOK
 	claudeOK := h.defaultClaudeOK
+	deepseekOK := h.defaultDeepSeekOK
 	if uid := appctx.UserIDFromCtx(r.Context()); uid != 0 && h.userRepo != nil {
 		if stored, err := h.userRepo.GetUserLLMStored(r.Context(), uid); err == nil && stored != nil {
 			if strings.TrimSpace(stored.GeminiAPIKey) != "" {
@@ -212,6 +213,9 @@ func (h *TemplateHandler) GetFoundationJS(w http.ResponseWriter, r *http.Request
 			}
 			if strings.TrimSpace(stored.AnthropicAPIKey) != "" {
 				claudeOK = true
+			}
+			if strings.TrimSpace(stored.DeepSeekAPIKey) != "" {
+				deepseekOK = true
 			}
 		}
 	}
@@ -225,7 +229,7 @@ func (h *TemplateHandler) GetFoundationJS(w http.ResponseWriter, r *http.Request
 	} else {
 		ctx["claude_configured"] = "False"
 	}
-	if h.defaultDeepSeekOK {
+	if deepseekOK {
 		ctx["deepseek_configured"] = "True"
 	} else {
 		ctx["deepseek_configured"] = "False"

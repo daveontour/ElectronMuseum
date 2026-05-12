@@ -142,12 +142,14 @@ func (s *ChatService) loadAppSystemInstructions(ctx context.Context) (chat, core
 // effectiveAIConfig merges server defaults, the archive owner's saved overrides (users row), then
 // visitor session overrides (sessions.visitor_llm_overrides) when the request is a visitor session.
 // authSessionID is used when r is nil (e.g. background jobs); otherwise the cookie on r is read.
-func (s *ChatService) effectiveAIConfig(ctx context.Context, r *http.Request, authSessionID string) (geminiKey, geminiModel, anthropicKey, claudeModel, tavilyKey string) {
+func (s *ChatService) effectiveAIConfig(ctx context.Context, r *http.Request, authSessionID string) (geminiKey, geminiModel, anthropicKey, claudeModel, tavilyKey, deepseekKey, deepseekModel string) {
 	geminiKey = s.defaultGeminiKey
 	geminiModel = s.defaultGeminiModel
 	anthropicKey = s.defaultAnthropicKey
 	claudeModel = s.defaultClaudeModel
 	tavilyKey = s.defaultTavilyKey
+	deepseekKey = s.defaultDeepSeekKey
+	deepseekModel = s.defaultDeepSeekModel
 	uid := appctx.UserIDFromCtx(ctx)
 	useOwnerLLM := true
 	useServerLLM := true
@@ -185,6 +187,14 @@ func (s *ChatService) effectiveAIConfig(ctx context.Context, r *http.Request, au
 				} else if !allow {
 					tavilyKey = ""
 				}
+				if strings.TrimSpace(stored.DeepSeekAPIKey) != "" {
+					deepseekKey = strings.TrimSpace(stored.DeepSeekAPIKey)
+				} else if !allow {
+					deepseekKey = ""
+				}
+				if strings.TrimSpace(stored.DeepSeekModel) != "" {
+					deepseekModel = strings.TrimSpace(stored.DeepSeekModel)
+				}
 			} else {
 				geminiKey = s.defaultGeminiKey
 				if !useServerLLM {
@@ -203,6 +213,12 @@ func (s *ChatService) effectiveAIConfig(ctx context.Context, r *http.Request, au
 					tavilyKey = ""
 				} else if !allow {
 					tavilyKey = ""
+				}
+				deepseekKey = s.defaultDeepSeekKey
+				if !useServerLLM {
+					deepseekKey = ""
+				} else if !allow {
+					deepseekKey = ""
 				}
 			}
 		}
@@ -231,20 +247,29 @@ func (s *ChatService) effectiveAIConfig(ctx context.Context, r *http.Request, au
 		if strings.TrimSpace(vis.TavilyAPIKey) != "" {
 			tavilyKey = strings.TrimSpace(vis.TavilyAPIKey)
 		}
+		if strings.TrimSpace(vis.DeepSeekAPIKey) != "" {
+			deepseekKey = strings.TrimSpace(vis.DeepSeekAPIKey)
+		}
+		if strings.TrimSpace(vis.DeepSeekModel) != "" {
+			deepseekModel = strings.TrimSpace(vis.DeepSeekModel)
+		}
 	}
 	return
 }
 
-// effectiveAIKeySource reports whether the effective Gemini and Claude API keys match server defaults (env).
+// effectiveAIKeySource reports whether the effective Gemini, Claude, and DeepSeek API keys match server defaults (env).
 // User or visitor overrides that differ from those defaults yield false for that provider.
-func (s *ChatService) effectiveAIKeySource(ctx context.Context, r *http.Request, authSessionID string) (geminiFromServer, claudeFromServer bool) {
-	gk, _, ak, _, _ := s.effectiveAIConfig(ctx, r, authSessionID)
+func (s *ChatService) effectiveAIKeySource(ctx context.Context, r *http.Request, authSessionID string) (geminiFromServer, claudeFromServer, deepseekFromServer bool) {
+	gk, _, ak, _, _, dsk, _ := s.effectiveAIConfig(ctx, r, authSessionID)
 	gk = strings.TrimSpace(gk)
 	ak = strings.TrimSpace(ak)
+	dsk = strings.TrimSpace(dsk)
 	dg := strings.TrimSpace(s.defaultGeminiKey)
 	da := strings.TrimSpace(s.defaultAnthropicKey)
+	dd := strings.TrimSpace(s.defaultDeepSeekKey)
 	geminiFromServer = gk != "" && dg != "" && gk == dg
 	claudeFromServer = ak != "" && da != "" && ak == da
+	deepseekFromServer = dsk != "" && dd != "" && dsk == dd
 	return
 }
 
@@ -253,7 +278,7 @@ func (s *ChatService) applyUsageKeySourceToLLMUsage(ctx context.Context, r *http
 	if usage == nil {
 		return
 	}
-	gS, cS := s.effectiveAIKeySource(ctx, r, authSessionID)
+	gS, cS, dS := s.effectiveAIKeySource(ctx, r, authSessionID)
 	var v bool
 	switch strings.ToLower(strings.TrimSpace(usage.Provider)) {
 	case "gemini":
@@ -263,7 +288,7 @@ func (s *ChatService) applyUsageKeySourceToLLMUsage(ctx context.Context, r *http
 	case "localai":
 		v = true // LocalAI always runs on the server
 	case "deepseek":
-		v = strings.TrimSpace(s.defaultDeepSeekKey) != ""
+		v = dS
 	default:
 		return
 	}
@@ -272,18 +297,18 @@ func (s *ChatService) applyUsageKeySourceToLLMUsage(ctx context.Context, r *http
 }
 
 func (s *ChatService) effectiveGeminiProvider(ctx context.Context, r *http.Request, authSessionID string) appai.ChatProvider {
-	k, m, _, _, _ := s.effectiveAIConfig(ctx, r, authSessionID)
+	k, m, _, _, _, _, _ := s.effectiveAIConfig(ctx, r, authSessionID)
 	return appai.NewGeminiProvider(k, m)
 }
 
 func (s *ChatService) effectiveClaudeProvider(ctx context.Context, r *http.Request, authSessionID string) appai.ChatProvider {
-	_, _, k, m, _ := s.effectiveAIConfig(ctx, r, authSessionID)
+	_, _, k, m, _, _, _ := s.effectiveAIConfig(ctx, r, authSessionID)
 	return appai.NewClaudeProvider(k, m)
 }
 
-// effectiveDeepSeekProvider uses server env only (no per-user key overrides).
-func (s *ChatService) effectiveDeepSeekProvider() appai.ChatProvider {
-	return appai.NewDeepSeekProvider(s.defaultDeepSeekKey, s.defaultDeepSeekModel)
+func (s *ChatService) effectiveDeepSeekProvider(ctx context.Context, r *http.Request, authSessionID string) appai.ChatProvider {
+	_, _, _, _, _, k, m := s.effectiveAIConfig(ctx, r, authSessionID)
+	return appai.NewDeepSeekProvider(k, m)
 }
 
 // effectiveLocalAIProvider returns a LocalAIProvider using the server-level config.
@@ -332,7 +357,7 @@ func (s *ChatService) buildChatTools(ctx context.Context, r *http.Request, subje
 		policy = s.loadToolAccessPolicy(ctx, pw)
 	}
 	filtered := appai.FilterToolDefinitionsForTier(policy, tier)
-	_, _, _, _, tavily := s.effectiveAIConfig(ctx, r, "")
+	_, _, _, _, tavily, _, _ := s.effectiveAIConfig(ctx, r, "")
 	base := appai.NewToolExecutor(s.pool, subjectName, tavily, s.pepper, getRAM)
 	wrapped := appai.WrapToolExecutorWithPolicy(base, policy, tier)
 	return wrapped, &filtered
@@ -366,10 +391,40 @@ func (s *ChatService) ClaudeAvailable(ctx context.Context, r *http.Request) bool
 	return p != nil && p.IsAvailable()
 }
 
-// DeepSeekAvailable reports whether DeepSeek is configured from server env.
-func (s *ChatService) DeepSeekAvailable() bool {
-	p := s.effectiveDeepSeekProvider()
+// DeepSeekAvailable reports whether DeepSeek is configured for this request's user (and visitor session overrides).
+func (s *ChatService) DeepSeekAvailable(ctx context.Context, r *http.Request) bool {
+	p := s.effectiveDeepSeekProvider(ctx, r, "")
 	return p != nil && p.IsAvailable()
+}
+
+// ServerTavilyKeyConfigured reports whether a non-empty Tavily API key is configured server-side (e.g. TAVILY_API_KEY in .env).
+func (s *ChatService) ServerTavilyKeyConfigured() bool {
+	return strings.TrimSpace(s.defaultTavilyKey) != ""
+}
+
+// ServerRunpodKeyConfigured reports whether RUNPOD_API_KEY is set server-side (.env).
+func (s *ChatService) ServerRunpodKeyConfigured() bool {
+	return strings.TrimSpace(os.Getenv("RUNPOD_API_KEY")) != ""
+}
+
+// ServerElevenLabsKeyConfigured reports whether ELEVENLABS_API_KEY is set server-side (.env).
+func (s *ChatService) ServerElevenLabsKeyConfigured() bool {
+	return strings.TrimSpace(os.Getenv("ELEVENLABS_API_KEY")) != ""
+}
+
+// ServerGeminiModelDefaultSet reports whether a non-empty default Gemini model is set server-side (e.g. GEMINI_MODEL_NAME in .env).
+func (s *ChatService) ServerGeminiModelDefaultSet() bool {
+	return strings.TrimSpace(s.defaultGeminiModel) != ""
+}
+
+// ServerClaudeModelDefaultSet reports whether a non-empty default Claude model is set server-side (e.g. CLAUDE_MODEL_NAME / env equivalent in .env).
+func (s *ChatService) ServerClaudeModelDefaultSet() bool {
+	return strings.TrimSpace(s.defaultClaudeModel) != ""
+}
+
+// ServerDeepSeekModelDefaultSet reports whether a non-empty default DeepSeek model is set server-side (e.g. DEEPSEEK_MODEL_NAME in .env).
+func (s *ChatService) ServerDeepSeekModelDefaultSet() bool {
+	return strings.TrimSpace(s.defaultDeepSeekModel) != ""
 }
 
 // GenerateResponse runs a full chat generation cycle.
@@ -381,7 +436,7 @@ func (s *ChatService) GenerateResponse(ctx context.Context, r *http.Request, req
 	case "claude":
 		provider = s.effectiveClaudeProvider(ctx, r, "")
 	case "deepseek":
-		provider = s.effectiveDeepSeekProvider()
+		provider = s.effectiveDeepSeekProvider(ctx, r, "")
 	case "localai":
 		provider = s.effectiveLocalAIProvider()
 	default:
@@ -547,7 +602,7 @@ func (s *ChatService) GenerateRandomQuestion(ctx context.Context, r *http.Reques
 	case "claude":
 		provider = s.effectiveClaudeProvider(ctx, r, "")
 	case "deepseek":
-		provider = s.effectiveDeepSeekProvider()
+		provider = s.effectiveDeepSeekProvider(ctx, r, "")
 	case "localai":
 		provider = s.effectiveLocalAIProvider()
 	default:
@@ -820,7 +875,7 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 	// Use the raw tool executor here, not WrapToolExecutorWithPolicy. The LLM Tools Access policy
 	// applies to in-chat tool calls; when policy is unset it denies every tool, which left profile
 	// generation with no messages/emails. Reading DB rows for an explicit profile job is not gated by that policy.
-	_, _, _, _, tavily := s.effectiveAIConfig(ctx, nil, authSessionID)
+	_, _, _, _, tavily, _, _ := s.effectiveAIConfig(ctx, nil, authSessionID)
 	base := appai.NewToolExecutor(s.pool, "", tavily, s.pepper, getRAM)
 	msgsRaw, err := appai.GetMessagesForContactProfile(ctx, s.pool, name)
 	if err != nil {
@@ -911,7 +966,7 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 		provider = "gemini"
 	}
 	claudeP := s.effectiveClaudeProvider(ctx, nil, authSessionID)
-	deepseekP := s.effectiveDeepSeekProvider()
+	deepseekP := s.effectiveDeepSeekProvider(ctx, nil, authSessionID)
 	geminiP := s.effectiveGeminiProvider(ctx, nil, authSessionID)
 	localaiP := s.effectiveLocalAIProvider()
 	if provider == "deepseek" && (deepseekP == nil || !deepseekP.IsAvailable()) {

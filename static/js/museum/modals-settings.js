@@ -3264,7 +3264,11 @@ Modals.closeAll = () => {
         try {
             if (Modals.SaveResponseTitle && Modals.SaveResponseTitle.close) Modals.SaveResponseTitle.close();
         } catch (e) { console.debug('Error closing SaveResponseTitle:', e); }
-        
+
+        try {
+            if (Modals.UserLLMSettings && Modals.UserLLMSettings.closeInfoPopover) Modals.UserLLMSettings.closeInfoPopover();
+        } catch (e) { console.debug('Error closing UserLLM info popover:', e); }
+
         // Close SingleImageDisplay modal directly via DOM
         try {
             if (DOM.singleImageModal) {
@@ -4627,7 +4631,7 @@ Modals.AppConfig = (() => {
 // Expose for console / future UI if Application Configuration is re-added.
 window.AppConfig = Modals.AppConfig;
 
-// --- Per-user LLM / Tavily overrides (Settings tab) ---
+// --- Per-user LLM / Tavily overrides (Configuration → API Keys tab) ---
 Modals.UserLLMSettings = (() => {
     function getEl(id) {
         return document.getElementById(id);
@@ -4643,12 +4647,246 @@ Modals.UserLLMSettings = (() => {
         el.textContent = sessionScoped ? '(set for this visit only)' : '(saved on your account)';
     }
 
+    let userLLMStatusClearTimer = null;
+
     function setStatus(msg, color) {
         const el = getEl('user-llm-status');
         if (el) {
             el.textContent = msg || '';
             el.style.color = color || '#666';
         }
+        if (userLLMStatusClearTimer) {
+            clearTimeout(userLLMStatusClearTimer);
+            userLLMStatusClearTimer = null;
+        }
+    }
+
+    /** Success / info messages fade after a few seconds so the line does not stay forever. */
+    function setStatusThenFade(msg, color, ms) {
+        setStatus(msg, color);
+        const el = getEl('user-llm-status');
+        if (!el || !msg) return;
+        userLLMStatusClearTimer = setTimeout(() => {
+            userLLMStatusClearTimer = null;
+            if (el.textContent === msg) {
+                el.textContent = '';
+                el.style.color = '#666';
+            }
+        }, ms || 10000);
+    }
+
+    function applyLLMInputState(el, isOk) {
+        if (!el) return;
+        el.classList.remove('user-llm-field-input--state-ok', 'user-llm-field-input--state-warn');
+        el.classList.add(isOk ? 'user-llm-field-input--state-ok' : 'user-llm-field-input--state-warn');
+    }
+
+    function apiKeyPlaceholder(sessionScoped, userKeySet, ownerKeySet, serverEnvFallbackOk, providerLabel) {
+        const envBlank = serverEnvFallbackOk
+            ? ` There is a key for  ${providerLabel} configured in the server's configuration file. Paste your own key for ${providerLabel}here to use it.`
+            : ` No key for  ${providerLabel} has been configured. Paste a key here to use ${providerLabel}.`;
+        if (sessionScoped) {
+            if (userKeySet) {
+                return 'A key has been configured.  Paste a new key to replace it';
+            }
+            if (ownerKeySet) {
+                return 'No key saved for this visit — leave blank to use the archive owner’s saved key, or paste a key for this visit only.' + (serverEnvFallbackOk ? ' If the owner has no key, blank may use this deployment’s .env when set.' : '');
+            }
+            return 'No key saved for this visit — paste a key for this visit only, or leave blank when the owner’s key or this deployment’s .env supplies one.'
+                + (serverEnvFallbackOk ? '' : ` (${providerLabel} is not configured in this deployment’s .env.)`);
+        }
+        if (userKeySet) {
+            return 'A key is saved on your account — leave blank to keep it, or paste a new key to replace it';
+        }
+        return 'No saved key on your account — paste a key to store it here.' + envBlank;
+    }
+
+    function emptyModelFieldPlaceholder(sessionScoped, storedModel, ownerModel, exampleModel, providerLabel, providerOk, serverModelDefaultSet) {
+        const sm = String(storedModel || '').trim();
+        if (sm) return '';
+        const om = String(ownerModel || '').trim();
+        if (sessionScoped && om) {
+            return `No model saved for this visit — leave blank to use the owner’s model (${om}), or enter an override`;
+        }
+        if (sessionScoped) {
+            if (serverModelDefaultSet) {
+                return `No model for this visit.  Leave blank to use this servers's default ${providerLabel} model`;
+            }
+            return `No model configured.  Enter a model name or leave blank${providerOk ? ' (server .env default only if set)' : ''}`;
+        }
+        if (serverModelDefaultSet) {
+            return `No saved model on your account — leave blank to use this deployment’s default ${providerLabel} model from .env when set, or e.g. ${exampleModel}`;
+        }
+        if (providerOk) {
+            return `No saved model on your account. — enter a model (e.g. ${exampleModel}); blank leaves ${providerLabel} to the server without a per-account model override (no default model name in .env)`;
+        }
+        return `No saved model — ${providerLabel} is not available yet; add an API key or configure the server’s .env before setting a model name`;
+    }
+
+    /** Same text as the model input placeholder; when placeholder is empty (saved model visible), explain that. */
+    function modelFieldInfoBody(placeholder) {
+        const t = String(placeholder || '').trim();
+        if (t) return t;
+        return 'A model name is saved and shown in this field. Save with an empty model field to clear your override, or type a different model name.';
+    }
+
+    function setLLMInfoButton(id, title, bodyText) {
+        const el = getEl(id);
+        if (!el) return;
+        el.setAttribute('data-llm-info-title', title);
+        el.setAttribute('data-llm-info-body', bodyText);
+    }
+
+    let llmInfoPopoverKeyHandler = null;
+
+    const LLM_INFO_BTN_IDS = [
+        'user-llm-info-gemini-key',
+        'user-llm-info-gemini-model',
+        'user-llm-info-anthropic-key',
+        'user-llm-info-claude-model',
+        'user-llm-info-deepseek-key',
+        'user-llm-info-deepseek-model',
+        'user-llm-info-tavily-key',
+        'user-llm-info-runpod-key',
+        'user-llm-info-elevenlabs-key',
+    ];
+
+    let llmInfoPopoverTeardownLayout = null;
+
+    function closeLLMInfoPopover() {
+        const wrap = getEl('user-llm-info-popover');
+        if (wrap) {
+            wrap.setAttribute('hidden', '');
+        }
+        const card = wrap && wrap.querySelector('.user-llm-info-popover-card');
+        if (card) {
+            card.style.left = '';
+            card.style.top = '';
+            card.style.right = '';
+            card.style.bottom = '';
+        }
+        if (llmInfoPopoverTeardownLayout) {
+            llmInfoPopoverTeardownLayout();
+            llmInfoPopoverTeardownLayout = null;
+        }
+        if (llmInfoPopoverKeyHandler) {
+            document.removeEventListener('keydown', llmInfoPopoverKeyHandler, true);
+            llmInfoPopoverKeyHandler = null;
+        }
+    }
+
+    /** Nearest scrollable ancestor (for repositioning the anchored popover). */
+    function llmInfoPopoverScrollParent(el) {
+        let p = el && el.parentElement;
+        while (p && p !== document.body && p !== document.documentElement) {
+            const cs = window.getComputedStyle(p);
+            const oy = cs.overflowY;
+            const ox = cs.overflowX;
+            const scrollableY = (oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight;
+            const scrollableX = (ox === 'auto' || ox === 'scroll') && p.scrollWidth > p.clientWidth;
+            if (scrollableY || scrollableX) return p;
+            p = p.parentElement;
+        }
+        return null;
+    }
+
+    function positionLLMInfoPopoverCard(anchorEl) {
+        const wrap = getEl('user-llm-info-popover');
+        const card = wrap && wrap.querySelector('.user-llm-info-popover-card');
+        if (!card || !anchorEl || typeof anchorEl.getBoundingClientRect !== 'function') return;
+        const gap = 8;
+        const margin = 10;
+        const rect = anchorEl.getBoundingClientRect();
+        let left = rect.right + gap;
+        let top = rect.top;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const cw = card.offsetWidth || 280;
+        const ch = card.offsetHeight || 120;
+        if (left + cw + margin > vw) {
+            left = rect.left - gap - cw;
+        }
+        if (left < margin) left = margin;
+        if (left + cw > vw - margin) {
+            left = Math.max(margin, vw - margin - cw);
+        }
+        if (top + ch + margin > vh) {
+            top = Math.max(margin, vh - ch - margin);
+        }
+        if (top < margin) top = margin;
+        card.style.left = `${Math.round(left)}px`;
+        card.style.top = `${Math.round(top)}px`;
+    }
+
+    function attachLLMInfoPopoverLayoutListeners(anchorEl) {
+        const reposition = () => positionLLMInfoPopoverCard(anchorEl);
+        window.addEventListener('resize', reposition);
+        const scrollEl = llmInfoPopoverScrollParent(anchorEl);
+        if (scrollEl) {
+            scrollEl.addEventListener('scroll', reposition, { passive: true });
+        }
+        return () => {
+            window.removeEventListener('resize', reposition);
+            if (scrollEl) scrollEl.removeEventListener('scroll', reposition);
+        };
+    }
+
+    function openLLMInfoPopover(title, bodyText, anchorEl) {
+        const wrap = getEl('user-llm-info-popover');
+        const titleEl = getEl('user-llm-info-popover-title');
+        const bodyEl = getEl('user-llm-info-popover-body');
+        if (!wrap || !titleEl || !bodyEl) return;
+        if (llmInfoPopoverTeardownLayout) {
+            llmInfoPopoverTeardownLayout();
+            llmInfoPopoverTeardownLayout = null;
+        }
+        if (llmInfoPopoverKeyHandler) {
+            document.removeEventListener('keydown', llmInfoPopoverKeyHandler, true);
+            llmInfoPopoverKeyHandler = null;
+        }
+        titleEl.textContent = title || 'Information';
+        bodyEl.textContent = bodyText || '';
+        wrap.removeAttribute('hidden');
+        if (anchorEl) {
+            llmInfoPopoverTeardownLayout = attachLLMInfoPopoverLayoutListeners(anchorEl);
+            positionLLMInfoPopoverCard(anchorEl);
+            requestAnimationFrame(() => {
+                positionLLMInfoPopoverCard(anchorEl);
+                requestAnimationFrame(() => positionLLMInfoPopoverCard(anchorEl));
+            });
+        }
+        llmInfoPopoverKeyHandler = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeLLMInfoPopover();
+            }
+        };
+        document.addEventListener('keydown', llmInfoPopoverKeyHandler, true);
+    }
+
+    /** Bind once per button (init may run before tab is first shown; load() runs when API Keys is used). */
+    function wireLLMInfoPopover() {
+        const wrap = getEl('user-llm-info-popover');
+        if (wrap && wrap.dataset.llmPopoverBackdropWired !== '1') {
+            wrap.dataset.llmPopoverBackdropWired = '1';
+            wrap.addEventListener('click', (ev) => {
+                if (ev.target.closest('.user-llm-info-popover-close') || ev.target.classList.contains('user-llm-info-popover-backdrop')) {
+                    closeLLMInfoPopover();
+                }
+            });
+        }
+        LLM_INFO_BTN_IDS.forEach((id) => {
+            const el = getEl(id);
+            if (!el || el.dataset.llmInfoClickBound === '1') return;
+            el.dataset.llmInfoClickBound = '1';
+            el.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                const title = el.getAttribute('data-llm-info-title') || 'Information';
+                const body = el.getAttribute('data-llm-info-body') || '';
+                openLLMInfoPopover(title, body, el);
+            });
+        });
     }
 
     async function patchLLM(body) {
@@ -4669,26 +4907,48 @@ Modals.UserLLMSettings = (() => {
         }
     }
 
-    async function load() {
+    /**
+     * @param {{ preserveStatus?: boolean }} [options]
+     * @returns {Promise<{ sessionScoped: boolean }>}
+     */
+    async function load(options = {}) {
+        const preserveStatus = options.preserveStatus === true;
         const section = getEl('user-llm-settings-section');
-        if (!section) return;
-        setStatus('', '#666');
+        if (!section) return { sessionScoped: false };
+        if (!preserveStatus) {
+            setStatus('', '#666');
+        }
+        let sessionScoped = false;
         try {
             const res = await fetch('/auth/me', { credentials: 'same-origin' });
             if (!res.ok) {
                 section.style.display = 'none';
-                return;
+                return { sessionScoped: false };
             }
             const data = await res.json();
             section.style.display = 'block';
+            let av = {};
+            try {
+                const avRes = await fetch('/chat/availability', { credentials: 'same-origin' });
+                if (avRes.ok) av = await avRes.json();
+            } catch (_) { /* leave av partial */ }
+            const geminiRoute = !!av.gemini_available;
+            const claudeRoute = !!av.claude_available;
+            const deepseekRoute = !!av.deepseek_available;
+            const tavilyEnv = !!av.tavily_env_configured;
+            const runpodEnv = !!av.runpod_env_configured;
+            const elevenlabsEnv = !!av.elevenlabs_env_configured;
+            const serverGeminiModel = !!av.server_gemini_model_default_set;
+            const serverClaudeModel = !!av.server_claude_model_default_set;
+            const serverDeepseekModel = !!av.server_deepseek_model_default_set;
             const llm = data.llm_settings || {};
-            const sessionScoped = !!llm.session_scoped;
+            sessionScoped = !!llm.session_scoped;
             const intro = getEl('user-llm-intro');
             if (intro) {
                 if (sessionScoped) {
                     intro.textContent = 'Optional overrides for this visit only. Values are stored on your session and cleared when you sign out or the session expires. Leave a field blank to use the archive owner’s saved keys and models where available, then server defaults.';
                 } else {
-                    intro.textContent = 'Optional overrides for chat and web search tools. When set, your values replace server defaults (for example from .env on the server). Keys are stored on your account and are not shown again after saving — leave a key field blank to keep your current saved key, or use Clear to remove your override.';
+                    intro.textContent = 'API Keys are required to access cloud hosted AIs and hosted tools like web search and speech generation. Digital Museum will work fine without these services, but the responses may not be as sophisticated or as complete. Keys are stored on your account and are not shown again after saving — leave a key field blank to keep your current saved key, or use Clear to remove your override.';
                 }
             }
             const subEl = getEl('user-llm-subject-hints');
@@ -4697,9 +4957,13 @@ Modals.UserLLMSettings = (() => {
                     const parts = [];
                     if (llm.subject_gemini_api_key_set) parts.push('Gemini API key');
                     if (llm.subject_anthropic_key_set) parts.push('Anthropic API key');
+                    if (llm.subject_deepseek_key_set) parts.push('DeepSeek API key');
                     if (llm.subject_tavily_key_set) parts.push('Tavily API key');
+                    if (llm.subject_runpod_key_set) parts.push('RunPod API key');
+                    if (llm.subject_elevenlabs_key_set) parts.push('ElevenLabs API key');
                     if (llm.subject_gemini_model) parts.push('Gemini model "' + llm.subject_gemini_model + '"');
                     if (llm.subject_claude_model) parts.push('Claude model "' + llm.subject_claude_model + '"');
+                    if (llm.subject_deepseek_model) parts.push('DeepSeek model "' + llm.subject_deepseek_model + '"');
                     subEl.textContent = parts.length
                         ? ('When you leave a field blank, the owner’s saved settings apply where available, then server defaults. Owner has: ' + parts.join('; ') + '.')
                         : 'The archive owner has not saved personal API keys or models in Settings — blank fields use server defaults only.';
@@ -4711,38 +4975,111 @@ Modals.UserLLMSettings = (() => {
             }
             setHint('user-llm-gemini-key-hint', !!llm.gemini_api_key_set, sessionScoped);
             setHint('user-llm-anthropic-key-hint', !!llm.anthropic_api_key_set, sessionScoped);
+            setHint('user-llm-deepseek-key-hint', !!llm.deepseek_api_key_set, sessionScoped);
             setHint('user-llm-tavily-key-hint', !!llm.tavily_api_key_set, sessionScoped);
+            setHint('user-llm-runpod-key-hint', !!llm.runpod_api_key_set, sessionScoped);
+            setHint('user-llm-elevenlabs-key-hint', !!llm.elevenlabs_api_key_set, sessionScoped);
             const gm = getEl('user-llm-gemini-model');
             const cm = getEl('user-llm-claude-model');
-            if (gm) {
-                gm.value = llm.gemini_model || '';
-                gm.placeholder = sessionScoped ? 'Empty = owner’s model, then server default' : 'e.g. gemini-2.5-flash (empty = server default)';
-            }
-            if (cm) {
-                cm.value = llm.claude_model || '';
-                cm.placeholder = sessionScoped ? 'Empty = owner’s model, then server default' : 'e.g. claude-sonnet-4-6 (empty = server default)';
-            }
+            const dm = getEl('user-llm-deepseek-model');
+            const geminiStored = String(llm.gemini_model || '').trim();
+            const claudeStored = String(llm.claude_model || '').trim();
+            const deepseekStored = String(llm.deepseek_model || '').trim();
+            const ownerGeminiModel = sessionScoped ? String(llm.subject_gemini_model || '').trim() : '';
+            const ownerClaudeModel = sessionScoped ? String(llm.subject_claude_model || '').trim() : '';
+            const ownerDeepseekModel = sessionScoped ? String(llm.subject_deepseek_model || '').trim() : '';
+            const ownerGeminiKey = !!(sessionScoped && llm.subject_gemini_api_key_set);
+            const ownerAnthropicKey = !!(sessionScoped && llm.subject_anthropic_key_set);
+            const ownerDeepseekKey = !!(sessionScoped && llm.subject_deepseek_key_set);
+            const ownerTavilyKey = !!(sessionScoped && llm.subject_tavily_key_set);
+            const ownerRunpodKey = !!(sessionScoped && llm.subject_runpod_key_set);
+            const ownerElevenlabsKey = !!(sessionScoped && llm.subject_elevenlabs_key_set);
+            const gemModelPh = emptyModelFieldPlaceholder(sessionScoped, geminiStored, ownerGeminiModel, 'gemini-2.5-flash', 'Gemini', geminiRoute, serverGeminiModel);
+            const claudeModelPh = emptyModelFieldPlaceholder(sessionScoped, claudeStored, ownerClaudeModel, 'claude-sonnet-4-6', 'Claude', claudeRoute, serverClaudeModel);
+            const deepseekModelPh = emptyModelFieldPlaceholder(sessionScoped, deepseekStored, ownerDeepseekModel, 'deepseek-chat', 'DeepSeek', deepseekRoute, serverDeepseekModel);
             const gk = getEl('user-llm-gemini-key');
             const ak = getEl('user-llm-anthropic-key');
+            const dk = getEl('user-llm-deepseek-key');
             const tk = getEl('user-llm-tavily-key');
-            const keyPh = sessionScoped ? 'Leave blank to use the owner’s key or server default' : 'Leave blank to keep your saved key';
+            const rk = getEl('user-llm-runpod-key');
+            const el11 = getEl('user-llm-elevenlabs-key');
+            const gemKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.gemini_api_key_set, ownerGeminiKey, geminiRoute, 'Gemini');
+            const anthropicKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.anthropic_api_key_set, ownerAnthropicKey, claudeRoute, 'Anthropic');
+            const deepseekKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.deepseek_api_key_set, ownerDeepseekKey, deepseekRoute, 'DeepSeek');
+            const tavilyKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.tavily_api_key_set, ownerTavilyKey, tavilyEnv, 'Tavily');
+            const runpodKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.runpod_api_key_set, ownerRunpodKey, runpodEnv, 'RunPod');
+            const elevenlabsKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.elevenlabs_api_key_set, ownerElevenlabsKey, elevenlabsEnv, 'ElevenLabs');
+            if (gm) {
+                gm.value = geminiStored;
+                gm.placeholder = gemModelPh;
+            }
+            if (cm) {
+                cm.value = claudeStored;
+                cm.placeholder = claudeModelPh;
+            }
+            if (dm) {
+                dm.value = deepseekStored;
+                dm.placeholder = deepseekModelPh;
+            }
             if (gk) {
                 gk.value = '';
-                gk.placeholder = keyPh;
+                gk.placeholder = gemKeyPh;
             }
             if (ak) {
                 ak.value = '';
-                ak.placeholder = keyPh;
+                ak.placeholder = anthropicKeyPh;
+            }
+            if (dk) {
+                dk.value = '';
+                dk.placeholder = deepseekKeyPh;
             }
             if (tk) {
                 tk.value = '';
-                tk.placeholder = keyPh;
+                tk.placeholder = tavilyKeyPh;
             }
+            if (rk) {
+                rk.value = '';
+                rk.placeholder = runpodKeyPh;
+            }
+            if (el11) {
+                el11.value = '';
+                el11.placeholder = elevenlabsKeyPh;
+            }
+            setLLMInfoButton('user-llm-info-gemini-key', 'Gemini API key', gemKeyPh);
+            setLLMInfoButton('user-llm-info-gemini-model', 'Gemini model name', modelFieldInfoBody(gemModelPh));
+            setLLMInfoButton('user-llm-info-anthropic-key', 'Anthropic Claude API key', anthropicKeyPh);
+            setLLMInfoButton('user-llm-info-claude-model', 'Claude model name', modelFieldInfoBody(claudeModelPh));
+            setLLMInfoButton('user-llm-info-deepseek-key', 'DeepSeek API key', deepseekKeyPh);
+            setLLMInfoButton('user-llm-info-deepseek-model', 'DeepSeek model name', modelFieldInfoBody(deepseekModelPh));
+            setLLMInfoButton('user-llm-info-tavily-key', 'Tavily API key (web search)', tavilyKeyPh);
+            setLLMInfoButton('user-llm-info-runpod-key', 'RunPod API key (image AI classification)', runpodKeyPh);
+            setLLMInfoButton('user-llm-info-elevenlabs-key', 'ElevenLabs API key (speech / voice)', elevenlabsKeyPh);
+            wireLLMInfoPopover();
+            const gemKeyOk = !!(llm.gemini_api_key_set || (sessionScoped && llm.subject_gemini_api_key_set) || geminiRoute);
+            const gemModelOk = !!(geminiStored || ownerGeminiModel || serverGeminiModel);
+            applyLLMInputState(gk, gemKeyOk);
+            applyLLMInputState(gm, gemModelOk);
+            const claudeKeyOk = !!(llm.anthropic_api_key_set || (sessionScoped && llm.subject_anthropic_key_set) || claudeRoute);
+            const claudeModelOk = !!(claudeStored || ownerClaudeModel || serverClaudeModel);
+            applyLLMInputState(ak, claudeKeyOk);
+            applyLLMInputState(cm, claudeModelOk);
+            const deepKeyOk = !!(llm.deepseek_api_key_set || (sessionScoped && llm.subject_deepseek_key_set) || deepseekRoute);
+            const deepModelOk = !!(deepseekStored || ownerDeepseekModel || serverDeepseekModel);
+            applyLLMInputState(dk, deepKeyOk);
+            applyLLMInputState(dm, deepModelOk);
+            const tavKeyOk = !!(llm.tavily_api_key_set || (sessionScoped && llm.subject_tavily_key_set) || tavilyEnv);
+            applyLLMInputState(tk, tavKeyOk);
+            const runpodKeyOk = !!(llm.runpod_api_key_set || (sessionScoped && llm.subject_runpod_key_set) || runpodEnv);
+            const elevenlabsKeyOk = !!(llm.elevenlabs_api_key_set || (sessionScoped && llm.subject_elevenlabs_key_set) || elevenlabsEnv);
+            applyLLMInputState(rk, runpodKeyOk);
+            applyLLMInputState(el11, elevenlabsKeyOk);
             const saveBtn = getEl('user-llm-save-btn');
-            if (saveBtn) saveBtn.textContent = sessionScoped ? 'Save for this session' : 'Save LLM settings';
+            if (saveBtn) saveBtn.textContent = sessionScoped ? 'Save for this session' : 'Save AI API settings';
         } catch (e) {
             section.style.display = 'none';
+            return { sessionScoped: false };
         }
+        return { sessionScoped };
     }
 
     async function save() {
@@ -4750,44 +5087,61 @@ Modals.UserLLMSettings = (() => {
         const body = {};
         const gk = (getEl('user-llm-gemini-key') && getEl('user-llm-gemini-key').value) || '';
         const ak = (getEl('user-llm-anthropic-key') && getEl('user-llm-anthropic-key').value) || '';
+        const dk = (getEl('user-llm-deepseek-key') && getEl('user-llm-deepseek-key').value) || '';
         const tk = (getEl('user-llm-tavily-key') && getEl('user-llm-tavily-key').value) || '';
+        const rpK = (getEl('user-llm-runpod-key') && getEl('user-llm-runpod-key').value) || '';
+        const elK = (getEl('user-llm-elevenlabs-key') && getEl('user-llm-elevenlabs-key').value) || '';
         if (gk.trim()) body.gemini_api_key = gk.trim();
         if (ak.trim()) body.anthropic_api_key = ak.trim();
+        if (dk.trim()) body.deepseek_api_key = dk.trim();
         if (tk.trim()) body.tavily_api_key = tk.trim();
+        if (rpK.trim()) body.runpod_api_key = rpK.trim();
+        if (elK.trim()) body.elevenlabs_api_key = elK.trim();
         body.gemini_model = (getEl('user-llm-gemini-model') && getEl('user-llm-gemini-model').value.trim()) || '';
         body.claude_model = (getEl('user-llm-claude-model') && getEl('user-llm-claude-model').value.trim()) || '';
+        body.deepseek_model = (getEl('user-llm-deepseek-model') && getEl('user-llm-deepseek-model').value.trim()) || '';
         try {
             await patchLLM(body);
-            setStatus('Saved.', '#2a7a2a');
-            await load();
+            const { sessionScoped } = await load({ preserveStatus: true });
+            const msg = sessionScoped
+                ? 'Saved. Session overrides apply until you sign out or this visit ends. API keys are not shown again after saving.'
+                : 'Saved. Your API keys and model names are stored on your account. Keys are not shown again after saving for security.';
+            setStatusThenFade(msg, '#15803d', 12000);
         } catch (e) {
             setStatus(e.message || 'Save failed', '#c00');
         }
     }
 
-    async function clearField(apiField) {
+    async function clearLLMPatch(body) {
         setStatus('Clearing…', '#666');
         try {
-            await patchLLM({ [apiField]: '' });
-            setStatus('Cleared.', '#2a7a2a');
-            await load();
+            await patchLLM(body);
+            await load({ preserveStatus: true });
+            setStatusThenFade('Cleared. Those overrides were removed; empty fields use the owner’s saved values or server defaults where applicable.', '#15803d', 12000);
         } catch (e) {
             setStatus(e.message || 'Clear failed', '#c00');
         }
     }
 
     function init() {
+        wireLLMInfoPopover();
         const saveBtn = getEl('user-llm-save-btn');
         if (saveBtn) saveBtn.addEventListener('click', () => void save());
         const cg = getEl('user-llm-clear-gemini');
-        if (cg) cg.addEventListener('click', () => void clearField('gemini_api_key'));
+        if (cg) cg.addEventListener('click', () => void clearLLMPatch({ gemini_api_key: '', gemini_model: '' }));
         const ca = getEl('user-llm-clear-anthropic');
-        if (ca) ca.addEventListener('click', () => void clearField('anthropic_api_key'));
+        if (ca) ca.addEventListener('click', () => void clearLLMPatch({ anthropic_api_key: '', claude_model: '' }));
+        const cd = getEl('user-llm-clear-deepseek');
+        if (cd) cd.addEventListener('click', () => void clearLLMPatch({ deepseek_api_key: '', deepseek_model: '' }));
         const ct = getEl('user-llm-clear-tavily');
-        if (ct) ct.addEventListener('click', () => void clearField('tavily_api_key'));
+        if (ct) ct.addEventListener('click', () => void clearLLMPatch({ tavily_api_key: '' }));
+        const crp = getEl('user-llm-clear-runpod');
+        if (crp) crp.addEventListener('click', () => void clearLLMPatch({ runpod_api_key: '' }));
+        const cel = getEl('user-llm-clear-elevenlabs');
+        if (cel) cel.addEventListener('click', () => void clearLLMPatch({ elevenlabs_api_key: '' }));
     }
 
-    return { load, init };
+    return { load, init, closeInfoPopover: closeLLMInfoPopover };
 })();
 
 // --- Custom Voices (Settings Tab) ---
