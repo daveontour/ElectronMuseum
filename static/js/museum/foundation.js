@@ -130,6 +130,7 @@ const DOM = {
     companionModeCheckbox: document.getElementById('companion-mode'),
     allowExplicitContentCheckbox: document.getElementById('allow-explicit-content'),
     llmProviderSelect: document.getElementById('llm-provider-select'),
+    profilesLlmProviderSelect: document.getElementById('profiles-llm-provider-select'),
     voiceRadios: document.querySelectorAll('input[name="voice"]'),
     moodSelector: document.getElementById('mood-selector'),
     ownerMood: document.getElementById('owner-mood'),

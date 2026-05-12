@@ -290,7 +290,9 @@ Modals.Contacts = (() => {
             const viewPane = document.getElementById('complete-profile-view-pane');
             const editPane = document.getElementById('complete-profile-edit-pane');
             document.querySelectorAll('.complete-profile-tab').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.tab === tab);
+                const on = btn.dataset.tab === tab;
+                btn.classList.toggle('active', on);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
             });
             if (tab === 'view') {
                 if (viewPane) viewPane.style.display = 'block';
@@ -487,11 +489,61 @@ Modals.Profiles = (() => {
         const contactDropdown = () => document.getElementById('profiles-contact-dropdown');
         const createBtn = () => document.getElementById('profiles-create-btn');
         let allContactNames = [];
+        const profilesSelectedContacts = new Set();
         const loadingEl = () => document.getElementById('profiles-loading');
         const tableContainer = () => document.getElementById('profiles-table-container');
         const tableBody = () => document.getElementById('profiles-table-body');
         const emptyMsg = () => document.getElementById('profiles-empty-msg');
         let profilesPollTimer = null;
+        let profilesNameSortOrder = 'asc';
+        const ALLOWED_PROFILE_PROVIDERS = new Set(['gemini', 'claude', 'deepseek', 'localai']);
+
+        function profilesLlmProviderEl() {
+            if (typeof DOM !== 'undefined' && DOM.profilesLlmProviderSelect) return DOM.profilesLlmProviderSelect;
+            return document.getElementById('profiles-llm-provider-select');
+        }
+
+        function syncProfilesProviderFromChat() {
+            const pSel = profilesLlmProviderEl();
+            const chatSel = typeof DOM !== 'undefined' ? DOM.llmProviderSelect : null;
+            if (!pSel) return;
+            const v = (chatSel && chatSel.value) ? String(chatSel.value).trim().toLowerCase() : 'gemini';
+            pSel.value = ALLOWED_PROFILE_PROVIDERS.has(v) ? v : 'gemini';
+        }
+
+        function selectedProfilesProvider() {
+            const pSel = profilesLlmProviderEl();
+            if (pSel && pSel.value) {
+                const v = String(pSel.value).trim().toLowerCase();
+                if (ALLOWED_PROFILE_PROVIDERS.has(v)) return v;
+            }
+            const chatSel = typeof DOM !== 'undefined' ? DOM.llmProviderSelect : null;
+            if (chatSel && chatSel.value) {
+                const v = String(chatSel.value).trim().toLowerCase();
+                if (ALLOWED_PROFILE_PROVIDERS.has(v)) return v;
+            }
+            return 'gemini';
+        }
+
+        function updateProfilesNameSortHeader() {
+            const th = document.querySelector('#profiles-modal .profiles-profiles-sort-name');
+            if (!th) return;
+            th.classList.remove('profiles-sort-asc', 'profiles-sort-desc');
+            th.classList.add(profilesNameSortOrder === 'asc' ? 'profiles-sort-asc' : 'profiles-sort-desc');
+        }
+
+        function applyProfilesNameSort() {
+            const tbody = tableBody();
+            if (!tbody) return;
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const na = (a.dataset.profileName || '').toLowerCase();
+                const nb = (b.dataset.profileName || '').toLowerCase();
+                const c = na.localeCompare(nb, undefined, { sensitivity: 'base' });
+                return profilesNameSortOrder === 'asc' ? c : -c;
+            });
+            rows.forEach((r) => tbody.appendChild(r));
+        }
 
         function clearProfilesPoll() {
             if (profilesPollTimer) {
@@ -517,36 +569,75 @@ Modals.Profiles = (() => {
             return d.innerHTML;
         }
 
-        function showContactDropdown(query) {
+        function showContactDropdown() {
             const dropdown = contactDropdown();
             const input = contactInput();
             if (!dropdown || !input) return;
-            const q = (query || input.value || '').trim().toLowerCase();
+            const q = (input.value || '').trim().toLowerCase();
             const matches = q
                 ? allContactNames.filter(n => n.toLowerCase().includes(q))
-                : allContactNames;
+                : [...allContactNames];
             if (matches.length === 0) {
                 dropdown.style.display = 'none';
                 return;
             }
-            dropdown.innerHTML = matches.map(n =>
-                `<div class="profiles-contact-option" data-name="${escapeHtml(n)}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #eee;">${escapeHtml(n)}</div>`
-            ).join('');
-            dropdown.style.display = 'block';
-            dropdown.querySelectorAll('.profiles-contact-option').forEach(opt => {
-                opt.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const name = opt.dataset.name;
-                    if (input) input.value = name;
-                    dropdown.style.display = 'none';
+            const cmp = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+            const selectedInMatches = matches.filter((n) => profilesSelectedContacts.has(n)).sort(cmp);
+            const unselectedMatches = matches.filter((n) => !profilesSelectedContacts.has(n)).sort(cmp);
+            const ordered = [...selectedInMatches, ...unselectedMatches];
+            dropdown.innerHTML = '';
+            ordered.forEach((n) => {
+                const label = document.createElement('label');
+                label.className = 'profiles-contact-option profiles-contact-option--row';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'profiles-contact-cb';
+                cb.checked = profilesSelectedContacts.has(n);
+                cb.dataset.name = n;
+                const span = document.createElement('span');
+                span.className = 'profiles-contact-option-label';
+                span.textContent = n;
+                label.appendChild(cb);
+                label.appendChild(span);
+                cb.addEventListener('change', () => {
+                    if (cb.checked) profilesSelectedContacts.add(n);
+                    else profilesSelectedContacts.delete(n);
                     updateCreateBtnState();
                 });
+                dropdown.appendChild(label);
             });
+            dropdown.style.display = 'block';
         }
 
         function hideContactDropdown() {
             const dropdown = contactDropdown();
             if (dropdown) dropdown.style.display = 'none';
+        }
+
+        function closeAllProfilesActionMenus() {
+            document.querySelectorAll('#profiles-modal .profiles-actions-menu').forEach((menu) => {
+                menu.style.display = 'none';
+                menu.setAttribute('hidden', '');
+                menu.style.position = '';
+                menu.style.right = '';
+                menu.style.left = '';
+                menu.style.top = '';
+                menu.style.zIndex = '';
+            });
+            document.querySelectorAll('#profiles-modal .profiles-actions-toggle').forEach((btn) => {
+                btn.setAttribute('aria-expanded', 'false');
+            });
+        }
+
+        function positionProfilesActionMenu(menu, toggle) {
+            const r = toggle.getBoundingClientRect();
+            menu.style.position = 'fixed';
+            menu.style.right = 'auto';
+            const w = menu.offsetWidth || 160;
+            const left = Math.min(Math.max(6, r.right - w), window.innerWidth - w - 8);
+            menu.style.left = `${left}px`;
+            menu.style.top = `${r.bottom + 4}px`;
+            menu.style.zIndex = '5000';
         }
 
         async function loadContactNames() {
@@ -559,6 +650,7 @@ Modals.Profiles = (() => {
                 const contacts = data.contacts || [];
                 allContactNames = [...new Set(contacts.map(c => c.name).filter(n => n && n.trim()))].sort();
                 input.value = '';
+                profilesSelectedContacts.clear();
                 updateCreateBtnState();
             } catch (err) {
                 console.error('Profiles load contacts error:', err);
@@ -566,9 +658,12 @@ Modals.Profiles = (() => {
         }
 
         function updateCreateBtnState() {
-            const input = contactInput();
             const btn = createBtn();
-            if (btn) btn.disabled = !input || !(input.value || '').trim();
+            if (!btn) return;
+            const n = profilesSelectedContacts.size;
+            btn.disabled = n === 0;
+            const icon = '<i class="fas fa-sync-alt" aria-hidden="true"></i> ';
+            btn.innerHTML = n === 0 ? `${icon}Create profile` : n === 1 ? `${icon}Create profile` : `${icon}Create profiles (${n})`;
         }
 
         async function loadProfileNames(opts) {
@@ -599,80 +694,184 @@ Modals.Profiles = (() => {
                     const names = (data.names || []).filter(n => n && String(n).trim());
                     entries = names.map(n => ({ name: String(n).trim(), pending: false }));
                 }
-                entries.sort((a, b) => a.name.localeCompare(b.name));
+                entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
                 tbody.innerHTML = '';
                 entries.forEach(({ name, pending }) => {
                     const tr = document.createElement('tr');
-                    tr.style.borderBottom = '1px solid #eee';
                     tr.dataset.profileName = name;
                     tr.dataset.pending = pending ? 'true' : 'false';
-                    tr.style.cursor = pending ? 'default' : 'pointer';
                     const safeName = String(name).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    const viewDisabled = pending ? 'disabled' : '';
-                    const viewTitle = pending ? 'Profile is still being generated' : 'View and edit';
                     tr.innerHTML = `
-                        <td style="padding: 8px;">${safeName}${pending ? ' <span style="color:#888;font-size:0.85em;">(generating…)</span>' : ''}</td>
-                        <td style="padding: 8px; text-align: center;">
-                            <button type="button" class="modal-btn modal-btn-primary profiles-view-btn" ${viewDisabled} title="${viewTitle.replace(/"/g, '&quot;')}" style="padding: 4px 8px; font-size: 0.85em; margin-right: 4px;"><i class="fas fa-id-card"></i></button>
-                            <button type="button" class="modal-btn modal-btn-secondary profiles-delete-btn" title="Delete profile" style="padding: 4px 8px; font-size: 0.85em; background-color: #dc3545; color: white;"><i class="fas fa-trash-alt"></i></button>
-                        </td>
+                        <td class="profiles-name-cell"></td>
+                        <td class="profiles-actions-cell"></td>
                     `;
+                    const nameCell = tr.querySelector('.profiles-name-cell');
+                    if (nameCell) {
+                        nameCell.innerHTML = `${safeName}${pending ? ' <span class="profiles-row-pending-badge">(generating…)</span>' : ''}`;
+                    }
+                    const actionsCell = tr.querySelector('.profiles-actions-cell');
+                    if (actionsCell) {
+                        const wrap = document.createElement('div');
+                        wrap.className = 'profiles-actions-wrap';
+                        const toggle = document.createElement('button');
+                        toggle.type = 'button';
+                        toggle.className = 'modal-btn modal-btn-secondary profiles-actions-toggle profiles-row-btn';
+                        toggle.setAttribute('aria-haspopup', 'true');
+                        toggle.setAttribute('aria-expanded', 'false');
+                        toggle.setAttribute('aria-label', `Actions for ${name}`);
+                        toggle.innerHTML = 'Actions <i class="fas fa-caret-down" aria-hidden="true"></i>';
+                        const menu = document.createElement('div');
+                        menu.className = 'profiles-actions-menu';
+                        menu.setAttribute('role', 'menu');
+                        menu.style.display = 'none';
+                        menu.setAttribute('hidden', '');
+                        const mkItem = (action, label, itemOpts) => {
+                            const o = itemOpts || {};
+                            const b = document.createElement('button');
+                            b.type = 'button';
+                            b.className = 'profiles-actions-menu-item' + (o.danger ? ' profiles-actions-menu-item--danger' : '');
+                            b.dataset.action = action;
+                            b.setAttribute('role', 'menuitem');
+                            b.textContent = label;
+                            if (o.disabled) b.disabled = true;
+                            return b;
+                        };
+                        menu.appendChild(mkItem('view', 'View profile', { disabled: pending }));
+                        menu.appendChild(mkItem('regenerate', 'Regenerate…', { disabled: pending }));
+                        menu.appendChild(mkItem('delete', 'Delete…', { danger: true }));
+                        menu.querySelectorAll('.profiles-actions-menu-item').forEach((item) => {
+                            item.addEventListener('click', (ev) => {
+                                ev.stopPropagation();
+                                closeAllProfilesActionMenus();
+                                const act = item.dataset.action;
+                                if (act === 'view' && !pending) Modals.Contacts.openProfileByName(name);
+                                else if (act === 'regenerate' && !pending) handleRegenerateProfile(name);
+                                else if (act === 'delete') handleDeleteProfile(name);
+                            });
+                        });
+                        toggle.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            const open = menu.style.display === 'block';
+                            closeAllProfilesActionMenus();
+                            if (!open) {
+                                menu.style.display = 'block';
+                                menu.removeAttribute('hidden');
+                                toggle.setAttribute('aria-expanded', 'true');
+                                requestAnimationFrame(() => {
+                                    positionProfilesActionMenu(menu, toggle);
+                                });
+                            }
+                        });
+                        wrap.appendChild(toggle);
+                        wrap.appendChild(menu);
+                        actionsCell.appendChild(wrap);
+                    }
                     tr.addEventListener('click', (e) => {
-                        if (e.target.closest('.profiles-delete-btn')) return;
+                        if (e.target.closest('.profiles-actions-wrap')) return;
                         if (pending) return;
                         e.stopPropagation();
                         Modals.Contacts.openProfileByName(name);
                     });
-                    const delBtn = tr.querySelector('.profiles-delete-btn');
-                    if (delBtn) {
-                        delBtn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            handleDeleteProfile(name);
-                        });
-                    }
                     tbody.appendChild(tr);
                 });
+                updateProfilesNameSortHeader();
+                applyProfilesNameSort();
                 if (loading) loading.style.display = 'none';
                 if (container) container.style.display = 'block';
                 if (empty) empty.style.display = entries.length === 0 ? 'block' : 'none';
                 scheduleProfilesPollIfNeeded(entries);
             } catch (err) {
                 console.error('Profiles load error:', err);
-                if (loading && !quiet) { loading.innerHTML = '<span style="color: #c00;">Error loading profiles</span>'; loading.style.display = 'block'; }
+                if (loading && !quiet) {
+                    loading.innerHTML = '<span class="profiles-loading-error">Error loading profiles</span>';
+                    loading.style.display = 'block';
+                }
+            }
+        }
+
+        async function postCompleteProfileStart(name) {
+            const provider = selectedProfilesProvider();
+            const resp = await fetch('/chat/complete-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ full_name: String(name).trim(), provider })
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+            return resp.json();
+        }
+
+        async function startCompleteProfileGeneration(name, alertTitle) {
+            const data = await postCompleteProfileStart(name);
+            await AppDialogs.showAppAlert(alertTitle || 'Profile', data.message || 'Profile generation started. This runs in the background.');
+            await loadProfileNames();
+            if (typeof Modals !== 'undefined' && Modals.Contacts && typeof Modals.Contacts.reloadContactsPage === 'function') {
+                Modals.Contacts.reloadContactsPage();
+            }
+        }
+
+        async function handleRegenerateProfile(name) {
+            if (!name || !(String(name).trim())) return;
+            const ok = await AppDialogs.showAppConfirm(
+                'Regenerate profile',
+                `Regenerate the complete profile for "${name}"? The current text will be replaced when the new generation finishes (several minutes).`
+            );
+            if (!ok) return;
+            try {
+                await startCompleteProfileGeneration(String(name).trim(), 'Profile');
+            } catch (err) {
+                console.error('Regenerate profile error:', err);
+                await AppDialogs.showAppAlert('Error', err.message);
             }
         }
 
         async function handleCreateProfile() {
             const input = contactInput();
             const btn = createBtn();
-            if (!input || !btn) return;
-            const name = (input.value || '').trim();
-            if (!name) return;
+            if (!btn || profilesSelectedContacts.size === 0) return;
+            const names = [...profilesSelectedContacts].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Creating…';
+            const errors = [];
             try {
-                const provider = (typeof DOM !== 'undefined' && DOM.llmProviderSelect?.value) ? DOM.llmProviderSelect.value : 'gemini';
-                const resp = await fetch('/chat/complete-profile', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ full_name: name, provider })
-                });
-                if (!resp.ok) {
-                    const err = await resp.json().catch(() => ({}));
-                    throw new Error(err.detail || `HTTP ${resp.status}`);
+                for (const name of names) {
+                    try {
+                        await postCompleteProfileStart(name);
+                    } catch (err) {
+                        errors.push({ name, message: err.message || String(err) });
+                    }
                 }
-                const data = await resp.json();
-                await AppDialogs.showAppAlert('Profile', data.message || 'Profile generation started. This runs in the background.');
                 await loadProfileNames();
                 if (typeof Modals !== 'undefined' && Modals.Contacts && typeof Modals.Contacts.reloadContactsPage === 'function') {
                     Modals.Contacts.reloadContactsPage();
                 }
+                const failed = new Set(errors.map((e) => e.name));
+                names.forEach((nm) => {
+                    if (!failed.has(nm)) profilesSelectedContacts.delete(nm);
+                });
+                if (errors.length === 0) {
+                    profilesSelectedContacts.clear();
+                    if (input) input.value = '';
+                    hideContactDropdown();
+                    const msg = names.length === 1
+                        ? 'Complete profile generation started. This runs in the background.'
+                        : `Started complete profile generation for ${names.length} contacts. Each runs in the background.`;
+                    await AppDialogs.showAppAlert('Profile', msg);
+                } else {
+                    const ok = names.length - errors.length;
+                    const failLines = errors.map((e) => `${e.name}: ${e.message}`).join('\n');
+                    const msg = ok > 0
+                        ? `Started ${ok} of ${names.length}. Failed:\n${failLines}`
+                        : `Could not start generation:\n${failLines}`;
+                    await AppDialogs.showAppAlert(errors.length === names.length ? 'Error' : 'Profile', msg);
+                }
             } catch (err) {
-                console.error('Create profile error:', err);
+                console.error('Create profile batch error:', err);
                 await AppDialogs.showAppAlert('Error', err.message);
             } finally {
                 updateCreateBtnState();
-                if (btn) btn.innerHTML = '<i class="fas fa-sync-alt"></i> Create Profile';
             }
         }
 
@@ -698,12 +897,18 @@ Modals.Profiles = (() => {
 
         function open() {
             Modals._openModal(modal());
+            syncProfilesProviderFromChat();
             loadContactNames();
             loadProfileNames();
         }
 
         function close() {
+            closeAllProfilesActionMenus();
             clearProfilesPoll();
+            profilesSelectedContacts.clear();
+            const input = contactInput();
+            if (input) input.value = '';
+            updateCreateBtnState();
             Modals._closeModal(modal());
         }
 
@@ -712,10 +917,28 @@ Modals.Profiles = (() => {
             if (closeBtn) closeBtn.addEventListener('click', close);
             const m = modal();
             if (m) m.addEventListener('click', (e) => { if (e.target === m) close(); });
+            if (m) {
+                m.addEventListener('mousedown', (e) => {
+                    if (!e.target.closest('.profiles-actions-wrap')) {
+                        closeAllProfilesActionMenus();
+                    }
+                });
+            }
+            const profilesTableScroll = document.querySelector('#profiles-modal .profiles-table-scroll');
+            if (profilesTableScroll) {
+                profilesTableScroll.addEventListener('scroll', () => {
+                    closeAllProfilesActionMenus();
+                    hideContactDropdown();
+                }, { passive: true });
+            }
+            window.addEventListener('resize', closeAllProfilesActionMenus);
+            const dd = contactDropdown();
+            if (dd) {
+                dd.addEventListener('mousedown', (e) => { e.preventDefault(); });
+            }
             const input = contactInput();
             if (input) {
                 input.addEventListener('input', () => {
-                    updateCreateBtnState();
                     showContactDropdown();
                 });
                 input.addEventListener('focus', () => showContactDropdown());
@@ -725,9 +948,10 @@ Modals.Profiles = (() => {
                         return;
                     }
                     if (e.key === 'Enter') {
-                        const first = contactDropdown().querySelector('.profiles-contact-option');
-                        if (first) {
-                            first.click();
+                        const firstCb = contactDropdown()?.querySelector('.profiles-contact-cb');
+                        if (firstCb) {
+                            firstCb.checked = !firstCb.checked;
+                            firstCb.dispatchEvent(new Event('change', { bubbles: true }));
                             e.preventDefault();
                         }
                         return;
@@ -739,6 +963,15 @@ Modals.Profiles = (() => {
             }
             const btn = createBtn();
             if (btn) btn.addEventListener('click', handleCreateProfile);
+            const nameSortTh = document.querySelector('#profiles-modal .profiles-profiles-sort-name');
+            if (nameSortTh) {
+                nameSortTh.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    profilesNameSortOrder = profilesNameSortOrder === 'asc' ? 'desc' : 'asc';
+                    updateProfilesNameSortHeader();
+                    applyProfilesNameSort();
+                });
+            }
         }
 
         return { init, open, close, refreshProfilesTable: () => loadProfileNames() };

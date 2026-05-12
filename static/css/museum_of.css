@@ -3118,9 +3118,393 @@ body {
     flex-shrink: 0;
 }
 
-#profiles-modal .profiles-view-btn:disabled {
+/* Profiles modal — actions menu per row */
+#profiles-modal .profiles-actions-wrap {
+    position: relative;
+    display: inline-block;
+    text-align: left;
+}
+#profiles-modal .profiles-actions-menu {
+    min-width: 11.5rem;
+    padding: 0.35rem 0;
+    margin: 0;
+    list-style: none;
+    background: #fff;
+    border: 1px solid var(--color-border-input);
+    border-radius: 8px;
+    box-shadow: var(--shadow-modal);
+}
+#profiles-modal .profiles-actions-menu-item {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+    border: none;
+    background: transparent;
+    padding: 0.55rem 1rem;
+    font-family: var(--font-sans-ui);
+    font-size: var(--text-md);
+    font-weight: 500;
+    color: #1e293b;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+#profiles-modal .profiles-actions-menu-item:hover:not(:disabled) {
+    background: var(--color-bg-alt, #f1f5f9);
+}
+#profiles-modal .profiles-actions-menu-item:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+#profiles-modal .profiles-actions-menu-item--danger {
+    color: var(--color-danger);
+}
+#profiles-modal .profiles-actions-menu-item--danger:hover:not(:disabled) {
+    background: rgba(220, 53, 69, 0.08);
+}
+
+/* Profiles modal — layout and chrome aligned with Contacts / Statistics modals */
+#profiles-modal.modal {
+    z-index: 4050;
+}
+#profiles-modal .profiles-modal-content.modal-content {
+    width: 50vw;
+    max-width: 50vw;
+    max-height: 80vh;
+    /* Definite height when content is tall so nested flex + overflow-y can shrink (max-height alone is not enough). */
+    height: 80vh;
+    height: min(80vh, max-content);
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+#profiles-modal .profiles-modal-body.modal-body {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 1.1rem 1.25rem 1.25rem;
+    box-sizing: border-box;
+}
+.profiles-modal-section {
+    margin-bottom: 0;
+}
+.profiles-create-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    align-items: flex-start;
+}
+.profiles-provider-stack,
+.profiles-contact-stack,
+.profiles-create-btn-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+.profiles-provider-stack {
+    flex: 0 0 auto;
+}
+.profiles-contact-stack {
+    flex: 1 1 250px;
+    min-width: 180px;
+}
+.profiles-create-btn-stack {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    margin-left: auto;
+}
+.profiles-inline-field-label {
+    margin-bottom: 0;
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--color-navy-dark, #1e293b);
+}
+.profiles-create-btn-label-gap {
+    min-height: 1.45rem;
+    margin-bottom: 0.15rem;
+}
+.profiles-llm-provider-select {
+    width: 200px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+#profiles-modal .profiles-modal-body > .profiles-modal-section:first-of-type,
+#profiles-modal .profiles-modal-body > .profiles-modal-divider {
+    flex-shrink: 0;
+}
+.profiles-modal-section--list {
+    margin-top: 0.25rem;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.profiles-modal-label {
+    display: block;
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--color-navy-dark, #1e293b);
+    margin-bottom: 0.5rem;
+}
+/* Stack is flex-direction: column — avoid flex-basis here or 250px becomes height and breaks dropdown anchor + layout */
+.profiles-contact-input-wrap {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    width: 250px;
+    max-width: 100%;
+    position: relative;
+}
+.profiles-contact-input {
+    width: 250px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+.profiles-create-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.profiles-modal-hint {
+    margin: 0.55rem 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    line-height: var(--line-height-body, 1.5);
+}
+.profiles-modal-divider {
+    margin: 0.65rem 0;
+    border: none;
+    border-top: 1px solid var(--color-border);
+}
+#profiles-modal .profiles-loading-state {
+    flex-shrink: 0;
+    padding: 1.25rem 1rem;
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: var(--text-md);
+}
+.profiles-table-container {
+    margin-top: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+}
+#profiles-modal .profiles-table-scroll {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: #fff;
+}
+#profiles-modal .profiles-profiles-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+#profiles-modal .profiles-profiles-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 10px 12px;
+    text-align: left;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: #334155;
+    background: #f0f4f8;
+    box-shadow: 0 1px 0 0 #bfc9da;
+}
+#profiles-modal .profiles-sortable-header {
+    user-select: none;
+    cursor: pointer;
+}
+#profiles-modal .profiles-sortable-header:hover {
+    background-color: #e8ecf2 !important;
+}
+#profiles-modal .profiles-sortable-header.profiles-sort-asc::after {
+    content: ' \25B2';
+    font-size: 0.7em;
+    opacity: 0.8;
+}
+#profiles-modal .profiles-sortable-header.profiles-sort-desc::after {
+    content: ' \25BC';
+    font-size: 0.7em;
+    opacity: 0.8;
+}
+#profiles-modal .profiles-profiles-table thead th.profiles-actions-col {
+    text-align: center;
+    width: 120px;
+    min-width: 120px;
+}
+#profiles-modal .profiles-profiles-table tbody td {
+    padding: 10px 12px;
+    vertical-align: middle;
+}
+#profiles-modal .profiles-profiles-table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+#profiles-modal .profiles-profiles-table tbody tr:hover {
+    background-color: var(--color-bg-alt, #f8fafc);
+}
+#profiles-modal .profiles-profiles-table tbody tr[data-pending="true"] {
+    cursor: default;
+}
+#profiles-modal .profiles-profiles-table tbody tr[data-pending="true"]:hover {
+    background-color: transparent;
+}
+.profiles-empty-msg {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 1.1rem 0.75rem;
+    text-align: center;
+    font-size: var(--text-md);
+    color: var(--color-text-muted);
+    line-height: var(--line-height-body, 1.5);
+}
+.profiles-contact-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--color-border-input);
+    border-radius: 8px;
+    box-shadow: var(--shadow-modal);
+    z-index: 20;
+}
+.profiles-contact-option {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: var(--text-md);
+    color: #1e293b;
+    border-bottom: 1px solid var(--color-border);
+    transition: background-color 0.12s ease;
+}
+.profiles-contact-option--row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0;
+    font-weight: 400;
+}
+.profiles-contact-cb {
+    flex-shrink: 0;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--color-blue, #1a73e8);
+}
+.profiles-contact-option-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.profiles-contact-option:last-child {
+    border-bottom: none;
+}
+.profiles-contact-option:hover {
+    background: var(--color-bg-alt, #f1f5f9);
+}
+.modal-btn.profiles-row-btn {
+    padding: 6px 10px;
+    font-size: var(--text-sm);
+}
+.modal-btn.profiles-row-btn + .profiles-row-btn {
+    margin-left: 6px;
+}
+.profiles-actions-cell {
+    text-align: center;
+    white-space: nowrap;
+}
+.profiles-row-pending-badge {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    font-weight: 400;
+}
+.profiles-loading-error {
+    color: var(--color-danger);
+}
+
+/* Complete profile view/edit — matches modal shell + sensitive-data tab pattern */
+#complete-profile-modal.modal {
+    z-index: 4060;
+}
+#complete-profile-modal .complete-profile-modal-content.modal-content {
+    width: min(750px, 94vw);
+    max-width: min(750px, 94vw);
+    max-height: 88vh;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+#complete-profile-modal .complete-profile-modal-body.modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 1.15rem 1.2rem;
+    box-sizing: border-box;
+}
+.complete-profile-tab-bar {
+    margin: 0 -1.15rem 0.65rem;
+    padding: 0 1.15rem;
+}
+.complete-profile-markdown {
+    white-space: pre-wrap;
+    font-size: var(--text-lead);
+    line-height: var(--line-height-body, 1.55);
+    padding: 14px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: #fafafa;
+    min-height: 120px;
+    max-height: min(52vh, 480px);
+    overflow-y: auto;
+}
+.complete-profile-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 280px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: var(--text-md);
+    line-height: var(--line-height-snug, 1.4);
+}
+.complete-profile-edit-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 0.75rem;
+}
+.complete-profile-save-error {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-sm);
+    color: var(--color-danger);
+}
+.complete-profile-pending-msg {
+    margin: 0;
+    padding: 1rem 0.25rem;
+    text-align: center;
+    font-size: var(--text-md);
+    color: var(--color-text-muted);
+    line-height: var(--line-height-body, 1.5);
 }
 
 /* Import Input modal (Gmail, IMAP, etc.): ~30% narrower than 1000px cap → 700px, scrollable body */

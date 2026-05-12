@@ -537,7 +537,7 @@ func GetMessagesForContactProfile(ctx context.Context, pool *sql.DB, name string
 	}
 
 	where := "(" + strings.Join(orParts, " OR ") + ")"
-	baseQ := `SELECT id, message_date, sender_name, sender_id, type, text, service, subject FROM messages WHERE ` + where + ` ORDER BY message_date ASC LIMIT 500`
+	baseQ := `SELECT id, message_date, sender_name, sender_id, type, text, service, subject FROM messages WHERE ` + where + ` ORDER BY message_date ASC`
 	q, args := toolsUIDFilter(ctx, baseQ, args)
 
 	// create the fully expanded sql query string

@@ -883,7 +883,7 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 	}
 
 	// Chunk by ~800KB (Python uses asizeof ~800000)
-	const chunkBytes = 800_000
+	const chunkBytes = 3 * 1024 * 1024 // 3MB
 	var chunks [][]any
 	var current []any
 	var currentSize int
@@ -960,17 +960,49 @@ func (s *ChatService) GenerateCompleteProfile(ctx context.Context, name string, 
 	for i, chunk := range chunks {
 		chunkMap := map[string]any{"messages": chunk}
 		data, _ := json.Marshal(chunkMap)
-		prompt := fmt.Sprintf(`You are a helpful assistant that summarizes communication patterns, relationships and psychological profiles in multiple steps.
-You will be given a list of messages and an interim summary. Summarize based on the interim summary.
-Build on the interim summary—do not replace it. Return the next cumulative interim summary.
+		prompt := fmt.Sprintf(`
+		You are an expert behavioral analyst and conversational profiler. Your objective is to maintain and continuously update a running summary of a long conversation, focusing strictly on communication patterns, relationships, and psychological profiles.
 
-There will be %d chunks total. This is chunk %d.
+Because the conversation is long, you are processing it in chunks. You will receive the "Current Interim Summary" (what we have learned so far) and "New Data" (the latest chunk of messages).
 
-Interim summary so far:
+Your task is to integrate the "New Data" into the "Current Interim Summary" to create a single, updated, cohesive profile.
+
+**CRITICAL INSTRUCTIONS:**
+1. **Synthesize, Do Not Append:** Do not simply add a new paragraph at the end. Seamlessly weave new insights into the existing categories. 
+2. **Evolve the Analysis:** If the "New Data" shows a shift in behavior, a change in a relationship, or contradicts earlier psychological observations, explicitly note how the dynamic has evolved.
+3. **Maintain Conciseness:** Consolidate redundant information. The output must remain highly dense and focused.
+4. **Maintain Structure:** You must format your output using the exact Markdown headers provided below.
+
+=== CHUNK PROGRESS ===
+Processing chunk %d of %d.
+
+=== CURRENT INTERIM SUMMARY ===
 %s
 
-Data to process:
-%s`, total, i+1, interimSummary, string(data))
+=== NEW DATA TO PROCESS ===
+%s
+
+=== REQUIRED OUTPUT FORMAT ===
+Return ONLY the updated summary using these exact headers:
+### 1. Communication Patterns
+[Update with new conversational tactics, power dynamics, tone, or responsiveness.]
+### 2. Communication Style
+[Update with new communication style, including tone, pace, and language use.]
+### 3. Emotional Intelligence
+[Update with new emotional intelligence, including empathy, self-awareness, and emotional regulation.]
+### 4. Cognitive Style
+[Update with new cognitive style, including thinking patterns, decision-making, and problem-solving.]
+### 5. Behavioral Patterns
+[Update with new behavioral patterns, including habits, routines, and patterns of behavior.]
+### 6. Relationship Dynamics
+[Update with new alliances, conflicts, dependencies, or shifts in rapport.]
+### 7. Psychological Profiles
+[Update individual profiles with new motivations, emotional states, or behavioral traits.]
+### 8. Key Events
+[Update with new key events, including significant moments, milestones, or turning points.]
+### 9. Key Insights
+[Update with new key insights, including patterns, themes, or patterns of behavior.]
+		`, total, i+1, interimSummary, string(data))
 
 		out, usage, err := ai.SimpleGenerate(ctx, prompt)
 		if err != nil {
