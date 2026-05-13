@@ -1410,6 +1410,8 @@ Modals.ConversationManager = (() => {
 
 Modals.SubjectConfiguration = (() => {
         let currentSubjectName = null;
+        /** Family name from subject_configuration; preserved for saves (name fields are read-only in UI). */
+        let currentFamilyName = null;
         let currentGender = null;
         let configurationLoaded = false;
         /** Universal prompts (app_system_instructions); kept in memory when saving with Subject Configuration — edit via admin System instructions. */
@@ -1438,6 +1440,114 @@ Modals.SubjectConfiguration = (() => {
             return persistedSubjectContactId != null && Number(persistedSubjectContactId) > 0;
         }
 
+        const subjectConfigSubtabPanelIds = {
+            details: 'subject-config-subtab-details',
+            writing: 'subject-config-subtab-writing',
+            psych: 'subject-config-subtab-psych'
+        };
+
+        function switchSubjectConfigSubtab(name) {
+            const root = document.getElementById('subject-configuration-tab');
+            if (!root || !subjectConfigSubtabPanelIds[name]) {
+                return;
+            }
+            const btns = root.querySelectorAll('.subject-config-subtab-button');
+            const panels = root.querySelectorAll('.subject-config-subtab-panel');
+            btns.forEach((b) => {
+                const on = b.getAttribute('data-subtab') === name;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            panels.forEach((p) => {
+                const on = p.id === subjectConfigSubtabPanelIds[name];
+                p.classList.toggle('active', on);
+            });
+        }
+
+        function resetSubjectConfigSubtabs() {
+            switchSubjectConfigSubtab('details');
+        }
+
+        function initSubjectConfigSubtabs() {
+            const root = document.getElementById('subject-configuration-tab');
+            if (!root || root.dataset.subtabWired === '1') {
+                return;
+            }
+            root.dataset.subtabWired = '1';
+            root.addEventListener('click', (e) => {
+                const btn = e.target.closest('.subject-config-subtab-button');
+                if (!btn || !root.contains(btn)) {
+                    return;
+                }
+                const sub = btn.getAttribute('data-subtab');
+                if (!sub) {
+                    return;
+                }
+                switchSubjectConfigSubtab(sub);
+            });
+        }
+
+        function switchSubjectAiInnerSubtab(wrap, subtab) {
+            if (!wrap || !subtab) {
+                return;
+            }
+            wrap.querySelectorAll('.subject-config-ai-inner-tab').forEach((b) => {
+                const on = b.getAttribute('data-inner-subtab') === subtab;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            wrap.querySelectorAll('.subject-config-ai-inner-panel').forEach((p) => {
+                p.classList.toggle('active', p.getAttribute('data-inner-subtab') === subtab);
+            });
+        }
+
+        function showSubjectAiInnerPreview(wrapId) {
+            const wrap = document.getElementById(wrapId);
+            switchSubjectAiInnerSubtab(wrap, 'preview');
+        }
+
+        function resetSubjectAiInnerTabsToPreview() {
+            showSubjectAiInnerPreview('writing-style-ai-inner-wrap');
+            showSubjectAiInnerPreview('psychological-profile-ai-inner-wrap');
+        }
+
+        function initSubjectAiInnerTabs() {
+            ['writing-style-ai-inner-wrap', 'psychological-profile-ai-inner-wrap'].forEach((id) => {
+                const wrap = document.getElementById(id);
+                if (!wrap || wrap.dataset.innerTabWired === '1') {
+                    return;
+                }
+                wrap.dataset.innerTabWired = '1';
+                wrap.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.subject-config-ai-inner-tab');
+                    if (!btn || !wrap.contains(btn)) {
+                        return;
+                    }
+                    const sub = btn.getAttribute('data-inner-subtab');
+                    if (!sub) {
+                        return;
+                    }
+                    switchSubjectAiInnerSubtab(wrap, sub);
+                });
+            });
+        }
+
+        function formatArchiveOwnerDisplayName(subjectName, familyName) {
+            const a = (subjectName != null ? String(subjectName) : '').trim();
+            const b = (familyName != null ? String(familyName) : '').trim();
+            if (a && b) {
+                return `${a} ${b}`;
+            }
+            return a || b || '';
+        }
+
+        function updateArchiveOwnerDisplay(subjectName, familyName) {
+            if (!DOM.subjectArchiveOwnerName) {
+                return;
+            }
+            DOM.subjectArchiveOwnerName.textContent = formatArchiveOwnerDisplayName(subjectName, familyName);
+        }
+
         function syncSubjectProfileGenerateButtons() {
             const ok = hasPersistedOwnerContact();
             if (DOM.requestWritingStyleBtn) {
@@ -1451,6 +1561,12 @@ Modals.SubjectConfiguration = (() => {
             }
             if (DOM.psychologicalProfileRequireContactHint) {
                 DOM.psychologicalProfileRequireContactHint.style.display = ok ? 'none' : 'block';
+            }
+            if (DOM.interestsSuggestAiBtnSc) {
+                DOM.interestsSuggestAiBtnSc.disabled = !ok;
+            }
+            if (DOM.interestsSuggestAiRequireContactHint) {
+                DOM.interestsSuggestAiRequireContactHint.style.display = ok ? 'none' : 'block';
             }
         }
 
@@ -1535,12 +1651,15 @@ Modals.SubjectConfiguration = (() => {
                 if (response.ok) {
                     const config = await response.json();
                     currentSubjectName = config.subject_name;
+                    currentFamilyName = config.family_name != null ? String(config.family_name) : '';
                     currentGender = config.gender || 'Male';
                     configurationLoaded = true;
                     return config;
                 } else if (response.status === 404) {
                     // Configuration doesn't exist yet
                     configurationLoaded = false;
+                    currentSubjectName = null;
+                    currentFamilyName = null;
                     return null;
                 } else {
                     throw new Error(`Failed to load configuration: ${response.statusText}`);
@@ -1602,7 +1721,12 @@ Modals.SubjectConfiguration = (() => {
                 if (!response.ok) {
                     throw new Error(data.detail || 'Failed to generate writing style');
                 }
-                _renderWritingStyleMarkdown(data.summary || '');
+                const summary = data.summary || '';
+                if (DOM.writingStyleEditTextarea) {
+                    DOM.writingStyleEditTextarea.value = summary;
+                }
+                _renderWritingStyleMarkdown(summary);
+                showSubjectAiInnerPreview('writing-style-ai-inner-wrap');
             } catch (error) {
                 console.error('Error requesting writing style:', error);
                 DOM.writingStyleDisplay.innerHTML = `<span style="color: #c00;">Error: ${error.message}</span>`;
@@ -1627,7 +1751,12 @@ Modals.SubjectConfiguration = (() => {
                 if (!response.ok) {
                     throw new Error(data.detail || 'Failed to generate psychological profile');
                 }
-                _renderPsychologicalProfileMarkdown(data.profile || '');
+                const profile = data.profile || '';
+                if (DOM.psychologicalProfileEditTextarea) {
+                    DOM.psychologicalProfileEditTextarea.value = profile;
+                }
+                _renderPsychologicalProfileMarkdown(profile);
+                showSubjectAiInnerPreview('psychological-profile-ai-inner-wrap');
             } catch (error) {
                 console.error('Error requesting psychological profile:', error);
                 DOM.psychologicalProfileDisplay.innerHTML = `<span style="color: #c00;">Error: ${error.message}</span>`;
@@ -1635,6 +1764,70 @@ Modals.SubjectConfiguration = (() => {
                 DOM.requestPsychologicalProfileBtn.disabled = false;
                 DOM.psychologicalProfileLoading.style.display = 'none';
                 syncSubjectProfileGenerateButtons();
+            }
+        }
+
+        async function saveWritingStyleAIText() {
+            if (!DOM.writingStyleEditTextarea) {
+                return;
+            }
+            const text = DOM.writingStyleEditTextarea.value;
+            if (DOM.writingStyleSaveStatus) {
+                DOM.writingStyleSaveStatus.textContent = 'Saving…';
+            }
+            try {
+                const response = await fetch('/api/subject-configuration/writing-style-ai', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ writing_style_ai: text })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to save writing style');
+                }
+                await populateFormFromConfig(data);
+                if (DOM.writingStyleSaveStatus) {
+                    DOM.writingStyleSaveStatus.textContent = 'Saved.';
+                }
+                showSubjectAiInnerPreview('writing-style-ai-inner-wrap');
+            } catch (err) {
+                console.error('saveWritingStyleAIText:', err);
+                if (DOM.writingStyleSaveStatus) {
+                    DOM.writingStyleSaveStatus.textContent = err.message || 'Save failed';
+                }
+                await AppDialogs.showAppAlert('Error', err.message || 'Failed to save writing style');
+            }
+        }
+
+        async function savePsychologicalProfileAIText() {
+            if (!DOM.psychologicalProfileEditTextarea) {
+                return;
+            }
+            const text = DOM.psychologicalProfileEditTextarea.value;
+            if (DOM.psychologicalProfileSaveStatus) {
+                DOM.psychologicalProfileSaveStatus.textContent = 'Saving…';
+            }
+            try {
+                const response = await fetch('/api/subject-configuration/psychological-profile-ai', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ psychological_profile_ai: text })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to save psychological profile');
+                }
+                await populateFormFromConfig(data);
+                if (DOM.psychologicalProfileSaveStatus) {
+                    DOM.psychologicalProfileSaveStatus.textContent = 'Saved.';
+                }
+                showSubjectAiInnerPreview('psychological-profile-ai-inner-wrap');
+            } catch (err) {
+                console.error('savePsychologicalProfileAIText:', err);
+                if (DOM.psychologicalProfileSaveStatus) {
+                    DOM.psychologicalProfileSaveStatus.textContent = err.message || 'Save failed';
+                }
+                await AppDialogs.showAppAlert('Error', err.message || 'Failed to save psychological profile');
             }
         }
 
@@ -1679,6 +1872,7 @@ Modals.SubjectConfiguration = (() => {
 
                 const config = await response.json();
                 currentSubjectName = config.subject_name;
+                currentFamilyName = config.family_name != null ? String(config.family_name) : '';
                 currentGender = config.gender || 'Male';
                 configurationLoaded = true;
                 return config;
@@ -1711,13 +1905,35 @@ Modals.SubjectConfiguration = (() => {
 
         async function populateFormFromConfig(config) {
             if (!config) {
+                currentSubjectName = null;
+                currentFamilyName = null;
+                updateArchiveOwnerDisplay('', '');
+                if (DOM.writingStyleEditTextarea) {
+                    DOM.writingStyleEditTextarea.value = '';
+                }
+                if (DOM.psychologicalProfileEditTextarea) {
+                    DOM.psychologicalProfileEditTextarea.value = '';
+                }
+                if (DOM.writingStyleDisplay) {
+                    _renderWritingStyleMarkdown('');
+                }
+                if (DOM.psychologicalProfileDisplay) {
+                    _renderPsychologicalProfileMarkdown('');
+                }
+                if (DOM.writingStyleSaveStatus) {
+                    DOM.writingStyleSaveStatus.textContent = '';
+                }
+                if (DOM.psychologicalProfileSaveStatus) {
+                    DOM.psychologicalProfileSaveStatus.textContent = '';
+                }
                 setPersistedOwnerContactFromConfig(null);
                 syncSubjectProfileGenerateButtons();
                 return;
             }
-            if (DOM.subjectNameInput) DOM.subjectNameInput.value = config.subject_name || '';
+            currentSubjectName = config.subject_name != null ? String(config.subject_name) : '';
+            currentFamilyName = config.family_name != null ? String(config.family_name) : '';
+            updateArchiveOwnerDisplay(currentSubjectName, currentFamilyName);
             if (DOM.subjectGenderSelect) DOM.subjectGenderSelect.value = config.gender || 'Male';
-            if (DOM.familyNameInput) DOM.familyNameInput.value = config.family_name || '';
             if (DOM.otherNamesInput) DOM.otherNamesInput.value = config.other_names || '';
             if (DOM.emailAddressesInput) DOM.emailAddressesInput.value = config.email_addresses || '';
             ownerContactSuggestions = Array.isArray(config.owner_contact_suggestions) ? config.owner_contact_suggestions : [];
@@ -1728,8 +1944,18 @@ Modals.SubjectConfiguration = (() => {
             loadedPhoneNumbers = config.phone_numbers != null ? String(config.phone_numbers) : '';
             loadedWhatsappHandle = config.whatsapp_handle != null ? String(config.whatsapp_handle) : '';
             loadedInstagramHandle = config.instagram_handle != null ? String(config.instagram_handle) : '';
-            if (DOM.writingStyleDisplay) _renderWritingStyleMarkdown(config.writing_style_ai || '');
-            if (DOM.psychologicalProfileDisplay) _renderPsychologicalProfileMarkdown(config.psychological_profile_ai || '');
+            const wsText = config.writing_style_ai != null ? String(config.writing_style_ai) : '';
+            const ppText = config.psychological_profile_ai != null ? String(config.psychological_profile_ai) : '';
+            if (DOM.writingStyleEditTextarea) {
+                DOM.writingStyleEditTextarea.value = wsText;
+            }
+            if (DOM.psychologicalProfileEditTextarea) {
+                DOM.psychologicalProfileEditTextarea.value = ppText;
+            }
+            if (DOM.writingStyleDisplay) _renderWritingStyleMarkdown(wsText);
+            if (DOM.psychologicalProfileDisplay) _renderPsychologicalProfileMarkdown(ppText);
+            if (DOM.writingStyleSaveStatus) DOM.writingStyleSaveStatus.textContent = '';
+            if (DOM.psychologicalProfileSaveStatus) DOM.psychologicalProfileSaveStatus.textContent = '';
             loadedSystemInstructions = config.system_instructions || '';
             const coreVal = config.core_system_instructions || '';
             loadedCoreSystemInstructions = coreVal;
@@ -1739,6 +1965,7 @@ Modals.SubjectConfiguration = (() => {
         }
 
         async function loadAndPopulateForm() {
+            resetSubjectConfigSubtabs();
             try {
                 const config = await loadConfiguration();
                 if (config) {
@@ -1752,6 +1979,7 @@ Modals.SubjectConfiguration = (() => {
                 populateFormFromConfig({});
                 await loadDefaultInstructions();
             }
+            resetSubjectAiInnerTabsToPreview();
         }
 
         async function checkAndShow() {
@@ -1777,11 +2005,19 @@ Modals.SubjectConfiguration = (() => {
                     const coreVal = config.core_system_instructions || '';
                     loadedCoreSystemInstructions = coreVal;
                     loadedQuestionSystemInstructions = config.question_system_instructions || '';
+                    const wsText = config.writing_style_ai != null ? String(config.writing_style_ai) : '';
+                    const ppText = config.psychological_profile_ai != null ? String(config.psychological_profile_ai) : '';
+                    if (DOM.writingStyleEditTextarea) {
+                        DOM.writingStyleEditTextarea.value = wsText;
+                    }
+                    if (DOM.psychologicalProfileEditTextarea) {
+                        DOM.psychologicalProfileEditTextarea.value = ppText;
+                    }
                     if (DOM.writingStyleDisplay) {
-                        _renderWritingStyleMarkdown(config.writing_style_ai || '');
+                        _renderWritingStyleMarkdown(wsText);
                     }
                     if (DOM.psychologicalProfileDisplay) {
-                        _renderPsychologicalProfileMarkdown(config.psychological_profile_ai || '');
+                        _renderPsychologicalProfileMarkdown(ppText);
                     }
                     setPersistedOwnerContactFromConfig(config);
                     syncSubjectProfileGenerateButtons();
@@ -1826,9 +2062,9 @@ Modals.SubjectConfiguration = (() => {
         }
 
         async function handleSave() {
-            const subjectName = DOM.subjectNameInput ? DOM.subjectNameInput.value.trim() : '';
+            const subjectName = (currentSubjectName != null ? String(currentSubjectName) : '').trim();
             const gender = DOM.subjectGenderSelect ? DOM.subjectGenderSelect.value : 'Male';
-            const familyName = DOM.familyNameInput ? DOM.familyNameInput.value.trim() : '';
+            const familyName = (currentFamilyName != null ? String(currentFamilyName) : '').trim();
             const otherNames = DOM.otherNamesInput ? DOM.otherNamesInput.value.trim() : '';
             const emailAddresses = DOM.emailAddressesInput ? DOM.emailAddressesInput.value.trim() : '';
             const systemInstructions = (loadedSystemInstructions || '').trim();
@@ -1836,7 +2072,7 @@ Modals.SubjectConfiguration = (() => {
             const questionSystemInstructions = (loadedQuestionSystemInstructions || '').trim();
 
             if (!subjectName) {
-                await AppDialogs.showAppAlert('Please enter a subject name');
+                await AppDialogs.showAppAlert('Archive owner name is not available. Save cannot continue until subject configuration exists for this archive.');
                 return;
             }
 
@@ -1853,6 +2089,8 @@ Modals.SubjectConfiguration = (() => {
         }
 
         function init() {
+            initSubjectConfigSubtabs();
+            initSubjectAiInnerTabs();
             // Set up event listeners
             if (DOM.saveSubjectConfigBtn) {
                 DOM.saveSubjectConfigBtn.addEventListener('click', () => { void handleSave(); });
@@ -1871,6 +2109,23 @@ Modals.SubjectConfiguration = (() => {
             }
             if (DOM.requestPsychologicalProfileBtn) {
                 DOM.requestPsychologicalProfileBtn.addEventListener('click', () => requestPsychologicalProfile());
+            }
+
+            if (DOM.saveWritingStyleAiBtn) {
+                DOM.saveWritingStyleAiBtn.addEventListener('click', () => { void saveWritingStyleAIText(); });
+            }
+            if (DOM.savePsychologicalProfileAiBtn) {
+                DOM.savePsychologicalProfileAiBtn.addEventListener('click', () => { void savePsychologicalProfileAIText(); });
+            }
+            if (DOM.writingStyleEditTextarea) {
+                DOM.writingStyleEditTextarea.addEventListener('input', () => {
+                    _renderWritingStyleMarkdown(DOM.writingStyleEditTextarea.value);
+                });
+            }
+            if (DOM.psychologicalProfileEditTextarea) {
+                DOM.psychologicalProfileEditTextarea.addEventListener('input', () => {
+                    _renderPsychologicalProfileMarkdown(DOM.psychologicalProfileEditTextarea.value);
+                });
             }
 
             if (DOM.subjectOwnerContactShowAll) {
@@ -1893,7 +2148,10 @@ Modals.SubjectConfiguration = (() => {
             loadConfiguration,
             loadAndPopulateForm,
             saveConfiguration,
-            getSubjectName
+            getSubjectName,
+            resetSubjectConfigSubtabs,
+            hasPersistedOwnerContactLinked: hasPersistedOwnerContact,
+            syncProfileAiButtons: syncSubjectProfileGenerateButtons
         };
 })();
 
@@ -3735,13 +3993,13 @@ Modals.Interests = (() => {
 
             const rowsHtml = data.map((row) => `
                 <tr style="border-bottom: 1px solid #e9ecef;">
-                    <td style="padding: 8px;">${escapeHtml(row.name)}</td>
-                    <td style="padding: 8px; text-align: center;">
-                        <button type="button" class="interest-edit-btn modal-btn modal-btn-secondary" data-id="${row.id}" style="padding: 4px 8px; font-size: 0.85em;">
-                            <i class="fas fa-edit"></i> Edit
+                    <td>${escapeHtml(row.name)}</td>
+                    <td>
+                        <button type="button" class="interest-edit-btn modal-btn modal-btn-secondary" data-id="${row.id}" aria-label="Edit interest" title="Edit">
+                            <i class="fas fa-edit" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="interest-delete-btn modal-btn" data-id="${row.id}" style="padding: 4px 8px; font-size: 0.85em; background: #dc3545; color: white; margin-left: 4px;">
-                            <i class="fas fa-trash-alt"></i> Delete
+                        <button type="button" class="interest-delete-btn modal-btn" data-id="${row.id}" aria-label="Delete interest" title="Delete" style="background: #dc3545; color: white; margin-left: 4px;">
+                            <i class="fas fa-trash-alt" aria-hidden="true"></i>
                         </button>
                     </td>
                 </tr>
@@ -3861,14 +4119,52 @@ Modals.Interests = (() => {
         }
     }
 
+    async function suggestInterestsFromAI() {
+        if (Modals.SubjectConfiguration && typeof Modals.SubjectConfiguration.hasPersistedOwnerContactLinked === 'function'
+            && !Modals.SubjectConfiguration.hasPersistedOwnerContactLinked()) {
+            return;
+        }
+        const btn = getEl('interests-suggest-ai-btn-sc');
+        const loading = getEl('interests-loading-sc');
+        const tableContainer = getEl('interests-table-container-sc');
+        if (!btn) return;
+        btn.disabled = true;
+        if (loading) loading.style.display = 'block';
+        if (tableContainer) tableContainer.style.display = 'none';
+        try {
+            const response = await fetch('/interests/generate-suggested', { method: 'POST' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const msg = typeof data.detail === 'string' ? data.detail : `HTTP ${response.status}`;
+                throw new Error(msg);
+            }
+            const skipped = Array.isArray(data.skipped) ? data.skipped : [];
+            const added = Array.isArray(data.added) ? data.added : [];
+            await loadInterests();
+            if (added.length === 0 && skipped.length > 0) {
+                await AppDialogs.showAppAlert('Interests', 'No new interests were added; those suggestions were already in your list.');
+            }
+        } catch (err) {
+            await AppDialogs.showAppAlert('Suggest interests', err.message || 'Request failed');
+        } finally {
+            if (loading) loading.style.display = 'none';
+            if (tableContainer) tableContainer.style.display = 'block';
+            if (Modals.SubjectConfiguration && typeof Modals.SubjectConfiguration.syncProfileAiButtons === 'function') {
+                Modals.SubjectConfiguration.syncProfileAiButtons();
+            }
+        }
+    }
+
     function init() {
         const createBtnSc = getEl('interests-create-btn-sc');
+        const suggestAiBtnSc = getEl('interests-suggest-ai-btn-sc');
         const refreshBtnSc = getEl('interests-refresh-btn-sc');
         const closeBtn = getEl('close-interest-modal');
         const cancelBtn = getEl('interest-modal-cancel');
         const saveBtn = getEl('interest-modal-save');
 
         if (createBtnSc) createBtnSc.addEventListener('click', openCreateModal);
+        if (suggestAiBtnSc) suggestAiBtnSc.addEventListener('click', () => { void suggestInterestsFromAI(); });
         if (refreshBtnSc) refreshBtnSc.addEventListener('click', () => loadInterests());
         if (closeBtn) closeBtn.addEventListener('click', closeModal);
         if (cancelBtn) cancelBtn.addEventListener('click', closeModal);

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -27,6 +28,7 @@ type AdminHandler struct {
 	sessionStore      *keystore.SessionMasterStore
 	billing           *repository.BillingRepo
 	users             *repository.UserRepo
+	interestSvc       *service.InterestService
 }
 
 // NewAdminHandler creates an AdminHandler.
@@ -48,12 +50,18 @@ func (h *AdminHandler) WithBilling(b *repository.BillingRepo, users *repository.
 	h.users = users
 }
 
+// WithInterestService wires interest creation for AI-suggested interests.
+func (h *AdminHandler) WithInterestService(s *service.InterestService) {
+	h.interestSvc = s
+}
+
 // RegisterRoutes mounts all admin and AI routes.
 func (h *AdminHandler) RegisterRoutes(r chi.Router) {
 	r.Get("/api/import-control-last-run", h.GetImportControlLastRun)
 	r.Get("/api/control-defaults", h.GetControlDefaults)
 	r.Post("/writing-style/summarize", h.SummarizeWritingStyle)
 	r.Post("/psychological-profile/summarize", h.SummarizePsychologicalProfile)
+	r.Post("/interests/generate-suggested", h.GenerateSuggestedInterests)
 }
 
 // GetImportControlLastRun handles GET /api/import-control-last-run.
@@ -228,22 +236,15 @@ func (h *AdminHandler) SummarizeWritingStyle(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	sample, err := h.sampleEmailsForAI(ctx, 50)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading email samples: %s", err))
+	sample, errEmail := h.sampleEmailsForAI(ctx, 50)
+	msgs, errMsgs := h.sampleMessagesFromArchiveOwner(ctx, 50)
+
+	if msgs == "" && sample == "" {
+		writeError(w, http.StatusUnprocessableEntity, "no emails or messages available for analysis")
 		return
 	}
-	if sample == "" {
-		writeError(w, http.StatusUnprocessableEntity, "no emails available for analysis")
-		return
-	}
-	msgs, err := h.sampleMessagesFromArchiveOwner(ctx, 50)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading message samples: %s", err))
-		return
-	}
-	if msgs == "" {
-		writeError(w, http.StatusUnprocessableEntity, "no messages available for analysis")
+	if errEmail != nil && errMsgs != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading email and message samples: %s, %s", errEmail, errMsgs))
 		return
 	}
 
@@ -299,23 +300,15 @@ func (h *AdminHandler) SummarizePsychologicalProfile(w http.ResponseWriter, r *h
 		return
 	}
 
-	sample, err := h.sampleEmailsForAI(ctx, 100)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading email samples: %s", err))
-		return
-	}
-	if sample == "" {
-		writeError(w, http.StatusUnprocessableEntity, "no emails available for analysis")
-		return
-	}
+	sample, errEmail := h.sampleEmailsForAI(ctx, 50)
+	msgs, errMsgs := h.sampleMessagesFromArchiveOwner(ctx, 50)
 
-	msgs, err := h.sampleMessagesFromArchiveOwner(ctx, 100)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading message samples: %s", err))
+	if msgs == "" && sample == "" {
+		writeError(w, http.StatusUnprocessableEntity, "no emails or messages available for analysis")
 		return
 	}
-	if msgs == "" {
-		writeError(w, http.StatusUnprocessableEntity, "no messages available for analysis")
+	if errEmail != nil && errMsgs != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading email and message samples: %s, %s", errEmail, errMsgs))
 		return
 	}
 
@@ -357,6 +350,131 @@ Message samples:
 	writeJSON(w, map[string]any{
 		"profile": result.PlainText,
 		"message": "Psychological profile updated",
+	})
+}
+
+// GenerateSuggestedInterests handles POST /interests/generate-suggested.
+// Uses Gemini with the same email/message samples as writing-style analysis to
+// propose up to 10 new interest names and inserts rows that are not duplicates.
+func (h *AdminHandler) GenerateSuggestedInterests(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	if h.interestSvc == nil {
+		writeError(w, http.StatusServiceUnavailable, "interests service not configured")
+		return
+	}
+	if h.gemini == nil {
+		writeError(w, http.StatusServiceUnavailable, "AI summarization is not configured")
+		return
+	}
+	ctx := r.Context()
+
+	existing, err := h.interestSvc.List(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error listing interests: %s", err))
+		return
+	}
+	existingLower := make(map[string]struct{}, len(existing))
+	var existingNames []string
+	for _, e := range existing {
+		n := strings.TrimSpace(e.Name)
+		if n == "" {
+			continue
+		}
+		existingNames = append(existingNames, n)
+		existingLower[strings.ToLower(n)] = struct{}{}
+	}
+	existingBlock := strings.Join(existingNames, ", ")
+	if existingBlock == "" {
+		existingBlock = "(none yet)"
+	}
+
+	sample, errEmail := h.sampleEmailsForAI(ctx, 50)
+	msgs, errMsgs := h.sampleMessagesFromArchiveOwner(ctx, 50)
+	if msgs == "" && sample == "" {
+		writeError(w, http.StatusUnprocessableEntity, "no emails or messages available for analysis")
+		return
+	}
+	if errEmail != nil && errMsgs != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error loading email and message samples: %s, %s", errEmail, errMsgs))
+		return
+	}
+
+	prompt := fmt.Sprintf(`You are helping curate "interests" for a personal archive: short topic labels used for suggestions such as a daily "Today's Thing".
+
+Existing interests already stored (do NOT repeat these; propose only different topics):
+%s
+
+Based ONLY on themes visible in the email and message excerpts below, propose exactly 10 new interest labels the archive owner would plausibly care about. Each label must be 2 to 5 words, Title Case, suitable as a short topic name (no numbering prefixes, no bullet characters, no quotes inside a label).
+
+Respond with a single JSON array of exactly 10 strings, for example:
+["Rock Climbing","French Cinema","Urban Photography","Classical Guitar","Trail Running","Modern Architecture","Home Roasting","European History","Board Games","Volunteer Work"]
+
+No other text before or after the array. No markdown code fences.
+
+Email samples:
+%s
+
+Message samples:
+%s`, existingBlock, sample, msgs)
+
+	result, err := h.gemini.GenerateResponse(ctx, appai.GenerateRequest{UserInput: prompt}, "", nil, nil, nil)
+	if err != nil {
+		stub := result.Usage
+		if stub == nil {
+			stub = service.StubLLMUsage("gemini", "")
+		}
+		service.MarkUsageServerKey(stub, true)
+		service.RecordLLMUsage(ctx, h.billing, h.users, stub, err)
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("AI error: %s", err))
+		return
+	}
+	service.MarkUsageServerKey(result.Usage, true)
+	service.RecordLLMUsage(ctx, h.billing, h.users, result.Usage, nil)
+
+	names, parseErr := parseSuggestedInterestNames(result.PlainText)
+	if parseErr != nil {
+		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("could not parse AI response as a JSON array of strings: %s", parseErr))
+		return
+	}
+
+	added := make([]map[string]any, 0, len(names))
+	var skipped []string
+	const maxNameLen = 500
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if len(name) > maxNameLen {
+			name = name[:maxNameLen]
+		}
+		if _, dup := existingLower[strings.ToLower(name)]; dup {
+			skipped = append(skipped, name)
+			continue
+		}
+		i, cerr := h.interestSvc.Create(ctx, name)
+		if cerr != nil {
+			if strings.HasPrefix(cerr.Error(), "conflict:") {
+				skipped = append(skipped, name)
+				existingLower[strings.ToLower(name)] = struct{}{}
+				continue
+			}
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("error creating interest: %s", cerr))
+			return
+		}
+		existingLower[strings.ToLower(name)] = struct{}{}
+		added = append(added, interestResponse(i.ID, i.Name,
+			i.CreatedAt.Format("2006-01-02T15:04:05.999999"),
+			i.UpdatedAt.Format("2006-01-02T15:04:05.999999"),
+		))
+	}
+
+	writeJSON(w, map[string]any{
+		"added":   added,
+		"skipped": skipped,
+		"message": fmt.Sprintf("Added %d interest(s)", len(added)),
 	})
 }
 
@@ -568,4 +686,75 @@ func (h *AdminHandler) sampleMessagesFromArchiveOwner(ctx context.Context, limit
 		return "", rows.Err()
 	}
 	return sb.String(), rows.Err()
+}
+
+// stripAIFence trims optional ``` / ```json wrappers from model output.
+func stripAIFence(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```") {
+		s = strings.TrimPrefix(s, "```")
+		s = strings.TrimSpace(s)
+		if strings.HasPrefix(strings.ToLower(s), "json") {
+			s = strings.TrimSpace(s[4:])
+		}
+		if idx := strings.Index(s, "\n"); idx >= 0 {
+			s = strings.TrimSpace(s[idx+1:])
+		}
+	}
+	s = strings.TrimSpace(s)
+	s = strings.TrimSuffix(s, "```")
+	return strings.TrimSpace(s)
+}
+
+// parseSuggestedInterestNames parses a JSON array of strings from model output (max 10 used).
+func parseSuggestedInterestNames(plain string) ([]string, error) {
+	raw := stripAIFence(plain)
+	var asStrings []string
+	if err := json.Unmarshal([]byte(raw), &asStrings); err == nil {
+		return normalizeInterestNameList(asStrings), nil
+	}
+	var asAny []any
+	if err := json.Unmarshal([]byte(raw), &asAny); err != nil {
+		if i := strings.Index(raw, "["); i >= 0 {
+			if j := strings.LastIndex(raw, "]"); j > i {
+				inner := strings.TrimSpace(raw[i : j+1])
+				if err2 := json.Unmarshal([]byte(inner), &asStrings); err2 == nil {
+					return normalizeInterestNameList(asStrings), nil
+				}
+				if err3 := json.Unmarshal([]byte(inner), &asAny); err3 == nil {
+					return coerceInterestAnySlice(asAny), nil
+				}
+			}
+		}
+		return nil, err
+	}
+	return coerceInterestAnySlice(asAny), nil
+}
+
+func coerceInterestAnySlice(asAny []any) []string {
+	out := make([]string, 0, len(asAny))
+	for _, el := range asAny {
+		switch v := el.(type) {
+		case string:
+			if t := strings.TrimSpace(v); t != "" {
+				out = append(out, t)
+			}
+		}
+	}
+	return normalizeInterestNameList(out)
+}
+
+func normalizeInterestNameList(in []string) []string {
+	var out []string
+	for _, s := range in {
+		t := strings.TrimSpace(s)
+		if t == "" {
+			continue
+		}
+		out = append(out, t)
+		if len(out) >= 10 {
+			break
+		}
+	}
+	return out
 }

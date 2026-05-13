@@ -14,6 +14,9 @@ import (
 // ErrSubjectContactNotFound is returned when subject_contact_id does not match a contact for the user.
 var ErrSubjectContactNotFound = errors.New("subject_contact_id does not match a contact in this archive")
 
+// ErrNoSubjectConfiguration is returned when there is no subject_configuration row for the current user.
+var ErrNoSubjectConfiguration = errors.New("subject configuration not found")
+
 // SubjectConfigService handles GET /api/subject-configuration.
 type SubjectConfigService struct {
 	repo     *repository.SubjectConfigRepo
@@ -112,6 +115,36 @@ type AppSystemInstructionsUpdate struct {
 	ChatInstructions     string
 	CoreInstructions     string
 	QuestionInstructions string
+}
+
+// UpdateWritingStyleAIText persists the writing style summary (Markdown/plain text).
+func (s *SubjectConfigService) UpdateWritingStyleAIText(ctx context.Context, text string) (*model.SubjectConfigResponse, error) {
+	cfg, err := s.repo.GetFirst(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, ErrNoSubjectConfiguration
+	}
+	if err := s.repo.UpdateWritingStyleAI(ctx, text); err != nil {
+		return nil, err
+	}
+	return s.GetConfiguration(ctx)
+}
+
+// UpdatePsychologicalProfileAIText persists the psychological profile (Markdown/plain text).
+func (s *SubjectConfigService) UpdatePsychologicalProfileAIText(ctx context.Context, text string) (*model.SubjectConfigResponse, error) {
+	cfg, err := s.repo.GetFirst(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, ErrNoSubjectConfiguration
+	}
+	if err := s.repo.UpdatePsychologicalProfileAI(ctx, text); err != nil {
+		return nil, err
+	}
+	return s.GetConfiguration(ctx)
 }
 
 // UpdateAppSystemInstructions replaces the singleton instruction row.

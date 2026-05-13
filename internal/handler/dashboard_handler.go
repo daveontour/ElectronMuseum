@@ -30,6 +30,8 @@ func (h *DashboardHandler) RegisterRoutes(r chi.Router) {
 	r.Get("/api/dashboard", h.GetDashboard)
 	r.Get("/api/subject-configuration", h.GetSubjectConfiguration)
 	r.Post("/api/subject-configuration", h.UpsertSubjectConfiguration)
+	r.Put("/api/subject-configuration/writing-style-ai", h.PutWritingStyleAI)
+	r.Put("/api/subject-configuration/psychological-profile-ai", h.PutPsychologicalProfileAI)
 	r.Put("/api/system-instructions", h.PutAppSystemInstructions)
 }
 
@@ -106,6 +108,54 @@ func (h *DashboardHandler) UpsertSubjectConfiguration(w http.ResponseWriter, r *
 			return
 		}
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error saving subject configuration: %s", err))
+		return
+	}
+	writeJSON(w, resp)
+}
+
+// PutWritingStyleAI handles PUT /api/subject-configuration/writing-style-ai.
+func (h *DashboardHandler) PutWritingStyleAI(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	var body struct {
+		WritingStyleAI string `json:"writing_style_ai"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	resp, err := h.subjectSvc.UpdateWritingStyleAIText(r.Context(), body.WritingStyleAI)
+	if err != nil {
+		if errors.Is(err, service.ErrNoSubjectConfiguration) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error saving writing style: %s", err))
+		return
+	}
+	writeJSON(w, resp)
+}
+
+// PutPsychologicalProfileAI handles PUT /api/subject-configuration/psychological-profile-ai.
+func (h *DashboardHandler) PutPsychologicalProfileAI(w http.ResponseWriter, r *http.Request) {
+	if !RequireOwnerMasterUnlock(w, r, h.sessionStore) {
+		return
+	}
+	var body struct {
+		PsychologicalProfileAI string `json:"psychological_profile_ai"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	resp, err := h.subjectSvc.UpdatePsychologicalProfileAIText(r.Context(), body.PsychologicalProfileAI)
+	if err != nil {
+		if errors.Is(err, service.ErrNoSubjectConfiguration) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("error saving psychological profile: %s", err))
 		return
 	}
 	writeJSON(w, resp)

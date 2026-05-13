@@ -229,6 +229,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	adminHandler := handler.NewAdminHandler(pool, subjectConfigRepo, contactRepo, sessionMasterStore)
 	adminHandler.WithGemini(geminiProvider)
 	adminHandler.WithBilling(billingRepo, userRepo)
+	adminHandler.WithInterestService(interestSvc)
 	adminHandler.RegisterRoutes(r)
 
 	importDataPurgeHandler := handler.NewImportDataPurgeHandler(pool, sessionMasterStore, sensitiveSvc, authSvc)

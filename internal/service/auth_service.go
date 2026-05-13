@@ -394,12 +394,8 @@ func (s *AuthService) EnsureAdminUser(ctx context.Context, email, password strin
 	if err != nil {
 		return fmt.Errorf("hash admin password: %w", err)
 	}
-	user, err := s.users.Create(ctx, email, hash, "Admin", "Admin", "")
-	if err != nil {
+	if _, err := s.users.CreateAdmin(ctx, email, hash, "Admin", "Admin", ""); err != nil {
 		return fmt.Errorf("create admin user: %w", err)
-	}
-	if err := s.users.SetIsAdmin(ctx, user.ID, true); err != nil {
-		return fmt.Errorf("set admin flag: %w", err)
 	}
 	slog.Info("admin user created", "email", email)
 	return nil

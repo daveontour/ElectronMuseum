@@ -809,26 +809,26 @@
                 </div>
                 <div class="config-tab-content" id="subject-configuration-tab">
                     <div class="subject-configuration-layout">
-                        <div class="subject-configuration-primary">
+                        <div class="subject-configuration-primary subject-configuration-primary--with-subtabs">
                     <section class="section-config">
                         <h1>Subject Configuration</h1>
-                        <p style="margin: 0;">The <strong>subject</strong> is the person this archive is about—the same person the app refers to as <strong>{{owner}}</strong>. Their name, other names, gender, and email addresses help match imported messages and contacts to them, fill prompts with the right pronouns, and ground AI summaries (such as writing style or psychological profile) in {{owner}}&rsquo;s own style and manner.</p>
+                        <p style="margin: 0;">The <strong>subject</strong> is the person this archive is about—the same person the app refers to as <strong>{{owner}}</strong>. Their other names, gender, and email addresses help match imported messages and contacts to them, fill prompts with the right pronouns, and ground AI summaries (such as writing style or psychological profile) in {{owner}}&rsquo;s own style and manner.</p>
 
                         </section>
-                        <div class="subject-configuration-dual-sections">
+                        <div class="subject-config-subtabs-nav" role="tablist" aria-label="Subject configuration sections">
+                            <button type="button" class="subject-config-subtab-button active" role="tab" aria-selected="true" aria-controls="subject-config-subtab-details" id="subject-config-subtab-btn-details" data-subtab="details">Subject Details and Interests</button>
+                            <button type="button" class="subject-config-subtab-button" role="tab" aria-selected="false" aria-controls="subject-config-subtab-writing" id="subject-config-subtab-btn-writing" data-subtab="writing">Writing Style</button>
+                            <button type="button" class="subject-config-subtab-button" role="tab" aria-selected="false" aria-controls="subject-config-subtab-psych" id="subject-config-subtab-btn-psych" data-subtab="psych">Psychological Profile</button>
+                        </div>
+                        <div class="subject-config-subtab-panels">
+                        <div class="subject-config-subtab-panel active" id="subject-config-subtab-details" role="tabpanel" aria-labelledby="subject-config-subtab-btn-details">
+                        <div class="subject-config-details-grid">
+                        <div class="subject-config-details-col subject-config-details-col--left">
                         <section class="config-section">
-                        <!-- <div class="subject-configuration-intro" style="margin-bottom: 1.25em; color: #555; font-size: var(--text-lead); line-height: 1.5; max-width: 36rem;">
-                            <p style="margin: 0;">The <strong>subject</strong> is the person this archive is about—the same person the app refers to as <strong>{{owner}}</strong>. Their name, other names, gender, and email addresses help match imported messages and contacts to them, fill prompts with the right pronouns, and ground AI summaries (such as writing style or psychological profile) in {{owner}}&rsquo;s own style and manner.</p>
-                        </div> -->
+                        <p id="subject-archive-owner-line" style="margin: 0 0 1.25em 0; color: #333; font-size: var(--text-base); line-height: var(--line-height-body, 1.5);">
+                            <span style="font-weight: bold;">Archive Owner/Subject:</span> <span id="subject-archive-owner-name">{{full_name}}</span>
+                        </p>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; row-gap: 1.5em; column-gap: 5px; margin-bottom: 1.5em;">
-                            <div style="min-width: 0;">
-                                <label for="subject-name-input" style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Subject Name:</label>
-                                <input id="subject-name-input" type="text" placeholder="Enter subject name..." class="form-control" required />
-                            </div>
-                            <div style="min-width: 0;">
-                                <label for="family-name-input" style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Family Name:</label>
-                                <input id="family-name-input" type="text" placeholder="Enter family name..." class="form-control" />
-                            </div>
                             <div style="min-width: 0;">
                                 <label for="other-names-input" style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Other Names (comma-separated):</label>
                                 <input id="other-names-input" type="text" placeholder="Enter other names, separated by commas..." class="form-control" />
@@ -845,9 +845,9 @@
                             <label for="email-addresses-input" style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Email Addresses (comma-separated):</label>
                             <input id="email-addresses-input" type="text" placeholder="Enter email addresses, separated by commas..." class="form-control" />
                         </div>
-                        <div style="margin-bottom: 1.5em;">
+                        <div style="margin-bottom: 0;">
                             <label for="subject-owner-contact-select" style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Archive owner contact:</label>
-                            <p style="color: #666; font-size: var(--text-md); margin: 0 0 0.5em 0; max-width: 42rem;">Choose the contact record that represents {{owner}} in your contacts list. The list below is guessed from the subject name, family name, other names, and email fields (saved values). You can widen the list to every contact if needed.</p>
+                            <p style="color: #666; font-size: var(--text-md); margin: 0 0 0.5em 0; max-width: none;">Choose the contact record that represents {{owner}} in your contacts list. The list below is guessed from the subject name, family name, other names, and email fields (saved values). You can widen the list to every contact if needed.</p>
                             <select id="subject-owner-contact-select" class="form-control" aria-describedby="subject-owner-contact-hint">
                                 <option value="">None (not linked)</option>
                             </select>
@@ -857,71 +857,115 @@
                                 <span>Show all contacts in this list (can be slow for very large archives)</span>
                             </label>
                         </div>
-                        <div style="margin-bottom: 1.5em;">
-                            <label style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Writing Style (AI-generated):</label>
-                            <p style="color: #666; font-size: var(--text-md); margin-bottom: 0.5em;">Analyzes a random sample of 5000 messages from {{owner}} to summarize writing style.</p>
-                            <button type="button" id="request-writing-style-btn" class="modal-btn modal-btn-primary" style="margin-bottom: 0.7em;">
-                                <i class="fas fa-magic"></i> Generate Writing Style
-                            </button>
-                            <p id="writing-style-require-contact-hint" class="config-tab-lead" style="display: none; margin: 0 0 0.75em 0; max-width: 42rem; color: #555;">Link the archive owner to a contact in the list above, then click <strong>Save</strong>, before generating a writing style summary.</p>
-                            <div id="writing-style-loading" style="display: none; color: #666; margin-bottom: 0.5em;">
-                                <i class="fas fa-spinner fa-spin"></i> Analyzing messages...
-                            </div>
-                            <div id="writing-style-display" class="writing-style-markdown"></div>
+                        </section>
                         </div>
-                        <div style="margin-bottom: 1.5em;">
-                            <label style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Psychological Profile (AI-generated):</label>
-                            <p style="color: #666; font-size: var(--text-md); margin-bottom: 0.5em;">Analyzes a random sample of 5000 messages from {{owner}} to generate a psychological profile.</p>
-                            <button type="button" id="request-psychological-profile-btn" class="modal-btn modal-btn-primary" style="margin-bottom: 0.7em;">
-                                <i class="fas fa-brain"></i> Generate Psychological Profile
-                            </button>
-                            <p id="psychological-profile-require-contact-hint" class="config-tab-lead" style="display: none; margin: 0 0 0.75em 0; max-width: 42rem; color: #555;">Link the archive owner to a contact in the list above, then click <strong>Save</strong>, before generating a psychological profile.</p>
-                            <div id="psychological-profile-loading" style="display: none; color: #666; margin-bottom: 0.5em;">
-                                <i class="fas fa-spinner fa-spin"></i> Analyzing messages...
+                        <div class="subject-config-details-col subject-config-details-col--interests">
+                        <section class="config-section">
+                            <div class="subject-config-subtab-heading-row">
+                            <span style="display: block; color: #333; font-weight: bold; margin-bottom: 0.5em;">Interests</span>
+                            <p style="color: #666; font-size: var(--text-md); margin: 0 0 0.5em 0; max-width: none;">Topics used for suggestions for Today&rsquo;s Thing of Interest and other AI-generated content.</p>
+                            </div>  
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px;">
+                                <button type="button" id="interests-create-btn-sc" class="modal-btn modal-btn-primary">
+                                    <i class="fas fa-plus"></i> Add Interest
+                                </button>
+                                <button type="button" id="interests-suggest-ai-btn-sc" class="modal-btn modal-btn-secondary" disabled title="Requires archive owner contact (saved) and master key unlock">
+                                    <i class="fas fa-magic"></i> Suggest 10 from archive
+                                </button>
                             </div>
-                            <div id="psychological-profile-display" class="writing-style-markdown"></div>
+                            <p id="interests-suggest-ai-require-contact-hint" class="config-tab-lead" style="display: none; margin: 0 0 0.75em 0; color: #555;">On <strong>Subject Details and Interests</strong>, link the archive owner to a contact, then click <strong>Save</strong>, before suggesting interests from your archive.</p>
+                            <div id="interests-loading-sc" class="loading-state">
+                                <i class="fas fa-spinner fa-spin"></i> Loading...
+                            </div>
+                            <div id="interests-table-container-sc" style="overflow-x: auto; max-height: 55vh; overflow-y: auto;">
+                                <table class="contacts-table interests-table-sc" id="interests-table-sc" style="width: 100%; margin-top: 0;">
+                                    <thead>
+                                        <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
+                                            <th class="interests-table-th-name">Name</th>
+                                            <th class="interests-table-th-actions">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="interests-tbody-sc">
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p id="interests-empty-msg-sc" style="display: none; padding: 1em; color: #666; text-align: center;">No interests. Add one to get started.</p>
+                        </section>
                         </div>
-                        <div style="display: flex; justify-content: flex-end; gap: 0.7em;">
+                        <div class="subject-config-details-actions">
                             <button type="button" id="cancel-subject-config-btn" class="modal-btn modal-btn-secondary">Cancel</button>
                             <button type="button" id="save-subject-config-btn" class="modal-btn modal-btn-primary">Save</button>
                         </div>
-                    </section>
-                    <section class="config-section">
-                        <section class="section-config" style="padding-bottom: 0.5rem;">
-                            <h2 id="subject-config-interests-heading" class="subject-configuration-interests-title">Interests</h2>
-                            <p class="config-tab-lead" style="margin: 0; max-width: none;">Topics used for suggestions such as Today&rsquo;s Thing.</p>
-                        </section>
-                        <section class="config-section" style="padding-top: 0;">
-                            <div class="setting-group">
-                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
-                                    <button type="button" id="interests-refresh-btn-sc" class="modal-btn modal-btn-secondary">
-                                        <i class="fas fa-sync-alt"></i> Refresh
-                                    </button>
-                                    <button type="button" id="interests-create-btn-sc" class="modal-btn modal-btn-primary">
-                                        <i class="fas fa-plus"></i> Add Interest
-                                    </button>
+                        </div>
+                        </div>
+                        <div class="subject-config-subtab-panel" id="subject-config-subtab-writing" role="tabpanel" aria-labelledby="subject-config-subtab-btn-writing">
+                        <section class="config-section">
+                            <div class="subject-config-subtab-heading-row">
+                            <h2 class="subject-config-subtab-heading">Writing Style</h2>
+                            <p class="subject-config-subtab-lead">Analyzes a random sample of 5000 messages from {{owner}} to summarize writing style.</p>
+                            </div>
+                            <button type="button" id="request-writing-style-btn" class="modal-btn modal-btn-primary" style="margin-bottom: 0.7em;">
+                                <i class="fas fa-magic"></i> Generate Writing Style
+                            </button>
+                            <p id="writing-style-require-contact-hint" class="config-tab-lead" style="display: none; margin: 0 0 0.75em 0;  color: #555;">On <strong>Subject Details and Interests</strong>, link the archive owner to a contact, then click <strong>Save</strong>, before generating a writing style summary.</p>
+                            <div id="writing-style-loading" style="display: none; color: #666; margin-bottom: 0.5em;">
+                                <i class="fas fa-spinner fa-spin"></i> Analyzing messages...
+                            </div>
+                            <div id="writing-style-ai-inner-wrap" class="subject-config-ai-inner-wrap">
+                                <div class="subject-config-ai-inner-nav" role="tablist" aria-label="Writing style: preview or edit">
+                                    <button type="button" class="subject-config-ai-inner-tab active" id="writing-style-inner-tab-preview" role="tab" aria-selected="true" aria-controls="writing-style-inner-panel-preview" data-inner-subtab="preview">Preview</button>
+                                    <button type="button" class="subject-config-ai-inner-tab" id="writing-style-inner-tab-edit" role="tab" aria-selected="false" aria-controls="writing-style-inner-panel-edit" data-inner-subtab="edit">Edit summary (Markdown)</button>
                                 </div>
-                                <div id="interests-loading-sc" class="loading-state">
-                                    <i class="fas fa-spinner fa-spin"></i> Loading...
+                                <div id="writing-style-inner-panel-preview" class="subject-config-ai-inner-panel active" role="tabpanel" aria-labelledby="writing-style-inner-tab-preview" data-inner-subtab="preview">
+                                    <div id="writing-style-display" class="writing-style-markdown"></div>
                                 </div>
-                                <div id="interests-table-container-sc" style="overflow-x: auto; max-height: 55vh; overflow-y: auto;">
-                                    <table class="contacts-table" id="interests-table-sc" style="width: 100%; margin-top: 0;">
-                                        <thead>
-                                            <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
-                                                <th style="padding: 8px; text-align: left;">Name</th>
-                                                <th style="padding: 8px; text-align: center; width: 160px;">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="interests-tbody-sc">
-                                        </tbody>
-                                    </table>
+                                <div id="writing-style-inner-panel-edit" class="subject-config-ai-inner-panel" role="tabpanel" aria-labelledby="writing-style-inner-tab-edit" data-inner-subtab="edit">
+                                    <label for="writing-style-edit-textarea" style="display: block; color: #333; font-weight: bold; margin: 0 0 0.5em 0;">Edit summary (Markdown)</label>
+                                    <textarea id="writing-style-edit-textarea" class="form-control subject-config-ai-textarea" rows="14" spellcheck="true" placeholder="Generate a summary above, or type or paste Markdown here."></textarea>
+                                    <!-- <p class="config-tab-lead" style="margin: 0.5em 0 0.75em 0; color: #666; max-width: none;">Saving updates the stored summary only (master key required). Open the Preview tab to see rendered Markdown; it updates as you type here.</p> -->
+                                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 0;">
+                                        <button type="button" id="save-writing-style-ai-btn" class="modal-btn modal-btn-primary">Save summary</button>
+                                        <span id="writing-style-save-status" role="status" aria-live="polite" style="font-size: var(--text-md); color: #666; min-height: 1.35em;"></span>
+                                    </div>
                                 </div>
-                                <p id="interests-empty-msg-sc" style="display: none; padding: 1em; color: #666; text-align: center;">No interests. Add one to get started.</p>
                             </div>
                         </section>
-                    </section>
+                        </div>
+                        <div class="subject-config-subtab-panel" id="subject-config-subtab-psych" role="tabpanel" aria-labelledby="subject-config-subtab-btn-psych">
+                        <section class="config-section">
+                            <div class="subject-config-subtab-heading-row">
+                            <h2 class="subject-config-subtab-heading">Psychological Profile</h2>
+                            <p class="subject-config-subtab-lead">Analyzes a random sample of 5000 messages from {{owner}} to generate a psychological profile.</p>
+                            </div>
+                            <button type="button" id="request-psychological-profile-btn" class="modal-btn modal-btn-primary" style="margin-bottom: 0.7em;">
+                                <i class="fas fa-brain"></i> Generate Psychological Profile
+                            </button>
+                            <p id="psychological-profile-require-contact-hint" class="config-tab-lead" style="display: none; margin: 0 0 0.75em 0;  color: #555;">On <strong>Subject Details and Interests</strong>, link the archive owner to a contact, then click <strong>Save</strong>, before generating a psychological profile.</p>
+                            <div id="psychological-profile-loading" style="display: none; color: #666; margin-bottom: 0.5em;">
+                                <i class="fas fa-spinner fa-spin"></i> Analyzing messages...
+                            </div>
+                            <div id="psychological-profile-ai-inner-wrap" class="subject-config-ai-inner-wrap">
+                                <div class="subject-config-ai-inner-nav" role="tablist" aria-label="Psychological profile: preview or edit">
+                                    <button type="button" class="subject-config-ai-inner-tab active" id="psychological-profile-inner-tab-preview" role="tab" aria-selected="true" aria-controls="psychological-profile-inner-panel-preview" data-inner-subtab="preview">Preview</button>
+                                    <button type="button" class="subject-config-ai-inner-tab" id="psychological-profile-inner-tab-edit" role="tab" aria-selected="false" aria-controls="psychological-profile-inner-panel-edit" data-inner-subtab="edit">Edit profile (Markdown)</button>
+                                </div>
+                                <div id="psychological-profile-inner-panel-preview" class="subject-config-ai-inner-panel active" role="tabpanel" aria-labelledby="psychological-profile-inner-tab-preview" data-inner-subtab="preview">
+                                    <div id="psychological-profile-display" class="writing-style-markdown"></div>
+                                </div>
+                                <div id="psychological-profile-inner-panel-edit" class="subject-config-ai-inner-panel" role="tabpanel" aria-labelledby="psychological-profile-inner-tab-edit" data-inner-subtab="edit">
+                                    <label for="psychological-profile-edit-textarea" style="display: block; color: #333; font-weight: bold; margin: 0 0 0.5em 0;">Edit profile (Markdown)</label>
+                                    <textarea id="psychological-profile-edit-textarea" class="form-control subject-config-ai-textarea" rows="14" spellcheck="true" placeholder="Generate a profile above, or type or paste Markdown here."></textarea>
+                                    <!-- <p class="config-tab-lead" style="margin: 0.5em 0 0.75em 0; color: #666; max-width: none;">Saving updates the stored profile only (master key required). Open the Preview tab to see rendered Markdown; it updates as you type here.</p> -->
+                                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 0;">
+                                        <button type="button" id="save-psychological-profile-ai-btn" class="modal-btn modal-btn-primary">Save profile</button>
+                                        <span id="psychological-profile-save-status" role="status" aria-live="polite" style="font-size: var(--text-md); color: #666; min-height: 1.35em;"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
                         </div>
                         </div>
+                    </div>
                     </div>
                 </div>
                 <!-- Custom Voices Tab -->

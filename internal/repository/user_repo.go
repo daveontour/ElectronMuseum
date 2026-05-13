@@ -48,13 +48,28 @@ func NewUserRepo(pool *sql.DB) *UserRepo {
 	return &UserRepo{pool: pool}
 }
 
-// Create inserts a new user and returns the created record.
+// Create inserts a new non-admin user and returns the created record.
 // displayName is stored in display_name (legacy/UI); firstName and familyName are stored explicitly.
 func (r *UserRepo) Create(ctx context.Context, email, passwordHash, displayName, firstName, familyName string) (*User, error) {
 	var u User
 	err := r.pool.QueryRowContext(ctx,
 		`INSERT INTO users (email, password_hash, display_name, first_name, family_name, is_admin)
 		 VALUES (?1, ?2, NULLIF(?3, ''), NULLIF(?4, ''), NULLIF(?5, ''), FALSE)
+		 RETURNING id, email, password_hash,
+		           COALESCE(display_name, ''), COALESCE(first_name, ''), COALESCE(family_name, ''),
+		           is_active, is_admin, created_at`,
+		email, passwordHash, displayName, firstName, familyName,
+	).Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.FirstName, &u.FamilyName, &u.IsActive, &u.IsAdmin, &u.CreatedAt)
+	return &u, err
+}
+
+// CreateAdmin inserts a user with is_admin = TRUE in a single statement, avoiding the
+// two-step Create + SetIsAdmin window where AnyNonAdminUserExists would return true.
+func (r *UserRepo) CreateAdmin(ctx context.Context, email, passwordHash, displayName, firstName, familyName string) (*User, error) {
+	var u User
+	err := r.pool.QueryRowContext(ctx,
+		`INSERT INTO users (email, password_hash, display_name, first_name, family_name, is_admin)
+		 VALUES (?1, ?2, NULLIF(?3, ''), NULLIF(?4, ''), NULLIF(?5, ''), TRUE)
 		 RETURNING id, email, password_hash,
 		           COALESCE(display_name, ''), COALESCE(first_name, ''), COALESCE(family_name, ''),
 		           is_active, is_admin, created_at`,

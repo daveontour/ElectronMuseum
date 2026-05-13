@@ -4381,11 +4381,23 @@ const App = (() => {
         const todaysThingAddInterestCancel = document.getElementById('todays-thing-add-interest-cancel');
         const closeTodaysThingAddInterest = document.getElementById('close-todays-thing-add-interest-modal');
 
-        const runTodaysThing = () => App.processFormSubmit(
-            "What's today's things of interest? Suggest something interesting for today based on my interests.",
-            "Today's Things of Interest",
-            "What's going on today?"
-        );
+        /** @param {Array<{name?: string}>|null|undefined} interestRows rows from GET /api/interests */
+        const runTodaysThing = (interestRows) => {
+            const rows = Array.isArray(interestRows) ? interestRows : [];
+            const names = rows
+                .map((r) => (r && r.name != null ? String(r.name).trim() : ''))
+                .filter((s) => s.length > 0);
+            let userPrompt = "What's today's things of interest? Suggest something interesting for today based on my interests.";
+            if (names.length > 0) {
+                userPrompt += "\n\nThe archive owner's saved interests (use these as the main inspiration; you may combine topics or focus on one):\n";
+                userPrompt += names.map((n) => `- ${n.replace(/\r?\n/g, ' ')}`).join('\n');
+            }
+            App.processFormSubmit(
+                userPrompt,
+                "Today's Things of Interest",
+                "What's going on today?"
+            );
+        };
 
         if (todaysThingAddInterestModal && todaysThingAddInterestSave) {
             const closeTodaysThingModal = () => { todaysThingAddInterestModal.style.display = 'none'; };
@@ -4415,7 +4427,13 @@ const App = (() => {
                         return;
                     }
                     closeTodaysThingModal();
-                    runTodaysThing();
+                    try {
+                        const listRes = await fetch('/api/interests');
+                        const listData = listRes.ok ? await listRes.json() : [];
+                        runTodaysThing(Array.isArray(listData) ? listData : []);
+                    } catch {
+                        runTodaysThing([{ name }]);
+                    }
                 } catch (e) {
                     if (todaysThingAddInterestError) {
                         todaysThingAddInterestError.textContent = 'Failed to save: ' + e.message;
@@ -4432,10 +4450,10 @@ const App = (() => {
             todaysThingSidebarBtn.addEventListener('click', async () => {
                 try {
                     const res = await fetch('/api/interests');
-                    if (!res.ok) { runTodaysThing(); return; }
+                    if (!res.ok) { runTodaysThing([]); return; }
                     const data = await res.json();
                     if (data && data.length > 0) {
-                        runTodaysThing();
+                        runTodaysThing(data);
                         return;
                     }
                     if (todaysThingAddInterestModal && todaysThingAddInterestInput) {
@@ -4443,10 +4461,10 @@ const App = (() => {
                         if (todaysThingAddInterestError) { todaysThingAddInterestError.style.display = 'none'; todaysThingAddInterestError.textContent = ''; }
                         todaysThingAddInterestModal.style.display = 'flex';
                     } else {
-                        runTodaysThing();
+                        runTodaysThing([]);
                     }
                 } catch (e) {
-                    runTodaysThing();
+                    runTodaysThing([]);
                 }
             });
         }

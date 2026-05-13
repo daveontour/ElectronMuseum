@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CGO_CFLAGS": "-IC:/NonOneDrive/ElectronMuseum/cgo-compat"
+  },
   "permissions": {
     "allow": [
       "Bash(go version *)",
@@ -28,7 +31,9 @@
       "Bash(cat)",
       "Read(//c/Users/dave_/**)",
       "Bash(go vet *)",
-      "Bash(make build-exe *)"
+      "Bash(make build-exe *)",
+      "Bash(git checkout *)",
+      "Bash(go list *)"
     ]
   }
 }
