@@ -67,8 +67,11 @@ func (h *ChatHandler) GetAvailability(w http.ResponseWriter, r *http.Request) {
 		"runpod_env_configured":               h.svc.ServerRunpodKeyConfigured(),
 		"elevenlabs_env_configured":           h.svc.ServerElevenLabsKeyConfigured(),
 		"server_gemini_model_default_set":     h.svc.ServerGeminiModelDefaultSet(),
+		"server_gemini_model_default":         h.svc.ServerGeminiModelDefault(),
 		"server_claude_model_default_set":     h.svc.ServerClaudeModelDefaultSet(),
+		"server_claude_model_default":         h.svc.ServerClaudeModelDefault(),
 		"server_deepseek_model_default_set":   h.svc.ServerDeepSeekModelDefaultSet(),
+		"server_deepseek_model_default":       h.svc.ServerDeepSeekModelDefault(),
 		"llm_tools_count":                     tools,
 		"reference_documents_available_count": refDocs,
 	})

@@ -766,6 +766,23 @@ body {
     align-self: flex-start; /* Or center, or full-width */
 }
 
+/* LLM request cancelled by user (Thinking overlay Cancel) */
+.cancelled-message {
+    align-self: flex-start;
+    max-width: 85%;
+    background-color: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-left: 4px solid #d97706;
+    border-bottom-left-radius: 4px;
+    color: #78350f;
+    font-size: var(--text-sm, 0.8125rem);
+    line-height: var(--line-height-snug, 1.35);
+}
+
+.cancelled-message .message-content {
+    background-color: transparent;
+}
+
 
 /* Voice-specific Message Styling */
 .assistant-message.voice-expert {
@@ -855,7 +872,8 @@ body {
 /* Set specific min-height for non-assistant messages */
 .message-content[data-role="user"],
 .message-content[data-role="suggestion"],
-.message-content[data-role="system"] {
+.message-content[data-role="system"],
+.message-content[data-role="cancelled"] {
     min-height: 25px;
 }
 
@@ -874,6 +892,12 @@ body {
 }
 .message-content[data-role="system"] {
     background-color: #87CEEB; /* From .system-message */
+}
+
+.message-content[data-role="cancelled"] {
+    background-color: transparent;
+    padding: 8px 10px;
+    min-height: auto;
 }
 
 
@@ -1490,13 +1514,72 @@ body {
     transform: translate(-50%, -50%);
     display: flex; /* Will be toggled by JS */
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 22px;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 18px 20px 14px 20px;
     background-color: rgba(255, 255, 255, 0.9);
     border-radius: 12px;
     box-shadow: var(--shadow-lg);
     z-index: 1000;
+    min-width: min(320px, calc(100vw - 32px));
+    min-height: 168px;
+}
+
+.loading-indicator-main {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+}
+
+.loading-indicator-footer {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    flex: 0 0 auto;
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.loading-indicator-provider {
+    flex: 0 1 auto;
+    min-width: 0;
+    text-align: left;
+    margin-right: auto;
+    font-size: var(--text-sm, 0.8125rem);
+    font-weight: 600;
+    color: #5f6368;
+    line-height: var(--line-height-snug, 1.25);
+    letter-spacing: 0.02em;
+}
+
+.loading-indicator-cancel-btn {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-family: var(--font-sans-ui, ui-sans-serif, system-ui, sans-serif);
+    font-size: var(--text-sm, 0.8125rem);
+    font-weight: 600;
+    padding: 0.45em 0.9em;
+    border-radius: 8px;
+    border: 1px solid #94a3b8;
+    background: #f1f5f9;
+    color: #334155;
+    cursor: pointer;
+}
+
+.loading-indicator-cancel-btn:hover {
+    background: #e2e8f0;
+    border-color: #64748b;
+}
+
+.loading-indicator-cancel-btn:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
 }
 
 .thinking-text {
@@ -1512,6 +1595,7 @@ body {
 .thinking-dots {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 9px;
     line-height: 1;
 }

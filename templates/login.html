@@ -88,6 +88,22 @@
         }
         .form-group input:focus, .form-group select:focus { border-color: #3b82f6; }
         .form-group select { cursor: pointer; }
+        .login-pw-wrap {
+            display: flex; align-items: stretch; width: 100%;
+            border-radius: 6px; border: 1px solid #2e4068; background: #0f1922;
+            box-sizing: border-box; overflow: hidden;
+        }
+        .login-pw-wrap:focus-within { border-color: #3b82f6; }
+        .login-pw-wrap input {
+            flex: 1; min-width: 0; border: none !important; border-radius: 0 !important;
+            background: transparent !important; box-sizing: border-box;
+        }
+        .login-pw-toggle {
+            flex: 0 0 44px; border: none; background: #162536; color: #8fa4c8;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; transition: background .15s, color .15s;
+        }
+        .login-pw-toggle:hover { background: #243368; color: #e2e8f0; }
         /* style the dropdown arrow */
         .form-group select option { background: #19264d; }
         .submit-btn {
@@ -252,7 +268,7 @@
                     </div>
                 </div>
                 <div style="margin-top:12px; padding-top:10px; border-top:1px solid #1e3050; color:#4a5a80; font-size:0.8rem;">
-                    Prefer more capable cloud AI? Add a Claude, Gemini, or DeepSeek API key in <strong style="color:#6b80a8;">Settings</strong> after signing in.
+                    Prefer more capable cloud AI? Add a Claude, Gemini, or DeepSeek API key in <strong style="color:#6b80a8;">Configuration</strong> after signing in.
                 </div>
             </div>
             <div id="adv-status" style="color:#f87171; font-size:0.82rem; margin-top:12px; display:none;"></div>
@@ -274,8 +290,11 @@
                 </div>
                 <div class="form-group" id="login-password-group">
                     <label for="login-password">Password</label>
-                    <input id="login-password" type="password" name="password" required
-                        placeholder="Your password" autocomplete="current-password">
+                    <div class="login-pw-wrap">
+                        <input id="login-password" type="password" name="password" required
+                            placeholder="Your password" autocomplete="current-password">
+                        <button type="button" class="login-pw-toggle" id="login-password-toggle" aria-label="Show password" aria-pressed="false" title="Show password"><i class="far fa-eye" aria-hidden="true"></i></button>
+                    </div>
                 </div>
                 <button type="submit" class="submit-btn" id="login-btn">
                     <i class="fas fa-sign-in-alt" style="margin-right:6px;"></i>Sign In
@@ -304,11 +323,17 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="new-password">Password</label>
-                        <input type="password" id="new-password" placeholder="At least 12 characters" autocomplete="new-password">
+                        <div class="login-pw-wrap">
+                            <input type="password" id="new-password" placeholder="At least 12 characters" autocomplete="new-password">
+                            <button type="button" class="login-pw-toggle" id="new-password-toggle" aria-label="Show password" aria-pressed="false" title="Show password"><i class="far fa-eye" aria-hidden="true"></i></button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="new-password-confirm">Confirm</label>
-                        <input type="password" id="new-password-confirm" placeholder="Re-enter" autocomplete="new-password">
+                        <div class="login-pw-wrap">
+                            <input type="password" id="new-password-confirm" placeholder="Re-enter" autocomplete="new-password">
+                            <button type="button" class="login-pw-toggle" id="new-password-confirm-toggle" aria-label="Show password" aria-pressed="false" title="Show password"><i class="far fa-eye" aria-hidden="true"></i></button>
+                        </div>
                     </div>
                 </div>
                 <div style="margin-bottom:14px;">
@@ -350,13 +375,19 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="reg-password">Password</label>
-                        <input id="reg-password" type="password" name="password" required
-                            placeholder="Choose a password" autocomplete="new-password">
+                        <div class="login-pw-wrap">
+                            <input id="reg-password" type="password" name="password" required
+                                placeholder="Choose a password" autocomplete="new-password">
+                            <button type="button" class="login-pw-toggle" id="reg-password-toggle" aria-label="Show password" aria-pressed="false" title="Show password"><i class="far fa-eye" aria-hidden="true"></i></button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="reg-password-confirm">Confirm Password</label>
-                        <input id="reg-password-confirm" type="password" required
-                            placeholder="Re-enter" autocomplete="new-password">
+                        <div class="login-pw-wrap">
+                            <input id="reg-password-confirm" type="password" required
+                                placeholder="Re-enter" autocomplete="new-password">
+                            <button type="button" class="login-pw-toggle" id="reg-password-confirm-toggle" aria-label="Show password" aria-pressed="false" title="Show password"><i class="far fa-eye" aria-hidden="true"></i></button>
+                        </div>
                     </div>
                 </div>
                 <button type="submit" class="submit-btn" id="register-btn">
@@ -414,6 +445,32 @@
             el.textContent = msg; el.style.display = 'block';
         }
         function showError(msg) { errorMsg.textContent = msg; errorMsg.style.display = 'block'; }
+        function wireLoginPwToggle(toggleId, inputId) {
+            const btn = document.getElementById(toggleId);
+            const inp = document.getElementById(inputId);
+            if (!btn || !inp) return;
+            btn.addEventListener('click', function() {
+                const show = inp.type === 'password';
+                inp.type = show ? 'text' : 'password';
+                btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                btn.title = show ? 'Hide password' : 'Show password';
+                const i = btn.querySelector('i');
+                if (i) i.className = show ? 'far fa-eye-slash' : 'far fa-eye';
+            });
+        }
+        function resetLoginPwFieldMask(inputId, toggleId) {
+            const inp = document.getElementById(inputId);
+            const btn = document.getElementById(toggleId);
+            if (inp) inp.type = 'password';
+            if (btn) {
+                btn.setAttribute('aria-pressed', 'false');
+                btn.setAttribute('aria-label', 'Show password');
+                btn.title = 'Show password';
+                const i = btn.querySelector('i');
+                if (i) i.className = 'far fa-eye';
+            }
+        }
         async function shouldProceedWithSignInWhenAIIncomplete() {
             if (!hasElectron || !window.electronAPI) return true;
             try {
@@ -449,6 +506,12 @@
         tabVisitor.addEventListener('click',  () => showTab('visitor'));
         document.getElementById('login-admin-login-btn').addEventListener('click', () => { window.location.href = '/admin'; });
 
+        wireLoginPwToggle('login-password-toggle', 'login-password');
+        wireLoginPwToggle('new-password-toggle', 'new-password');
+        wireLoginPwToggle('new-password-confirm-toggle', 'new-password-confirm');
+        wireLoginPwToggle('reg-password-toggle', 'reg-password');
+        wireLoginPwToggle('reg-password-confirm-toggle', 'reg-password-confirm');
+
         if (HAS_REGISTERED_USER) {
             tabRegister.style.display = 'none';
             document.getElementById('panel-register').classList.remove('active');
@@ -457,8 +520,8 @@
             tabLogin.style.display = 'none';
             document.getElementById('panel-login').classList.remove('active');
             showTab('register');
-            const si = document.getElementById('step-indicator');
-            if (si) si.style.display = 'flex';
+            // const si = document.getElementById('step-indicator');
+            // if (si) si.style.display = 'flex';
         }
         if (!HAS_VISITOR_KEYS) {
             tabVisitor.style.display = 'none';
@@ -722,8 +785,8 @@
                 // First run — hide the profile select (only "+ New User..." in it),
                 // show the step indicator, and go straight to archive creation.
                 profileGroup.style.display = 'none';
-                const si = document.getElementById('step-indicator');
-                if (si) { si.style.display = 'flex'; setStep(1); }
+                // const si = document.getElementById('step-indicator');
+                // if (si) { si.style.display = 'flex'; setStep(1); }
                 showNewUserSection();
             } else {
                 // Pre-fill username from active profile, else billing startup default, else first row
@@ -809,6 +872,8 @@
                 if (activeOpt) profileSelect.value = activeOpt.value;
                 ['new-display-name','new-family-name','new-username','new-password','new-password-confirm']
                     .forEach(id => { document.getElementById(id).value = ''; });
+                resetLoginPwFieldMask('new-password', 'new-password-toggle');
+                resetLoginPwFieldMask('new-password-confirm', 'new-password-confirm-toggle');
                 document.getElementById('new-profile-custom-loc').checked = false;
                 document.getElementById('new-profile-browse').style.display = 'none';
                 document.getElementById('new-profile-custom-path').style.display = 'none';
@@ -1089,12 +1154,14 @@
                 });
             }
 
-            // Auto-expand on first run; otherwise refresh once so the AI & Setup link shows alert state
-            if (!HAS_REGISTERED_USER && hasElectron) {
-                openSetupPanel();
-            } else if (hasElectron) {
-                refreshLocalAiStatus();
-            }
+            // First-run: open Local AI Setup only if something needs attention. If Local AI is all OK, stay on Sign In.
+            (async function() {
+                if (!hasElectron) return;
+                await refreshLocalAiStatus();
+                if (!HAS_REGISTERED_USER && !advBtn.classList.contains('advanced-btn-ready')) {
+                    await openSetupPanel();
+                }
+            })();
         }());
     </script>
 </body>

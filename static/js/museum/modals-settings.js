@@ -5101,6 +5101,18 @@ Modals.UserLLMSettings = (() => {
     }
 
     let userLLMStatusClearTimer = null;
+    /** Last-loaded user override vs effective display (user → owner → server) for save semantics. */
+    let userLLMModelSaveCtx = {
+        geminiUser: '',
+        geminiEffective: '',
+        claudeUser: '',
+        claudeEffective: '',
+        deepseekUser: '',
+        deepseekEffective: '',
+    };
+
+    const USER_LLM_MODEL_FIELD_INFO =
+        'This field shows your saved model name if you set one; otherwise the archive owner’s default (when you are a visitor), otherwise this server’s default from .env. Save with an empty field to clear your personal override.';
 
     function setStatus(msg, color) {
         const el = getEl('user-llm-status');
@@ -5134,53 +5146,29 @@ Modals.UserLLMSettings = (() => {
         el.classList.add(isOk ? 'user-llm-field-input--state-ok' : 'user-llm-field-input--state-warn');
     }
 
-    function apiKeyPlaceholder(sessionScoped, userKeySet, ownerKeySet, serverEnvFallbackOk, providerLabel) {
-        const envBlank = serverEnvFallbackOk
-            ? ` There is a key for  ${providerLabel} configured in the server's configuration file. Paste your own key for ${providerLabel}here to use it.`
-            : ` No key for  ${providerLabel} has been configured. Paste a key here to use ${providerLabel}.`;
-        if (sessionScoped) {
-            if (userKeySet) {
-                return 'A key has been configured.  Paste a new key to replace it';
-            }
-            if (ownerKeySet) {
-                return 'No key saved for this visit — leave blank to use the archive owner’s saved key, or paste a key for this visit only.' + (serverEnvFallbackOk ? ' If the owner has no key, blank may use this deployment’s .env when set.' : '');
-            }
-            return 'No key saved for this visit — paste a key for this visit only, or leave blank when the owner’s key or this deployment’s .env supplies one.'
-                + (serverEnvFallbackOk ? '' : ` (${providerLabel} is not configured in this deployment’s .env.)`);
-        }
+    /**
+     * Empty API key field: saved user key is never returned from the server — show a mask plus “(user supplied)”.
+     * If the service is still usable (server .env and/or archive owner key on visitor sessions), prompt to paste an override.
+     * Otherwise prompt to add a key. serviceNameForEmptyPrompt is the product string, e.g. “Google Gemini”.
+     */
+    function apiKeyPlaceholder(userKeySet, serviceConfiguredForUser, serviceNameForEmptyPrompt) {
         if (userKeySet) {
-            return 'A key is saved on your account — leave blank to keep it, or paste a new key to replace it';
+            return 'User supplied key in use. Paste another key to overwrite';
         }
-        return 'No saved key on your account — paste a key to store it here.' + envBlank;
+        if (serviceConfiguredForUser) {
+            return 'Server key in use. Paste your own key to overwrite';
+        }
+        return `Enter API Key to access ${serviceNameForEmptyPrompt}`;
     }
 
-    function emptyModelFieldPlaceholder(sessionScoped, storedModel, ownerModel, exampleModel, providerLabel, providerOk, serverModelDefaultSet) {
-        const sm = String(storedModel || '').trim();
-        if (sm) return '';
-        const om = String(ownerModel || '').trim();
-        if (sessionScoped && om) {
-            return `No model saved for this visit — leave blank to use the owner’s model (${om}), or enter an override`;
-        }
-        if (sessionScoped) {
-            if (serverModelDefaultSet) {
-                return `No model for this visit.  Leave blank to use this servers's default ${providerLabel} model`;
-            }
-            return `No model configured.  Enter a model name or leave blank${providerOk ? ' (server .env default only if set)' : ''}`;
-        }
-        if (serverModelDefaultSet) {
-            return `No saved model on your account — leave blank to use this deployment’s default ${providerLabel} model from .env when set, or e.g. ${exampleModel}`;
-        }
-        if (providerOk) {
-            return `No saved model on your account. — enter a model (e.g. ${exampleModel}); blank leaves ${providerLabel} to the server without a per-account model override (no default model name in .env)`;
-        }
-        return `No saved model — ${providerLabel} is not available yet; add an API key or configure the server’s .env before setting a model name`;
-    }
-
-    /** Same text as the model input placeholder; when placeholder is empty (saved model visible), explain that. */
-    function modelFieldInfoBody(placeholder) {
-        const t = String(placeholder || '').trim();
-        if (t) return t;
-        return 'A model name is saved and shown in this field. Save with an empty model field to clear your override, or type a different model name.';
+    /** Persisted override: empty string clears. If the user only saw an inherited default and did not change it, send "" so no spurious override is stored. */
+    function formatModelForSave(raw, userStored, effectiveAtLoad) {
+        const r = String(raw || '').trim();
+        const u = String(userStored || '').trim();
+        const e = String(effectiveAtLoad || '').trim();
+        if (!r) return '';
+        if (!u && r === e) return '';
+        return r;
     }
 
     function setLLMInfoButton(id, title, bodyText) {
@@ -5391,9 +5379,12 @@ Modals.UserLLMSettings = (() => {
             const tavilyEnv = !!av.tavily_env_configured;
             const runpodEnv = !!av.runpod_env_configured;
             const elevenlabsEnv = !!av.elevenlabs_env_configured;
-            const serverGeminiModel = !!av.server_gemini_model_default_set;
-            const serverClaudeModel = !!av.server_claude_model_default_set;
-            const serverDeepseekModel = !!av.server_deepseek_model_default_set;
+            const serverGeminiModelStr = String(av.server_gemini_model_default || '').trim();
+            const serverClaudeModelStr = String(av.server_claude_model_default || '').trim();
+            const serverDeepseekModelStr = String(av.server_deepseek_model_default || '').trim();
+            const serverGeminiModel = !!av.server_gemini_model_default_set || serverGeminiModelStr !== '';
+            const serverClaudeModel = !!av.server_claude_model_default_set || serverClaudeModelStr !== '';
+            const serverDeepseekModel = !!av.server_deepseek_model_default_set || serverDeepseekModelStr !== '';
             const llm = data.llm_settings || {};
             sessionScoped = !!llm.session_scoped;
             const intro = getEl('user-llm-intro');
@@ -5447,31 +5438,48 @@ Modals.UserLLMSettings = (() => {
             const ownerTavilyKey = !!(sessionScoped && llm.subject_tavily_key_set);
             const ownerRunpodKey = !!(sessionScoped && llm.subject_runpod_key_set);
             const ownerElevenlabsKey = !!(sessionScoped && llm.subject_elevenlabs_key_set);
-            const gemModelPh = emptyModelFieldPlaceholder(sessionScoped, geminiStored, ownerGeminiModel, 'gemini-2.5-flash', 'Gemini', geminiRoute, serverGeminiModel);
-            const claudeModelPh = emptyModelFieldPlaceholder(sessionScoped, claudeStored, ownerClaudeModel, 'claude-sonnet-4-6', 'Claude', claudeRoute, serverClaudeModel);
-            const deepseekModelPh = emptyModelFieldPlaceholder(sessionScoped, deepseekStored, ownerDeepseekModel, 'deepseek-chat', 'DeepSeek', deepseekRoute, serverDeepseekModel);
+            const geminiEffective = geminiStored || ownerGeminiModel || serverGeminiModelStr;
+            const claudeEffective = claudeStored || ownerClaudeModel || serverClaudeModelStr;
+            const deepseekEffective = deepseekStored || ownerDeepseekModel || serverDeepseekModelStr;
+            const gemModelPh = geminiEffective ? '' : 'Enter model name';
+            const claudeModelPh = claudeEffective ? '' : 'Enter model name';
+            const deepseekModelPh = deepseekEffective ? '' : 'Enter model name';
+            userLLMModelSaveCtx = {
+                geminiUser: geminiStored,
+                geminiEffective: geminiEffective,
+                claudeUser: claudeStored,
+                claudeEffective: claudeEffective,
+                deepseekUser: deepseekStored,
+                deepseekEffective: deepseekEffective,
+            };
+            const gemKeyOk = !!(llm.gemini_api_key_set || ownerGeminiKey || geminiRoute);
+            const claudeKeyOk = !!(llm.anthropic_api_key_set || ownerAnthropicKey || claudeRoute);
+            const deepKeyOk = !!(llm.deepseek_api_key_set || ownerDeepseekKey || deepseekRoute);
+            const tavKeyOk = !!(llm.tavily_api_key_set || ownerTavilyKey || tavilyEnv);
+            const runpodKeyOk = !!(llm.runpod_api_key_set || ownerRunpodKey || runpodEnv);
+            const elevenlabsKeyOk = !!(llm.elevenlabs_api_key_set || ownerElevenlabsKey || elevenlabsEnv);
             const gk = getEl('user-llm-gemini-key');
             const ak = getEl('user-llm-anthropic-key');
             const dk = getEl('user-llm-deepseek-key');
             const tk = getEl('user-llm-tavily-key');
             const rk = getEl('user-llm-runpod-key');
             const el11 = getEl('user-llm-elevenlabs-key');
-            const gemKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.gemini_api_key_set, ownerGeminiKey, geminiRoute, 'Gemini');
-            const anthropicKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.anthropic_api_key_set, ownerAnthropicKey, claudeRoute, 'Anthropic');
-            const deepseekKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.deepseek_api_key_set, ownerDeepseekKey, deepseekRoute, 'DeepSeek');
-            const tavilyKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.tavily_api_key_set, ownerTavilyKey, tavilyEnv, 'Tavily');
-            const runpodKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.runpod_api_key_set, ownerRunpodKey, runpodEnv, 'RunPod');
-            const elevenlabsKeyPh = apiKeyPlaceholder(sessionScoped, !!llm.elevenlabs_api_key_set, ownerElevenlabsKey, elevenlabsEnv, 'ElevenLabs');
+            const gemKeyPh = apiKeyPlaceholder(!!llm.gemini_api_key_set, gemKeyOk, 'Google Gemini');
+            const anthropicKeyPh = apiKeyPlaceholder(!!llm.anthropic_api_key_set, claudeKeyOk, 'Anthropic Claude');
+            const deepseekKeyPh = apiKeyPlaceholder(!!llm.deepseek_api_key_set, deepKeyOk, 'DeepSeek');
+            const tavilyKeyPh = apiKeyPlaceholder(!!llm.tavily_api_key_set, tavKeyOk, 'Tavily (web search)');
+            const runpodKeyPh = apiKeyPlaceholder(!!llm.runpod_api_key_set, runpodKeyOk, 'RunPod (image AI classification)');
+            const elevenlabsKeyPh = apiKeyPlaceholder(!!llm.elevenlabs_api_key_set, elevenlabsKeyOk, 'ElevenLabs (speech / voice)');
             if (gm) {
-                gm.value = geminiStored;
+                gm.value = geminiEffective;
                 gm.placeholder = gemModelPh;
             }
             if (cm) {
-                cm.value = claudeStored;
+                cm.value = claudeEffective;
                 cm.placeholder = claudeModelPh;
             }
             if (dm) {
-                dm.value = deepseekStored;
+                dm.value = deepseekEffective;
                 dm.placeholder = deepseekModelPh;
             }
             if (gk) {
@@ -5499,31 +5507,25 @@ Modals.UserLLMSettings = (() => {
                 el11.placeholder = elevenlabsKeyPh;
             }
             setLLMInfoButton('user-llm-info-gemini-key', 'Gemini API key', gemKeyPh);
-            setLLMInfoButton('user-llm-info-gemini-model', 'Gemini model name', modelFieldInfoBody(gemModelPh));
+            setLLMInfoButton('user-llm-info-gemini-model', 'Gemini model name', USER_LLM_MODEL_FIELD_INFO);
             setLLMInfoButton('user-llm-info-anthropic-key', 'Anthropic Claude API key', anthropicKeyPh);
-            setLLMInfoButton('user-llm-info-claude-model', 'Claude model name', modelFieldInfoBody(claudeModelPh));
+            setLLMInfoButton('user-llm-info-claude-model', 'Claude model name', USER_LLM_MODEL_FIELD_INFO);
             setLLMInfoButton('user-llm-info-deepseek-key', 'DeepSeek API key', deepseekKeyPh);
-            setLLMInfoButton('user-llm-info-deepseek-model', 'DeepSeek model name', modelFieldInfoBody(deepseekModelPh));
+            setLLMInfoButton('user-llm-info-deepseek-model', 'DeepSeek model name', USER_LLM_MODEL_FIELD_INFO);
             setLLMInfoButton('user-llm-info-tavily-key', 'Tavily API key (web search)', tavilyKeyPh);
             setLLMInfoButton('user-llm-info-runpod-key', 'RunPod API key (image AI classification)', runpodKeyPh);
             setLLMInfoButton('user-llm-info-elevenlabs-key', 'ElevenLabs API key (speech / voice)', elevenlabsKeyPh);
             wireLLMInfoPopover();
-            const gemKeyOk = !!(llm.gemini_api_key_set || (sessionScoped && llm.subject_gemini_api_key_set) || geminiRoute);
-            const gemModelOk = !!(geminiStored || ownerGeminiModel || serverGeminiModel);
+            const gemModelOk = !!(geminiStored || ownerGeminiModel || serverGeminiModelStr || serverGeminiModel);
             applyLLMInputState(gk, gemKeyOk);
             applyLLMInputState(gm, gemModelOk);
-            const claudeKeyOk = !!(llm.anthropic_api_key_set || (sessionScoped && llm.subject_anthropic_key_set) || claudeRoute);
-            const claudeModelOk = !!(claudeStored || ownerClaudeModel || serverClaudeModel);
+            const claudeModelOk = !!(claudeStored || ownerClaudeModel || serverClaudeModelStr || serverClaudeModel);
             applyLLMInputState(ak, claudeKeyOk);
             applyLLMInputState(cm, claudeModelOk);
-            const deepKeyOk = !!(llm.deepseek_api_key_set || (sessionScoped && llm.subject_deepseek_key_set) || deepseekRoute);
-            const deepModelOk = !!(deepseekStored || ownerDeepseekModel || serverDeepseekModel);
+            const deepModelOk = !!(deepseekStored || ownerDeepseekModel || serverDeepseekModelStr || serverDeepseekModel);
             applyLLMInputState(dk, deepKeyOk);
             applyLLMInputState(dm, deepModelOk);
-            const tavKeyOk = !!(llm.tavily_api_key_set || (sessionScoped && llm.subject_tavily_key_set) || tavilyEnv);
             applyLLMInputState(tk, tavKeyOk);
-            const runpodKeyOk = !!(llm.runpod_api_key_set || (sessionScoped && llm.subject_runpod_key_set) || runpodEnv);
-            const elevenlabsKeyOk = !!(llm.elevenlabs_api_key_set || (sessionScoped && llm.subject_elevenlabs_key_set) || elevenlabsEnv);
             applyLLMInputState(rk, runpodKeyOk);
             applyLLMInputState(el11, elevenlabsKeyOk);
             const saveBtn = getEl('user-llm-save-btn');
@@ -5550,9 +5552,24 @@ Modals.UserLLMSettings = (() => {
         if (tk.trim()) body.tavily_api_key = tk.trim();
         if (rpK.trim()) body.runpod_api_key = rpK.trim();
         if (elK.trim()) body.elevenlabs_api_key = elK.trim();
-        body.gemini_model = (getEl('user-llm-gemini-model') && getEl('user-llm-gemini-model').value.trim()) || '';
-        body.claude_model = (getEl('user-llm-claude-model') && getEl('user-llm-claude-model').value.trim()) || '';
-        body.deepseek_model = (getEl('user-llm-deepseek-model') && getEl('user-llm-deepseek-model').value.trim()) || '';
+        const gmEl = getEl('user-llm-gemini-model');
+        const cmEl = getEl('user-llm-claude-model');
+        const dmEl = getEl('user-llm-deepseek-model');
+        body.gemini_model = formatModelForSave(
+            gmEl && gmEl.value,
+            userLLMModelSaveCtx.geminiUser,
+            userLLMModelSaveCtx.geminiEffective
+        );
+        body.claude_model = formatModelForSave(
+            cmEl && cmEl.value,
+            userLLMModelSaveCtx.claudeUser,
+            userLLMModelSaveCtx.claudeEffective
+        );
+        body.deepseek_model = formatModelForSave(
+            dmEl && dmEl.value,
+            userLLMModelSaveCtx.deepseekUser,
+            userLLMModelSaveCtx.deepseekEffective
+        );
         try {
             await patchLLM(body);
             const { sessionScoped } = await load({ preserveStatus: true });

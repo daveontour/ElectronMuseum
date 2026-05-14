@@ -237,13 +237,19 @@
 
             <!-- Loading Indicator -->
             <div id="loading-indicator" style="display: none;">
-                <div class="thinking-dots">
-                    <img class="loading-voice-image" src="/static/images/expert.png"
-                        alt="Voice character">
-                    <span class="thinking-text">Thinking</span>
-                    <span class="dot"></span>
-                    <span class="dot"></span>
-                    <span class="dot"></span>
+                <div class="loading-indicator-main">
+                    <div class="thinking-dots">
+                        <img class="loading-voice-image" src="/static/images/expert.png"
+                            alt="Voice character">
+                        <span class="thinking-text">Thinking</span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </div>
+                </div>
+                <div class="loading-indicator-footer">
+                    <div id="loading-indicator-provider" class="loading-indicator-provider"></div>
+                    <button type="button" id="loading-indicator-cancel-btn" class="loading-indicator-cancel-btn">Cancel</button>
                 </div>
             </div>
 
@@ -707,7 +713,7 @@
                         <p id="user-llm-subject-hints" style="color:#555; font-size:var(--text-caption); margin-bottom:12px; max-width:52rem;"></p>
                         <div class="setting-group user-llm-provider-row">
                             <div class="user-llm-field-col">
-                                <label for="user-llm-gemini-key" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">GoogleGemini API key</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-gemini-key" aria-label="Information about Gemini API key"><i class="fas fa-info-circle" aria-hidden="true"></i></button><span id="user-llm-gemini-key-hint" class="user-llm-field-hint-after-info" style="color:#888;font-weight:normal;"></span></label>
+                                <label for="user-llm-gemini-key" class="user-llm-field-label-with-info"><span class="user-llm-field-label-lead">Google Gemini API key</span><button type="button" class="user-llm-field-info-btn" id="user-llm-info-gemini-key" aria-label="Information about Gemini API key"><i class="fas fa-info-circle" aria-hidden="true"></i></button><span id="user-llm-gemini-key-hint" class="user-llm-field-hint-after-info" style="color:#888;font-weight:normal;"></span></label>
                                 <div class="user-llm-field-controls">
                                     <input type="password" id="user-llm-gemini-key" class="modal-input user-llm-field-input" autocomplete="off">
                                 </div>

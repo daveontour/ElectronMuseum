@@ -108,6 +108,8 @@ const DOM = {
     sendButton: document.getElementById('send-button'),
     suggestionsBtn: document.getElementById('suggestions-btn'),
     loadingIndicator: document.getElementById('loading-indicator'),
+    loadingIndicatorProvider: document.getElementById('loading-indicator-provider'),
+    loadingIndicatorCancelBtn: document.getElementById('loading-indicator-cancel-btn'),
     errorDisplay: document.getElementById('error-display'),
     infoBox: document.getElementById('info-box'),
     infoBoxModal: document.getElementById('info-box-modal'),
@@ -610,13 +612,28 @@ const UI = (() => {
         // DOM.suggestionsBtn.disabled = !enabled;
     }
 
+    /** Label from the main chat AI Provider select (Gemini, Claude, …). */
+    function syncLoadingIndicatorProvider() {
+        const el = DOM.loadingIndicatorProvider;
+        if (!el) return;
+        const sel = DOM.llmProviderSelect;
+        let label = '';
+        if (sel && sel.options && sel.selectedIndex >= 0) {
+            const opt = sel.options[sel.selectedIndex];
+            if (opt && opt.textContent) label = opt.textContent.trim();
+        }
+        el.textContent = label;
+    }
+
     function showLoadingIndicator() {
         VoiceSelector.updateLoadingIndicatorImage(); // Update image first
+        syncLoadingIndicatorProvider();
         DOM.loadingIndicator.style.display = 'flex';
     }
 
     function hideLoadingIndicator() {
         DOM.loadingIndicator.style.display = 'none';
+        if (DOM.loadingIndicatorProvider) DOM.loadingIndicatorProvider.textContent = '';
     }
     
     function getWorkModePrefix() {
@@ -679,7 +696,7 @@ const UI = (() => {
 
     return {
         clearError, displayError, scrollToBottom, setControlsEnabled,
-        showLoadingIndicator, hideLoadingIndicator, getWorkModePrefix,
+        showLoadingIndicator, hideLoadingIndicator, syncLoadingIndicatorProvider, getWorkModePrefix,
         syncChatContextStatusBarVisibility,
         updateChatContextStatusBarFromAvailability,
         setChatLastRequestStatsFromEmbedded,

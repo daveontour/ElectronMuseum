@@ -412,19 +412,34 @@ func (s *ChatService) ServerElevenLabsKeyConfigured() bool {
 	return strings.TrimSpace(os.Getenv("ELEVENLABS_API_KEY")) != ""
 }
 
+// ServerGeminiModelDefault returns the trimmed server default Gemini model name (e.g. from GEMINI_MODEL_NAME), or "".
+func (s *ChatService) ServerGeminiModelDefault() string {
+	return strings.TrimSpace(s.defaultGeminiModel)
+}
+
+// ServerClaudeModelDefault returns the trimmed server default Claude model name, or "".
+func (s *ChatService) ServerClaudeModelDefault() string {
+	return strings.TrimSpace(s.defaultClaudeModel)
+}
+
+// ServerDeepSeekModelDefault returns the trimmed server default DeepSeek model name, or "".
+func (s *ChatService) ServerDeepSeekModelDefault() string {
+	return strings.TrimSpace(s.defaultDeepSeekModel)
+}
+
 // ServerGeminiModelDefaultSet reports whether a non-empty default Gemini model is set server-side (e.g. GEMINI_MODEL_NAME in .env).
 func (s *ChatService) ServerGeminiModelDefaultSet() bool {
-	return strings.TrimSpace(s.defaultGeminiModel) != ""
+	return s.ServerGeminiModelDefault() != ""
 }
 
 // ServerClaudeModelDefaultSet reports whether a non-empty default Claude model is set server-side (e.g. CLAUDE_MODEL_NAME / env equivalent in .env).
 func (s *ChatService) ServerClaudeModelDefaultSet() bool {
-	return strings.TrimSpace(s.defaultClaudeModel) != ""
+	return s.ServerClaudeModelDefault() != ""
 }
 
 // ServerDeepSeekModelDefaultSet reports whether a non-empty default DeepSeek model is set server-side (e.g. DEEPSEEK_MODEL_NAME in .env).
 func (s *ChatService) ServerDeepSeekModelDefaultSet() bool {
-	return strings.TrimSpace(s.defaultDeepSeekModel) != ""
+	return s.ServerDeepSeekModelDefault() != ""
 }
 
 // GenerateResponse runs a full chat generation cycle.

@@ -96,7 +96,7 @@ const Chat = (() => {
         copyButton.addEventListener('click', async () => {
             try {
                 let textToCopy = text;
-                if (['assistant', 'model', 'system'].includes(role)) {
+                if (['assistant', 'model', 'system', 'cancelled'].includes(role)) {
                     const rawMarkdown = contentElement.querySelector('.raw-markdown');
                     textToCopy = rawMarkdown ? rawMarkdown.value : text;
                 }

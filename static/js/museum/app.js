@@ -90,17 +90,69 @@ const App = (() => {
         return 'gemini';
     }
 
-    async function postJsonChatEndpoint(url, payload) {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            credentials: 'same-origin'
-        });
+    /** In-flight LLM chat request; Cancel button calls abortCurrentChatRequest(). */
+    let chatRequestAbortController = null;
+
+    function abortCurrentChatRequest() {
+        if (chatRequestAbortController) {
+            chatRequestAbortController.abort();
+        }
+    }
+
+    /** Abort any stale request, then return a new controller for this chat round. */
+    function beginChatRequestAbortable() {
+        abortCurrentChatRequest();
+        const ctrl = new AbortController();
+        chatRequestAbortController = ctrl;
+        return ctrl;
+    }
+
+    function endChatRequestAbortable(ctrl) {
+        if (chatRequestAbortController === ctrl) {
+            chatRequestAbortController = null;
+        }
+    }
+
+    function getChatProviderDisplayLabel() {
+        const sel = typeof DOM !== 'undefined' ? DOM.llmProviderSelect : null;
+        if (!sel || sel.selectedIndex < 0) return '';
+        const opt = sel.options[sel.selectedIndex];
+        return opt && opt.textContent ? opt.textContent.trim() : '';
+    }
+
+    function notifyChatRequestCancelled() {
+        if (typeof Chat === 'undefined' || !Chat.addMessage) return;
+        const name = getChatProviderDisplayLabel();
+        const msg = name ? `**Request cancelled** (${name}).` : '**Request cancelled.**';
+        Chat.addMessage('cancelled', msg, true, null, null);
+    }
+
+    async function postJsonChatEndpoint(url, payload, signal) {
+        let res;
+        try {
+            res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                credentials: 'same-origin',
+                signal,
+            });
+        } catch (e) {
+            if (e && e.name === 'AbortError') {
+                return { ok: false, aborted: true, error: 'Cancelled' };
+            }
+            return { ok: false, error: e && e.message ? String(e.message) : 'Network error' };
+        }
+        if (signal && signal.aborted) {
+            return { ok: false, aborted: true, error: 'Cancelled' };
+        }
         let data = null;
         try {
             data = await res.json();
         } catch (e) {
+            if (e && e.name === 'AbortError') {
+                return { ok: false, aborted: true, error: 'Cancelled' };
+            }
             return { ok: false, error: 'Could not read response', httpStatus: res.status };
         }
         const detail = data && (data.detail || data.error);
@@ -116,10 +168,13 @@ const App = (() => {
     /** On LLM error, retry once with the other provider if it is available; update AI Provider selector on success.
      *  LocalAI is never used as an automatic failover target, and selecting it disables cloud failover
      *  (the user explicitly chose a local model and should not be silently routed to a cloud provider). */
-    async function runChatWithProviderFailover(url, buildPayload) {
+    async function runChatWithProviderFailover(url, buildPayload, signal) {
         const select = typeof DOM !== 'undefined' ? DOM.llmProviderSelect : null;
         const primary = (select && select.value) ? select.value : 'gemini';
-        const first = await postJsonChatEndpoint(url, buildPayload(primary));
+        const first = await postJsonChatEndpoint(url, buildPayload(primary), signal);
+        if (first.aborted) {
+            return { ok: false, aborted: true, error: 'Cancelled' };
+        }
         if (first.ok) {
             return { ok: true, data: first.data, switched: false };
         }
@@ -133,6 +188,9 @@ const App = (() => {
             return { ok: false, error: first.error || 'Request failed', data: first.data };
         }
         const av = await getLLMProviderAvailabilityPair();
+        if (signal && signal.aborted) {
+            return { ok: false, aborted: true, error: 'Cancelled' };
+        }
         const altAvailable = alt === 'gemini' ? av.gemini : alt === 'claude' ? av.claude : alt === 'deepseek' ? av.deepseek : false;
         if (!altAvailable) {
             return { ok: false, error: first.error || 'Request failed', data: first.data };
@@ -141,7 +199,24 @@ const App = (() => {
             UI.setChatProviderFailoverNotice(primary, alt);
         }
         if (select) select.value = alt;
-        const second = await postJsonChatEndpoint(url, buildPayload(alt));
+        if (typeof UI !== 'undefined' && UI.syncLoadingIndicatorProvider) {
+            UI.syncLoadingIndicatorProvider();
+        }
+        if (signal && signal.aborted) {
+            if (select) select.value = primary;
+            if (typeof UI !== 'undefined' && UI.clearChatProviderFailoverNotice) {
+                UI.clearChatProviderFailoverNotice();
+            }
+            return { ok: false, aborted: true, error: 'Cancelled' };
+        }
+        const second = await postJsonChatEndpoint(url, buildPayload(alt), signal);
+        if (second.aborted) {
+            if (select) select.value = primary;
+            if (typeof UI !== 'undefined' && UI.clearChatProviderFailoverNotice) {
+                UI.clearChatProviderFailoverNotice();
+            }
+            return { ok: false, aborted: true, error: 'Cancelled' };
+        }
         if (second.ok) {
             return { ok: true, data: second.data, switched: true };
         }
@@ -161,6 +236,7 @@ const App = (() => {
             UI.clearError();
             UI.setControlsEnabled(false);
             UI.showLoadingIndicator();
+            const chatCtrl = beginChatRequestAbortable();
 
             const selectedVoice = VoiceSelector.getSelectedVoice();
             const selectedMood = (selectedVoice === 'owner' && DOM.ownerMood) ? DOM.ownerMood.value : null;
@@ -193,11 +269,15 @@ const App = (() => {
                     userId: currentUserId,
                     provider,
                     whos_asking: whosAsking,
-                }));
+                }), chatCtrl.signal);
 
-                UI.hideLoadingIndicator();
                 if (!result.ok) {
-                    UI.displayError(result.error || 'Request failed.');
+                    if (!result.aborted) {
+                        UI.displayError(result.error || 'Request failed.');
+                    } else {
+                        if (DOM.userInput) DOM.userInput.value = userPrompt;
+                        notifyChatRequestCancelled();
+                    }
                 } else {
                     const data = result.data;
                     Chat.addMessage('assistant', data.response, true, null, data.embedded_json);
@@ -211,6 +291,7 @@ const App = (() => {
                 UI.displayError(error.message || 'An unknown error occurred.');
                 // UI.hideLoadingIndicator(); // Already handled in displayError or finally
             } finally {
+                endChatRequestAbortable(chatCtrl);
                 UI.setControlsEnabled(true);
                 UI.hideLoadingIndicator(); // Ensure it's hidden
             }
@@ -229,6 +310,7 @@ const App = (() => {
             UI.clearError();
             UI.setControlsEnabled(false);
             UI.showLoadingIndicator();
+            const chatCtrl = beginChatRequestAbortable();
 
             const selectedVoice = VoiceSelector.getSelectedVoice();
             const selectedMood = (selectedVoice === 'owner' && DOM.ownerMood) ? DOM.ownerMood.value : null;
@@ -255,11 +337,14 @@ const App = (() => {
                     allowExplicitContent: DOM.allowExplicitContentCheckbox ? DOM.allowExplicitContentCheckbox.checked : false,
                     provider,
                     whos_asking: whosAsking,
-                }));
+                }), chatCtrl.signal);
 
-                UI.hideLoadingIndicator();
                 if (!result.ok) {
-                    UI.displayError(result.error || 'Request failed.');
+                    if (!result.aborted) {
+                        UI.displayError(result.error || 'Request failed.');
+                    } else {
+                        notifyChatRequestCancelled();
+                    }
                 } else {
                     const data = result.data;
                     Chat.addMessage('assistant', data.response, true, null, data.embedded_json);
@@ -273,6 +358,7 @@ const App = (() => {
                 UI.displayError(error.message || 'An unknown error occurred.');
                 // UI.hideLoadingIndicator(); // Already handled in displayError or finally
             } finally {
+                endChatRequestAbortable(chatCtrl);
                 UI.setControlsEnabled(true);
                 UI.hideLoadingIndicator(); // Ensure it's hidden
             }
@@ -287,6 +373,7 @@ const App = (() => {
             UI.clearError();
             UI.setControlsEnabled(false);
             UI.showLoadingIndicator();
+            const chatCtrl = beginChatRequestAbortable();
 
             const selectedVoice = VoiceSelector.getSelectedVoice();
             const selectedMood = (selectedVoice === 'owner' && DOM.ownerMood) ? DOM.ownerMood.value : null;
@@ -322,11 +409,15 @@ const App = (() => {
                     provider,
                     whos_asking: whosAsking,
                     repeat_question: true,
-                }));
+                }), chatCtrl.signal);
 
-                UI.hideLoadingIndicator();
                 if (!result.ok) {
-                    UI.displayError(result.error || 'Request failed.');
+                    if (!result.aborted) {
+                        UI.displayError(result.error || 'Request failed.');
+                    } else {
+                        if (DOM.userInput) DOM.userInput.value = userPrompt;
+                        notifyChatRequestCancelled();
+                    }
                 } else {
                     const data = result.data;
                     Chat.addMessage('assistant', data.response, true, null, data.embedded_json);
@@ -340,6 +431,7 @@ const App = (() => {
                 UI.displayError(error.message || 'An unknown error occurred.');
                 // UI.hideLoadingIndicator(); // Already handled in displayError or finally
             } finally {
+                endChatRequestAbortable(chatCtrl);
                 UI.setControlsEnabled(true);
                 UI.hideLoadingIndicator(); // Ensure it's hidden
             }
@@ -470,6 +562,13 @@ const App = (() => {
             if (!userPrompt) return;
             processFormSubmit(userPrompt);
         });
+
+        if (DOM.loadingIndicatorCancelBtn) {
+            DOM.loadingIndicatorCancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                abortCurrentChatRequest();
+            });
+        }
         
         DOM.userInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -4831,7 +4930,8 @@ const App = (() => {
         processFormSubmit,
         processQuestionSubmit,
         processAnswerSubmit,
-        refreshChatAvailability: loadLLMProviderAvailability
+        refreshChatAvailability: loadLLMProviderAvailability,
+        abortCurrentChatRequest,
     };
 })();
 
