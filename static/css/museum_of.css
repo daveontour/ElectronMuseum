@@ -3004,6 +3004,78 @@ body {
     vertical-align: -0.05em;
 }
 
+/* Manage Contacts tab tables — compact grid; centered action icons */
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table {
+    font-size: calc(1.5 * var(--text-2xs));
+    line-height: var(--line-height-tight, 1.2);
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table thead th {
+    padding: 3px 9px;
+    font-size: calc(1.5 * 0.65rem);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted, #555);
+    vertical-align: middle;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-th {
+    text-align: left;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-th-actions {
+    text-align: center;
+    width: calc(1.5 * 4.75rem);
+    min-width: calc(1.5 * 4.75rem);
+    white-space: nowrap;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table tbody td {
+    padding: 3px 9px;
+    vertical-align: middle;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table tbody td:last-child {
+    text-align: center;
+    vertical-align: middle;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-actions-cell {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+    width: 100%;
+    min-height: calc(1.5 * 1.25rem);
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn.modal-btn,
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn {
+    padding: 2px 5px;
+    min-width: calc(1.5 * 1.15rem);
+    line-height: 1;
+    font-size: calc(1.5 * 0.65rem);
+    font-weight: 500;
+    vertical-align: middle;
+    margin: 0;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn i,
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete i {
+    font-size: 0.85em;
+    vertical-align: -0.06em;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn {
+    background: #e8ecf2;
+    color: #dc3545;
+    border: 1px solid #d0d8e4;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn:hover {
+    background: #dde3ec;
+    color: #b02a37;
+    border-color: #c5cedc;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn i {
+    color: #dc3545;
+}
+#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn:hover i {
+    color: #b02a37;
+}
+
 .subject-configuration-layout {
     display: flex;
     flex-wrap: wrap;

@@ -325,7 +325,7 @@ function startGoServer(port, paths, dotenv) {
     ...process.env,
     ...dotenv,
     HOST_PORT:             String(port),
-    SQLITE_PATH:           dotenv.SQLITE_PATH || '',
+    SQLITE_PATH:           '',
     BILLING_SQLITE_PATH:   dotenv.BILLING_SQLITE_PATH || paths.sqliteBillingPath,
     TEMPLATES_DIR:         paths.templatesDir,
     ASSET_STATIC_DIR:      paths.staticDir,
@@ -423,7 +423,7 @@ function startGoServer(port, paths, dotenv) {
   });
 }
 
-async function restartGoServer(newSqlitePath, logLevel) {
+async function restartGoServer(logLevel) {
   if (goProcess && !goProcess.killed) {
     goProcess.kill('SIGTERM');
     await new Promise((resolve) => {
@@ -439,12 +439,12 @@ async function restartGoServer(newSqlitePath, logLevel) {
   let envContent = fs.existsSync(paths.dotEnvPath)
     ? fs.readFileSync(paths.dotEnvPath, 'utf8') : '';
 
-  envContent = upsertEnvVar(envContent, 'SQLITE_PATH', newSqlitePath);
+  envContent = upsertEnvVar(envContent, 'SQLITE_PATH', '');
   if (logLevel) {
     envContent = upsertEnvVar(envContent, 'LOG_LEVEL', logLevel);
   }
   fs.writeFileSync(paths.dotEnvPath, envContent, 'utf8');
-  activeDotenv = { ...activeDotenv, SQLITE_PATH: newSqlitePath };
+  activeDotenv = { ...activeDotenv, SQLITE_PATH: '' };
   if (logLevel) activeDotenv = { ...activeDotenv, LOG_LEVEL: logLevel };
   startGoServer(appPort, paths, activeDotenv);
   await waitForHealth(appPort, 30000);
@@ -680,6 +680,19 @@ app.whenReady().then(async () => {
     await waitForHealth(appPort, 30000);
     log('Server is healthy');
 
+    try {
+      const res = await fetch(`http://127.0.0.1:${appPort}/api/resolved-main-sqlite-path`);
+      if (res.ok) {
+        const d = await res.json();
+        const resolved = (d && d.sqlite_path) ? String(d.sqlite_path).trim() : '';
+        if (resolved && activeDotenv && resolved !== (activeDotenv.SQLITE_PATH || '').trim()) {
+          activeDotenv = { ...activeDotenv, SQLITE_PATH: resolved };
+        }
+      }
+    } catch (_) {
+      /* best-effort: keep dotenv SQLITE_PATH */
+    }
+
     sendStatus('Ready!');
     createMainWindow(appPort);
     setupTray(appPort);
@@ -724,12 +737,21 @@ ipcMain.handle('get-db-path', () => (activeDotenv && activeDotenv.SQLITE_PATH) |
 ipcMain.handle('get-log-level', () => (activeDotenv && activeDotenv.LOG_LEVEL) || 'warn');
 
 ipcMain.handle('select-db', async (_event, opts) => {
-  // opts: { path: string, logLevel?: string, profileId?: string }
-  const newPath = typeof opts === 'string' ? opts : opts.path;
   const logLevel = typeof opts === 'string' ? undefined : opts.logLevel;
   const profileId = (typeof opts === 'object' && opts.profileId) ? opts.profileId : null;
   try {
-    await restartGoServer(newPath, logLevel);
+    if (profileId && appPort) {
+      const patchRes = await goFetch(`/api/profiles/${encodeURIComponent(profileId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_default: true }),
+      });
+      if (!patchRes.ok) {
+        const d = await patchRes.json().catch(() => ({}));
+        log(`select-db set startup default warning: ${d.error || patchRes.status}`);
+      }
+    }
+    await restartGoServer(logLevel);
     if (profileId) activeProfileId = profileId;
     return { ok: true };
   } catch (err) {
@@ -777,17 +799,25 @@ ipcMain.handle('create-profile', async (_event, opts) => {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        return { ok: false, error: d.error || 'Server error registering profile' };
+        const msg = (d && (d.detail || d.error)) || 'Server error registering profile';
+        return { ok: false, error: msg };
       }
       const profile = await res.json();
       activeProfileId = profile.id;
+      try {
+        await goFetch(`/api/profiles/${encodeURIComponent(profile.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_default: true }),
+        });
+      } catch (_) { /* best-effort */ }
     } catch (err) {
       return { ok: false, error: err.message };
     }
   }
 
   try {
-    await restartGoServer(dbPath, undefined);
+    await restartGoServer(undefined);
     return { ok: true };
   } catch (err) {
     log(`create-profile restart error: ${err.message}`);

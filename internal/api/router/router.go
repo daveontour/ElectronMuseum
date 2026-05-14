@@ -22,8 +22,9 @@ import (
 // scheduler that the caller is expected to start (e.g. cmd/server/main.go).
 // The scheduler may be nil if construction fails non-fatally; callers should
 // nil-check before launching its goroutine.
-// When pool is nil (no SQLITE_PATH configured), a minimal router is returned
-// that serves /health, /login, /profiles, /static/*, and /api/profiles only.
+// When pool is nil (no main archive DB), a minimal router is returned that serves
+// /health, /, /login, /profiles, /static/*, /api/profiles, and /api/resolved-main-sqlite-path
+// (GET / redirects to /login).
 func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *backgroundjobs.Scheduler, error) {
 	r := chi.NewRouter()
 
@@ -39,12 +40,17 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	if pool == nil {
 		// No main archive DB — serve only what is needed to choose/create one.
 		r.Get("/health", healthHandler)
+		r.Get("/api/resolved-main-sqlite-path", handler.ResolvedMainSQLitePath(cfg))
 
-		profileHandler := handler.NewProfileHandler(profileRepo, nil)
+		profileHandler := handler.NewProfileHandler(profileRepo, nil, nil)
 		profileHandler.RegisterRoutes(r)
 
 		templateHandler := handler.NewTemplateHandler(nil, nil, cfg)
 		r.Get("/login", templateHandler.GetLogin)
+		// Desktop shell and browsers open "/"; send them to the login / first-run flow.
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/login", http.StatusFound)
+		})
 
 		staticFS := http.FileServer(http.Dir(cfg.App.AssetStaticDir))
 		r.Handle("/static/*", http.StripPrefix("/static/", staticFS))
@@ -70,6 +76,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 
 	// ── Health check ───────────────────────────────────────────────────────────
 	r.Get("/health", healthHandler)
+	r.Get("/api/resolved-main-sqlite-path", handler.ResolvedMainSQLitePath(cfg))
 
 	sessionMasterStore := keystore.NewSessionMasterStore(cfg.Server.SessionCookieSecure)
 
@@ -240,7 +247,14 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	adminUsersHandler.RegisterRoutes(r)
 
 	// ── Archive profiles (billing DB) ─────────────────────────────────────────
-	profileHandler := handler.NewProfileHandler(profileRepo, adminUsersHandler.RequireAdmin)
+	archiveProvision := service.NewArchiveProvisionService(
+		cfg.Server.SessionCookieSecure,
+		cfg.Server.AdminEmail,
+		cfg.Server.AdminPassword,
+		sensitiveSvc,
+		subjectConfigSvc,
+	)
+	profileHandler := handler.NewProfileHandler(profileRepo, adminUsersHandler.RequireAdmin, archiveProvision)
 	profileHandler.RegisterRoutes(r)
 
 	billingExportHandler := handler.NewBillingExportHandler(userRepo, billingRepo)

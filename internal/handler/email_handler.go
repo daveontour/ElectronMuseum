@@ -450,7 +450,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 func writeError(w http.ResponseWriter, status int, detail string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"detail": detail})
+	_ = json.NewEncoder(w).Encode(map[string]string{"detail": detail, "error": detail})
 }
 
 // escapeHTML replaces the five HTML special characters.

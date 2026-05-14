@@ -99,6 +99,23 @@ func run() error {
 
 	logSQLitePaths("before_open", cfg.DB.SQLitePath, billingCfg.BillingSQLitePath)
 
+	billingDB, err := database.NewBilling(ctx, billingCfg)
+	if err != nil {
+		return fmt.Errorf("connect to billing database: %w", err)
+	}
+	defer billingDB.Close()
+
+	migrateCtx, migrateCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer migrateCancel()
+
+	if err := database.MigrateBilling(migrateCtx, billingDB.Std); err != nil {
+		return fmt.Errorf("run billing migrations: %w", err)
+	}
+
+	profileRepo := repository.NewProfileRepo(billingDB.Std)
+	cfg.DB.SQLitePath = repository.ResolveMainSQLiteStartupPath(migrateCtx, profileRepo)
+	logSQLitePaths("after_startup_resolve", cfg.DB.SQLitePath, billingCfg.BillingSQLitePath)
+
 	db, err := database.New(ctx, cfg.DB)
 	if err != nil {
 		return fmt.Errorf("connect to database: %w", err)
@@ -107,16 +124,7 @@ func run() error {
 		defer db.Close()
 	}
 
-	billingDB, err := database.NewBilling(ctx, billingCfg)
-	if err != nil {
-		return fmt.Errorf("connect to billing database: %w", err)
-	}
-	defer billingDB.Close()
-
 	logSQLitePaths("after_open_ping_ok", cfg.DB.SQLitePath, billingCfg.BillingSQLitePath)
-
-	migrateCtx, migrateCancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer migrateCancel()
 
 	if db != nil {
 		if err := database.MigrateSQLite(migrateCtx, db.Std); err != nil {
@@ -125,9 +133,6 @@ func run() error {
 		if err := database.MigratePamBot(migrateCtx, db.Std); err != nil {
 			return fmt.Errorf("run pam bot migrations: %w", err)
 		}
-	}
-	if err := database.MigrateBilling(migrateCtx, billingDB.Std); err != nil {
-		return fmt.Errorf("run billing migrations: %w", err)
 	}
 
 	if db != nil {

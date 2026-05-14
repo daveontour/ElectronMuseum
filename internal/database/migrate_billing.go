@@ -24,6 +24,9 @@ func MigrateBilling(ctx context.Context, db *sql.DB) error {
 			return fmt.Errorf("billing migration failed (%s): %w", preview, err)
 		}
 	}
+	if err := migrateBillingArchiveProfilesIsDefault(ctx, db); err != nil {
+		return fmt.Errorf("billing migration is_default column: %w", err)
+	}
 	if _, err := db.ExecContext(ctx, `
 		UPDATE llm_usage_events SET created_at = (datetime('now'))
 		WHERE typeof(created_at) = 'text' AND created_at IN ('CURRENT_TEXT', 'TEXTTZ')`); err != nil {
@@ -60,8 +63,26 @@ func billingSchemaSQLite() []string {
 			db_path    TEXT NOT NULL UNIQUE,
 			enabled    INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
-			last_used  TEXT
+			last_used  TEXT,
+			is_default INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_archive_profiles_enabled ON archive_profiles (enabled)`,
 	}
+}
+
+// migrateBillingArchiveProfilesIsDefault adds is_default to archive_profiles on
+// billing DBs created before that column existed.
+func migrateBillingArchiveProfilesIsDefault(ctx context.Context, db *sql.DB) error {
+	var n int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('archive_profiles') WHERE name = 'is_default'`,
+	).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err := db.ExecContext(ctx,
+		`ALTER TABLE archive_profiles ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0`)
+	return err
 }

@@ -248,16 +248,14 @@ func loadCryptoConfig() (CryptoConfig, error) {
 }
 
 func loadDatabaseConfig() (DatabaseConfig, error) {
-	main := strings.TrimSpace(os.Getenv("SQLITE_PATH"))
-	if main != "" {
-		main = filepath.Clean(main)
-	}
-	// Empty SQLITE_PATH is valid — server starts in profiles-only mode until an archive is selected.
 	billing := strings.TrimSpace(os.Getenv("BILLING_SQLITE_PATH"))
-	if billing != "" {
-		billing = filepath.Clean(billing)
+	if billing == "" {
+		return DatabaseConfig{}, fmt.Errorf("BILLING_SQLITE_PATH is required (main archives are opened from billing archive_profiles only; SQLITE_PATH is not used)")
 	}
-	return DatabaseConfig{SQLitePath: main, BillingSQLitePath: billing}, nil
+	return DatabaseConfig{
+		SQLitePath:        "",
+		BillingSQLitePath: filepath.Clean(billing),
+	}, nil
 }
 
 func loadDefaultsConfig() DefaultsConfig {

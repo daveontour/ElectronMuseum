@@ -28,6 +28,12 @@ func ensureSQLiteVecAuto() {
 	})
 }
 
+// EnsureSQLiteDriverLoaded registers sqlite-vec bindings. Call before opening a SQLite
+// file with database/sql + mattn/go-sqlite3 outside of database.New (e.g. archive provisioning).
+func EnsureSQLiteDriverLoaded() {
+	ensureSQLiteVecAuto()
+}
+
 // New opens the main SQLite database file.
 // Returns (nil, nil) when cfg.SQLitePath is empty — caller must nil-check.
 func New(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
@@ -60,7 +66,7 @@ func NewBilling(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
 	cfg = cfg.BillingConfig()
 	path := cfg.BillingSQLitePath
 	if path == "" {
-		return nil, fmt.Errorf("billing sqlite path is empty (set BILLING_SQLITE_PATH or SQLITE_PATH)")
+		return nil, fmt.Errorf("billing sqlite path is empty (set BILLING_SQLITE_PATH)")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create billing sqlite directory: %w", err)

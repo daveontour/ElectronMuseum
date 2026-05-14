@@ -924,40 +924,61 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <p style="color:#8fa4c8;font-size:.88rem;margin-bottom:16px">
         Archive profiles stored in the billing database.
         Disabling an archive hides it from the login dropdown.
+        The server opens the archive marked as <strong style="color:#cdd6e8">startup default</strong> (or the only enabled archive). Main databases are not read from <code style="font-size:.82rem">SQLITE_PATH</code>.
       </p>
       <div id="archives-error" class="error" style="margin-bottom:12px;display:none"></div>
       <div style="border:1px solid #2e4068;border-radius:8px;padding:12px;margin-bottom:12px;background:#0f1922">
-        <div style="color:#cdd6e8;font-weight:600;margin-bottom:8px">Add archive entry</div>
+        <div style="color:#cdd6e8;font-weight:600;margin-bottom:8px">Create new archive</div>
+        <p style="color:#8fa4c8;font-size:0.82rem;margin:0 0 10px 0">Creates a new SQLite file at the path below, runs migrations, and registers the first owner account in that archive.</p>
         <div class="form-row">
           <div class="form-group">
-            <label for="archive-add-name">Name *</label>
-            <input id="archive-add-name" type="text" placeholder="Archive name">
+            <label for="archive-add-first-name">First name *</label>
+            <input id="archive-add-first-name" type="text" placeholder="e.g. Jane">
           </div>
           <div class="form-group">
-            <label for="archive-add-username">Username</label>
-            <input id="archive-add-username" type="text" placeholder="Optional">
+            <label for="archive-add-family-name">Family name *</label>
+            <input id="archive-add-family-name" type="text" placeholder="e.g. Smith">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="archive-add-username">Username *</label>
+            <input id="archive-add-username" type="text" placeholder="login username">
+          </div>
+          <div class="form-group">
+            <label for="archive-add-enabled">Visible on login</label>
+            <label style="display:flex;align-items:center;gap:8px;color:#cdd6e8;font-size:0.88rem;cursor:pointer;margin-top:8px">
+              <input id="archive-add-enabled" type="checkbox" checked style="accent-color:#3b82f6">
+              Enabled
+            </label>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="archive-add-password">Password *</label>
+            <input id="archive-add-password" type="password" placeholder="At least 12 characters" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label for="archive-add-password-confirm">Confirm password *</label>
+            <input id="archive-add-password-confirm" type="password" placeholder="Re-enter" autocomplete="new-password">
           </div>
         </div>
         <div class="form-group">
           <label for="archive-add-db-path">DB Path *</label>
           <div style="display:flex;gap:8px;align-items:center">
-            <input id="archive-add-db-path" type="text" placeholder="C:\path\to\archive.sqlite" style="font-family:monospace;font-size:.88rem;flex:1">
+            <input id="archive-add-db-path" type="text" placeholder="C:\path\to\new-archive.sqlite" style="font-family:monospace;font-size:.88rem;flex:1">
             <button class="btn btn-secondary" id="archive-add-browse-btn" type="button"><i class="fas fa-folder-open" style="margin-right:6px"></i>Browse…</button>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:8px;color:#cdd6e8;font-size:0.88rem;cursor:pointer">
-            <input id="archive-add-enabled" type="checkbox" checked style="accent-color:#3b82f6">
-            Enabled (show on login screen)
-          </label>
-          <button class="btn btn-primary" id="archive-add-btn" type="button"><i class="fas fa-plus" style="margin-right:6px"></i>Add Archive</button>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <button class="btn btn-primary" id="archive-add-btn" type="button"><i class="fas fa-plus" style="margin-right:6px"></i>Create archive</button>
         </div>
       </div>
       <div style="overflow-x:auto">
         <table id="archives-table" style="min-width:640px">
           <thead><tr>
             <th>Name</th><th>Username</th><th>DB Path</th>
-            <th>Status</th><th>Last Used</th><th>Actions</th>
+            <th>Status</th><th>Startup default</th><th>Last Used</th><th>Actions</th>
           </tr></thead>
           <tbody id="archives-body"></tbody>
         </table>
@@ -1067,6 +1088,15 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     return fetch(path, { credentials: 'same-origin', ...opts });
   }
 
+  /** Prefer server writeError JSON shape ({ detail }) over legacy { error }. */
+  function apiErrorMessage(d, fallback) {
+    if (!d || typeof d !== 'object') return fallback;
+    if (typeof d.detail === 'string' && d.detail !== '') return d.detail;
+    if (typeof d.error === 'string' && d.error !== '') return d.error;
+    if (typeof d.message === 'string' && d.message !== '') return d.message;
+    return fallback;
+  }
+
   function showAdminUserLoginBtn(visible) {
     var el = document.getElementById('admin-user-login-btn');
     if (el) el.style.display = visible ? 'block' : 'none';
@@ -1099,7 +1129,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       if (res.ok) { showAdmin(); }
       else {
         const d = await res.json().catch(() => ({}));
-        errEl.textContent = d.error || 'Invalid password.';
+        errEl.textContent = apiErrorMessage(d, 'Invalid password.');
         errEl.style.display = 'block';
       }
     } catch (e) {
@@ -1143,7 +1173,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       }
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        alert(d.error || 'Failed to update setting.');
+        alert(apiErrorMessage(d, 'Failed to update setting.'));
         loadUsers();
       }
     } catch (e) {
@@ -1511,7 +1541,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         loadUsers();
       } else {
         const d = await res.json().catch(() => ({}));
-        errEl.textContent = d.error || 'Failed to create user.';
+        errEl.textContent = apiErrorMessage(d, 'Failed to create user.');
         errEl.style.display = 'block';
       }
     } catch (e) {
@@ -1622,7 +1652,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       if (res.ok) { loadUsers(); }
       else {
         const d = await res.json().catch(() => ({}));
-        document.getElementById('users-error').textContent = d.error || 'Delete failed.';
+        document.getElementById('users-error').textContent = apiErrorMessage(d, 'Delete failed.');
         document.getElementById('users-error').style.display = 'block';
       }
     } catch (e) { document.getElementById('del-modal').classList.remove('open'); }
@@ -1662,7 +1692,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       try {
         var res = await apiFetch('/admin/system-instructions');
         var d = await res.json().catch(function() { return {}; });
-        if (!res.ok) throw new Error(d.error || 'Failed to load');
+        if (!res.ok) throw new Error(apiErrorMessage(d, 'Failed to load'));
         var c = document.getElementById('sys-core');
         var ch = document.getElementById('sys-chat');
         var q = document.getElementById('sys-question');
@@ -1685,7 +1715,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       try {
         var res = await apiFetch('/admin/pambot-instructions');
         var d = await res.json().catch(function() { return {}; });
-        if (!res.ok) throw new Error(d.error || 'Failed to load');
+        if (!res.ok) throw new Error(apiErrorMessage(d, 'Failed to load'));
         var ta = document.getElementById('pambot-instructions');
         if (ta) ta.value = d.pam_bot_instructions || '';
       } catch (e) {
@@ -1764,7 +1794,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         } else {
           var d = await res.json().catch(function() { return {}; });
           if (errEl) {
-            errEl.textContent = d.error || 'Save failed';
+            errEl.textContent = apiErrorMessage(d, 'Save failed');
             errEl.style.display = 'block';
           }
         }
@@ -1784,7 +1814,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       try {
         var res = await apiFetch('/admin/profiles');
         if (res.status === 401) { showAdminLogin(); return; }
-        if (!res.ok) throw new Error('Failed to load archives');
+        if (!res.ok) {
+          var ed = await res.json().catch(function() { return {}; });
+          throw new Error(apiErrorMessage(ed, 'Failed to load archives'));
+        }
         var data = await res.json();
         renderArchives(data.profiles || data || []);
       } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
@@ -1797,22 +1830,22 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       var dbPathEl = document.getElementById('archive-add-db-path');
       errEl.style.display = 'none';
       errEl.textContent = '';
-      if (!window.electronAPI || !window.electronAPI.showOpenDialog) {
+      if (!window.electronAPI || !window.electronAPI.showSaveDialog) {
         errEl.textContent = 'Browse is available in the desktop app only.';
         errEl.style.display = 'block';
         return;
       }
       try {
-        var res = await window.electronAPI.showOpenDialog({
-          title: 'Select Archive SQLite File',
-          properties: ['openFile'],
+        var res = await window.electronAPI.showSaveDialog({
+          title: 'Save new archive database as',
+          defaultPath: 'archive.sqlite',
           filters: [
             { name: 'SQLite Databases', extensions: ['sqlite', 'db'] },
             { name: 'All Files', extensions: ['*'] }
           ]
         });
-        if (res && !res.canceled && Array.isArray(res.filePaths) && res.filePaths[0]) {
-          dbPathEl.value = res.filePaths[0];
+        if (res && !res.canceled && res.filePath) {
+          dbPathEl.value = res.filePath;
         }
       } catch(e) {
         errEl.textContent = 'Failed to open file picker.';
@@ -1823,24 +1856,47 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       var errEl = document.getElementById('archives-error');
       errEl.style.display = 'none';
       errEl.textContent = '';
-      var nameEl = document.getElementById('archive-add-name');
+      var firstEl = document.getElementById('archive-add-first-name');
+      var familyEl = document.getElementById('archive-add-family-name');
       var usernameEl = document.getElementById('archive-add-username');
+      var passwordEl = document.getElementById('archive-add-password');
+      var confirmEl = document.getElementById('archive-add-password-confirm');
       var dbPathEl = document.getElementById('archive-add-db-path');
       var enabledEl = document.getElementById('archive-add-enabled');
-      var name = (nameEl.value || '').trim();
+      var displayName = (firstEl.value || '').trim();
+      var familyName = (familyEl.value || '').trim();
       var username = (usernameEl.value || '').trim();
+      var password = passwordEl.value;
+      var confirm = confirmEl.value;
       var dbPath = (dbPathEl.value || '').trim();
-      if (!name || !dbPath) {
-        errEl.textContent = 'Name and DB path are required.';
+      if (!displayName || !familyName || !username || !password || !dbPath) {
+        errEl.textContent = 'First name, family name, username, password, and DB path are required.';
+        errEl.style.display = 'block';
+        return;
+      }
+      if (password.length < 12) {
+        errEl.textContent = 'Password must be at least 12 characters.';
+        errEl.style.display = 'block';
+        return;
+      }
+      if (password !== confirm) {
+        errEl.textContent = 'Passwords do not match.';
         errEl.style.display = 'block';
         return;
       }
       archiveAddBtn.disabled = true;
       var oldHtml = archiveAddBtn.innerHTML;
-      archiveAddBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Adding…';
+      archiveAddBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Creating…';
       try {
-        var payload = { name: name, db_path: dbPath, enabled: !!enabledEl.checked };
-        if (username) payload.username = username;
+        var payload = {
+          display_name: displayName,
+          family_name: familyName,
+          username: username,
+          password: password,
+          password_confirm: confirm,
+          db_path: dbPath,
+          enabled: !!enabledEl.checked
+        };
         var res = await apiFetch('/admin/profiles', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
@@ -1849,10 +1905,13 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         if (res.status === 401) { showAdminLogin(); return; }
         if (!res.ok) {
           var d = await res.json().catch(function(){return{};});
-          throw new Error(d.error || 'Failed to add archive');
+          throw new Error(apiErrorMessage(d, 'Failed to create archive'));
         }
-        nameEl.value = '';
+        firstEl.value = '';
+        familyEl.value = '';
         usernameEl.value = '';
+        passwordEl.value = '';
+        confirmEl.value = '';
         dbPathEl.value = '';
         enabledEl.checked = true;
         loadArchives();
@@ -1868,7 +1927,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     function renderArchives(profiles) {
       var tbody = document.getElementById('archives-body');
       if (!profiles.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="color:#8fa4c8;text-align:center;padding:24px">No archive profiles.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="color:#8fa4c8;text-align:center;padding:24px">No archive profiles.</td></tr>';
         return;
       }
       tbody.innerHTML = profiles.map(function(p) {
@@ -1876,11 +1935,23 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         var badge = p.enabled
           ? '<span class="badge badge-active">Enabled</span>'
           : '<span class="badge badge-inactive">Disabled</span>';
+        var defCell = p.is_default
+          ? '<span class="badge badge-active" title="Opened at server startup when the file exists">Default</span>'
+          : '<span style="color:#6b7c99">—</span>';
+        var defBtn;
+        if (p.is_default) {
+          defBtn = '<button type="button" class="btn btn-secondary" style="margin-top:6px" onclick="clearStartupDefaultArchive(\'' + escAttr(p.id) + '\')">Clear default</button>';
+        } else if (p.enabled) {
+          defBtn = '<button type="button" class="btn btn-secondary" style="margin-top:6px" onclick="setStartupDefaultArchive(\'' + escAttr(p.id) + '\')">Set as default</button>';
+        } else {
+          defBtn = '<button type="button" class="btn btn-secondary" style="margin-top:6px" disabled title="Enable this archive first">Set as default</button>';
+        }
         return '<tr>' +
           '<td>' + escHtml(p.name) + '</td>' +
           '<td>' + escHtml(p.username || '—') + '</td>' +
           '<td style="font-family:monospace;font-size:.82rem;word-break:break-all">' + escHtml(p.db_path) + '</td>' +
           '<td>' + badge + '</td>' +
+          '<td style="vertical-align:top">' + defCell + defBtn + '</td>' +
           '<td style="color:#8fa4c8">' + lu + '</td>' +
           '<td style="white-space:nowrap">' +
             '<button class="btn btn-warning" onclick="toggleArchive(\'' +
@@ -1907,7 +1978,41 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           body: JSON.stringify({enabled: enable})
         });
         if (res.status === 401) { showAdminLogin(); return; }
-        if (!res.ok) { var d = await res.json().catch(function(){return{};}); alert(d.error || 'Failed'); }
+        if (!res.ok) { var d = await res.json().catch(function(){return{};}); alert(apiErrorMessage(d, 'Failed')); }
+        loadArchives();
+      } catch(e) { alert('Network error.'); }
+    };
+
+    window.setStartupDefaultArchive = async function(id) {
+      try {
+        var res = await apiFetch('/admin/profiles/' + id, {
+          method: 'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({is_default: true})
+        });
+        if (res.status === 401) { showAdminLogin(); return; }
+        if (!res.ok) {
+          var d = await res.json().catch(function(){return{};});
+          alert(apiErrorMessage(d, 'Failed to set startup default'));
+          return;
+        }
+        loadArchives();
+      } catch(e) { alert('Network error.'); }
+    };
+
+    window.clearStartupDefaultArchive = async function(id) {
+      try {
+        var res = await apiFetch('/admin/profiles/' + id, {
+          method: 'PATCH',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({is_default: false})
+        });
+        if (res.status === 401) { showAdminLogin(); return; }
+        if (!res.ok) {
+          var d = await res.json().catch(function(){return{};});
+          alert(apiErrorMessage(d, 'Failed to clear startup default'));
+          return;
+        }
         loadArchives();
       } catch(e) { alert('Network error.'); }
     };
@@ -1943,7 +2048,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         if (res.status === 401) { showAdminLogin(); return; }
         var d = await res.json().catch(function(){return{};});
         if (!res.ok) {
-          errEl.textContent = d.error || 'Failed to delete archive.';
+          errEl.textContent = apiErrorMessage(d, 'Failed to delete archive.');
           errEl.style.display = 'block';
           return;
         }
@@ -1983,7 +2088,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           if (okEl) { okEl.style.display = 'block'; setTimeout(function() { if (okEl) okEl.style.display = 'none'; }, 4000); }
         } else {
           var d = await res.json().catch(function() { return {}; });
-          if (errEl) { errEl.textContent = d.error || 'Save failed'; errEl.style.display = 'block'; }
+          if (errEl) { errEl.textContent = apiErrorMessage(d, 'Save failed'); errEl.style.display = 'block'; }
         }
       } catch (e) {
         if (errEl) { errEl.textContent = 'Network error'; errEl.style.display = 'block'; }

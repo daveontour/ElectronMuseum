@@ -36,6 +36,7 @@ var exemptExact = map[string]bool{
 	"/auth/register": true,
 	"/login":         true,
 	"/profiles":      true,
+	"/api/resolved-main-sqlite-path": true,
 }
 
 // NewAuthMiddleware returns a middleware that authenticates every request via

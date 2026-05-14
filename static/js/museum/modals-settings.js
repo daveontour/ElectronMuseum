@@ -3748,16 +3748,18 @@ Modals.EmailMatches = (() => {
             if (emptyMsg) emptyMsg.style.display = 'none';
 
             tbody.innerHTML = data.map(row => `
-                <tr style="border-bottom: 1px solid #e9ecef;">
-                    <td style="padding: 8px;">${escapeHtml(row.primary_name)}</td>
-                    <td style="padding: 8px;">${escapeHtml(row.email)}</td>
-                    <td style="padding: 8px; text-align: center;">
-                        <button type="button" class="email-match-edit-btn modal-btn modal-btn-secondary" data-id="${row.id}" style="padding: 4px 8px; font-size: 0.85em;">
-                            <i class="fas fa-edit"></i> Edit
+                <tr>
+                    <td>${escapeHtml(row.primary_name)}</td>
+                    <td>${escapeHtml(row.email)}</td>
+                    <td>
+                        <span class="manage-contacts-actions-cell">
+                        <button type="button" class="email-match-edit-btn manage-contacts-icon-btn modal-btn modal-btn-secondary" data-id="${row.id}" aria-label="Edit email match" title="Edit">
+                            <i class="fas fa-edit" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="email-match-delete-btn modal-btn" data-id="${row.id}" style="padding: 4px 8px; font-size: 0.85em; background: #dc3545; color: white; margin-left: 4px;">
-                            <i class="fas fa-trash-alt"></i> Delete
+                        <button type="button" class="email-match-delete-btn manage-contacts-icon-btn manage-contacts-icon-btn--delete modal-btn" data-id="${row.id}" aria-label="Delete email match" title="Delete">
+                            <i class="fas fa-trash-alt" aria-hidden="true"></i>
                         </button>
+                        </span>
                     </td>
                 </tr>
             `).join('');
@@ -4274,16 +4276,18 @@ Modals.EmailClassifications = (() => {
             if (emptyMsg) emptyMsg.style.display = 'none';
 
             tbody.innerHTML = data.map(row => `
-                <tr style="border-bottom: 1px solid #e9ecef;">
-                    <td style="padding: 8px;">${escapeHtml(row.name)}</td>
-                    <td style="padding: 8px;">${escapeHtml(row.classification)}</td>
-                    <td style="padding: 8px; text-align: center;">
-                        <button type="button" class="email-classification-edit-btn modal-btn modal-btn-secondary" data-id="${row.id}" style="padding: 4px 8px; font-size: 0.85em;">
-                            <i class="fas fa-edit"></i> Edit
+                <tr>
+                    <td>${escapeHtml(row.name)}</td>
+                    <td>${escapeHtml(row.classification)}</td>
+                    <td>
+                        <span class="manage-contacts-actions-cell">
+                        <button type="button" class="email-classification-edit-btn manage-contacts-icon-btn modal-btn modal-btn-secondary" data-id="${row.id}" aria-label="Edit classification" title="Edit">
+                            <i class="fas fa-edit" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="email-classification-delete-btn modal-btn" data-id="${row.id}" style="padding: 4px 8px; font-size: 0.85em; background: #dc3545; color: white; margin-left: 4px;">
-                            <i class="fas fa-trash-alt"></i> Delete
+                        <button type="button" class="email-classification-delete-btn manage-contacts-icon-btn manage-contacts-icon-btn--delete modal-btn" data-id="${row.id}" aria-label="Delete classification" title="Delete">
+                            <i class="fas fa-trash-alt" aria-hidden="true"></i>
                         </button>
+                        </span>
                     </td>
                 </tr>
             `).join('');
@@ -4527,17 +4531,19 @@ Modals.EmailExclusions = (() => {
             if (emptyMsg) emptyMsg.style.display = 'none';
 
             tbody.innerHTML = data.map(row => `
-                <tr style="border-bottom: 1px solid #e9ecef;">
-                    <td style="padding: 8px;">${escapeHtml(row.email)}</td>
-                    <td style="padding: 8px;">${escapeHtml(row.name)}</td>
-                    <td style="padding: 8px;">${escapeHtml(getTypeLabel(row))}</td>
-                    <td style="padding: 8px; text-align: center;">
-                        <button type="button" class="email-exclusion-edit-btn modal-btn modal-btn-secondary" data-id="${row.id}" style="padding: 4px 8px; font-size: 0.85em;">
-                            <i class="fas fa-edit"></i> Edit
+                <tr>
+                    <td>${escapeHtml(row.email)}</td>
+                    <td>${escapeHtml(row.name)}</td>
+                    <td>${escapeHtml(getTypeLabel(row))}</td>
+                    <td>
+                        <span class="manage-contacts-actions-cell">
+                        <button type="button" class="email-exclusion-edit-btn manage-contacts-icon-btn modal-btn modal-btn-secondary" data-id="${row.id}" aria-label="Edit exclusion" title="Edit">
+                            <i class="fas fa-edit" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="email-exclusion-delete-btn modal-btn" data-id="${row.id}" style="padding: 4px 8px; font-size: 0.85em; background: #dc3545; color: white; margin-left: 4px;">
-                            <i class="fas fa-trash-alt"></i> Delete
+                        <button type="button" class="email-exclusion-delete-btn manage-contacts-icon-btn manage-contacts-icon-btn--delete modal-btn" data-id="${row.id}" aria-label="Delete exclusion" title="Delete">
+                            <i class="fas fa-trash-alt" aria-hidden="true"></i>
                         </button>
+                        </span>
                     </td>
                 </tr>
             `).join('');

@@ -647,13 +647,15 @@
             function buildSelect() {
                 profileSelect.innerHTML = '';
                 const hasActive = profiles.some(p => p.id === activeId);
+                const defaultProfile = profiles.find(p => p.is_default);
                 profiles.forEach((p, idx) => {
                     const opt = document.createElement('option');
                     opt.value            = p.id;
-                    opt.textContent      = p.username ? p.name + ' (' + p.username + ')' : p.name;
+                    opt.textContent      = (p.is_default ? '\u2605 ' : '') + (p.username ? p.name + ' (' + p.username + ')' : p.name);
                     opt.dataset.username = p.username || '';
-                    const isDefault = !hasActive && idx === 0;
-                    const isActiveProfile = p.id === activeId || isDefault;
+                    const isActiveProfile = p.id === activeId
+                        || (!hasActive && defaultProfile && p.id === defaultProfile.id)
+                        || (!hasActive && !defaultProfile && idx === 0);
                     opt.dataset.active   = isActiveProfile ? '1' : '0';
                     if (isActiveProfile) opt.selected = true;
                     profileSelect.appendChild(opt);
@@ -683,7 +685,8 @@
                 if (!profiles.length) return;
                 const hasActive = profiles.some(p => p.id === activeId);
                 if (hasActive) return;
-                const first = profiles[0];
+                const defaultProfile = profiles.find(p => p.is_default);
+                const first = defaultProfile || profiles[0];
                 if (!first || !window.electronAPI || !window.electronAPI.getProfileDbPath || !window.electronAPI.selectDatabase) {
                     return;
                 }
@@ -723,10 +726,13 @@
                 if (si) { si.style.display = 'flex'; setStep(1); }
                 showNewUserSection();
             } else {
-                // Pre-fill username from active profile
+                // Pre-fill username from active profile, else billing startup default, else first row
+                const defaultProfile = profiles.find(p => p.is_default);
                 const active = profiles.find(p => p.id === activeId);
                 if (active && active.username) {
                     usernameInput.value = active.username;
+                } else if (defaultProfile && defaultProfile.username) {
+                    usernameInput.value = defaultProfile.username;
                 } else if (profiles[0] && profiles[0].username) {
                     usernameInput.value = profiles[0].username;
                 }
