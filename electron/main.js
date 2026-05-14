@@ -326,7 +326,7 @@ function startGoServer(port, paths, dotenv) {
     ...dotenv,
     HOST_PORT:             String(port),
     SQLITE_PATH:           '',
-    BILLING_SQLITE_PATH:   dotenv.BILLING_SQLITE_PATH || paths.sqliteBillingPath,
+    ADMIN_SQLITE_PATH:   dotenv.ADMIN_SQLITE_PATH || paths.sqliteBillingPath,
     TEMPLATES_DIR:         paths.templatesDir,
     ASSET_STATIC_DIR:      paths.staticDir,
     DEPLOYMENT_NATURE:     dotenv.DEPLOYMENT_NATURE  || 'local',
@@ -334,7 +334,7 @@ function startGoServer(port, paths, dotenv) {
   };
   const env = augmentPathWithMingwBin(rawEnv);
 
-  logSqliteDatabasePaths(paths, env.SQLITE_PATH, env.BILLING_SQLITE_PATH, 'electron-spawn-env');
+  logSqliteDatabasePaths(paths, env.SQLITE_PATH, env.ADMIN_SQLITE_PATH, 'electron-spawn-env');
 
   const spawnBase = /** @type {const} */ ({
     cwd: paths.appRoot,
@@ -654,14 +654,14 @@ app.whenReady().then(async () => {
       ...loadDotEnv(paths.dotEnvPath),
       ...(app.isPackaged ? {} : loadDotEnv(path.join(__dirname, '..', '.env'))),
     };
-    // BILLING_SQLITE_PATH always has a default so billing tracking works from day one.
+    // ADMIN_SQLITE_PATH always has a default so billing tracking works from day one.
     // SQLITE_PATH is left empty when absent — Go handles nil pool on first run
     // and the user creates their first archive through the login page.
     dotenv = {
       ...dotenv,
-      BILLING_SQLITE_PATH: dotenv.BILLING_SQLITE_PATH || paths.sqliteBillingPath,
+      ADMIN_SQLITE_PATH: dotenv.ADMIN_SQLITE_PATH || paths.sqliteBillingPath,
     };
-    logSqliteDatabasePaths(paths, dotenv.SQLITE_PATH, dotenv.BILLING_SQLITE_PATH, 'electron-resolved');
+    logSqliteDatabasePaths(paths, dotenv.SQLITE_PATH, dotenv.ADMIN_SQLITE_PATH, 'electron-resolved');
 
     sendStatus('Cleaning up previous processes...');
     await killZombies();

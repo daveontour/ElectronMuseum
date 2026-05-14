@@ -85,7 +85,7 @@ in dev mode, or the install root in packaged mode). User-editable settings live 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `SQLITE_PATH` | Yes | Absolute path to the main SQLite database file |
-| `BILLING_SQLITE_PATH` | Yes | Absolute path to the billing SQLite database file |
+| `ADMIN_SQLITE_PATH` | Yes | Absolute path to the billing SQLite database file |
 | `HOST_PORT` | No | HTTP listen port (default: 8000; Electron overrides to 8081) |
 | `ANTHROPIC_API_KEY` | At least one AI key | Claude API |
 | `CLAUDE_MODEL_NAME` | No | Default: `claude-sonnet-4-6` |
@@ -125,7 +125,7 @@ in dev mode, or the install root in packaged mode). User-editable settings live 
 `electron/main.js` is the Node.js main process. It:
 
 1. Finds a free port (currently hard-coded to 8081) and spawns `bin/digitalmuseum.exe`
-2. Injects `SQLITE_PATH`, `BILLING_SQLITE_PATH`, `TEMPLATES_DIR`, `ASSET_STATIC_DIR`,
+2. Injects `SQLITE_PATH`, `ADMIN_SQLITE_PATH`, `TEMPLATES_DIR`, `ASSET_STATIC_DIR`,
    `GMAIL_REDIRECT_URL` (dynamic), and `LOG_LEVEL` into the Go server's environment
 3. Waits for `GET /health` to return 200 before showing the main `BrowserWindow`
 4. Manages the system tray, developer tools shortcut, and single-instance lock
@@ -304,7 +304,7 @@ The codebase targets SQLite exclusively (via `github.com/mattn/go-sqlite3`). Key
 
 ### Billing Database (LLM Usage)
 
-A **second SQLite file** (`BILLING_SQLITE_PATH`) holds `llm_usage_events` — one row per
+A **second SQLite file** (`ADMIN_SQLITE_PATH`) holds `llm_usage_events` — one row per
 completed LLM interaction with provider, model, token counts, user snapshot fields, and
 whether the server API key was used. Billing inserts are best-effort. Admin JSON/UI
 lives under `/admin/llm-usage/…`. Users can download their own PDF bill via

@@ -248,9 +248,9 @@ func loadCryptoConfig() (CryptoConfig, error) {
 }
 
 func loadDatabaseConfig() (DatabaseConfig, error) {
-	billing := strings.TrimSpace(os.Getenv("BILLING_SQLITE_PATH"))
+	billing := strings.TrimSpace(os.Getenv("ADMIN_SQLITE_PATH"))
 	if billing == "" {
-		return DatabaseConfig{}, fmt.Errorf("BILLING_SQLITE_PATH is required (main archives are opened from billing archive_profiles only; SQLITE_PATH is not used)")
+		return DatabaseConfig{}, fmt.Errorf("ADMIN_SQLITE_PATH is required (main archives are opened from billing archive_profiles only; SQLITE_PATH is not used)")
 	}
 	return DatabaseConfig{
 		SQLitePath:        "",

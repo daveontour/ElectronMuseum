@@ -11,6 +11,7 @@ import (
 
 	"github.com/daveontour/aimuseum/internal/appctx"
 	"github.com/daveontour/aimuseum/internal/config"
+	appcrypto "github.com/daveontour/aimuseum/internal/crypto"
 	"github.com/daveontour/aimuseum/internal/database"
 	"github.com/daveontour/aimuseum/internal/repository"
 	_ "github.com/mattn/go-sqlite3"
@@ -24,23 +25,23 @@ type ArchiveProvisionService struct {
 	secure        bool
 	adminEmail    string
 	adminPassword string
-	sensitive     *SensitiveService
-	subject       *SubjectConfigService
+	keyringPepper string
+	sensitive     *SensitiveService // when non-nil, init keyring on the new archive DB (not the server main pool)
 }
 
-// NewArchiveProvisionService wires optional sensitive/subject services (nil when unavailable).
+// NewArchiveProvisionService wires optional sensitive service (nil skips keyring init).
+// keyringPepper is mixed into key derivation (same as SensitiveService); may be empty.
 func NewArchiveProvisionService(
 	secure bool,
-	adminEmail, adminPassword string,
+	adminEmail, adminPassword, keyringPepper string,
 	sensitive *SensitiveService,
-	subject *SubjectConfigService,
 ) *ArchiveProvisionService {
 	return &ArchiveProvisionService{
 		secure:        secure,
 		adminEmail:    strings.TrimSpace(adminEmail),
 		adminPassword: adminPassword,
+		keyringPepper: keyringPepper,
 		sensitive:     sensitive,
-		subject:       subject,
 	}
 }
 
@@ -136,20 +137,21 @@ func (s *ArchiveProvisionService) CreateArchiveWithFirstUser(
 	userCtx := context.WithValue(ctx, appctx.ContextKeyUserID, user.ID)
 
 	if s.sensitive != nil {
-		if err := s.sensitive.InitKeyring(userCtx, strings.ToLower(password)); err != nil {
+		// Must use the new archive connection — SensitiveService is bound to the server's main pool.
+		if err := appcrypto.InitSensitiveKeyring(userCtx, db, password, s.keyringPepper); err != nil {
 			return fmt.Errorf("init keyring: %w", err)
 		}
 	}
-	if s.subject != nil {
-		gender := "Male"
-		fn := familyName
-		if _, err := s.subject.CreateOrUpdate(userCtx, SubjectConfigUpdateParams{
-			SubjectName: displayName,
-			FamilyName:  &fn,
-			Gender:      &gender,
-		}); err != nil {
-			return fmt.Errorf("subject configuration: %w", err)
-		}
+	// Subject config must be written to the new archive — not via the app-wide SubjectConfigService (main pool).
+	subjectLocal := NewSubjectConfigService(repository.NewSubjectConfigRepo(db), nil, nil)
+	gender := "Male"
+	fn := familyName
+	if _, err := subjectLocal.CreateOrUpdate(userCtx, SubjectConfigUpdateParams{
+		SubjectName: displayName,
+		FamilyName:  &fn,
+		Gender:      &gender,
+	}); err != nil {
+		return fmt.Errorf("subject configuration: %w", err)
 	}
 	return nil
 }

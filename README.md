@@ -89,7 +89,7 @@ The server reads `.env` from the executable directory or working directory. In E
 | Variable | Required | Description |
 |---|---|---|
 | `SQLITE_PATH` | Yes | Absolute path to the main SQLite database file |
-| `BILLING_SQLITE_PATH` | No | Absolute path to the billing SQLite database file (defaults to `billing.sqlite` next to main DB) |
+| `ADMIN_SQLITE_PATH` | No | Absolute path to the billing SQLite database file (defaults to `billing.sqlite` next to main DB) |
 
 ### AI Providers (at least one required for chat)
 

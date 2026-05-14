@@ -251,8 +251,8 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 		cfg.Server.SessionCookieSecure,
 		cfg.Server.AdminEmail,
 		cfg.Server.AdminPassword,
+		cfg.Crypto.KeyringPepper,
 		sensitiveSvc,
-		subjectConfigSvc,
 	)
 	profileHandler := handler.NewProfileHandler(profileRepo, adminUsersHandler.RequireAdmin, archiveProvision)
 	profileHandler.RegisterRoutes(r)

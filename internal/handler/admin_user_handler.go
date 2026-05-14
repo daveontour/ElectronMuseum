@@ -693,6 +693,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .form-group textarea{width:100%;padding:10px 14px;border-radius:6px;border:1px solid #2e4068;background:#0f1922;color:#fff;font-size:0.95rem;outline:none;font-family:inherit;min-height:140px;resize:vertical;line-height:1.45}
 .form-group textarea:focus{border-color:#3b82f6}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.admin-pw-wrap{display:flex;align-items:stretch;width:100%;border-radius:6px;border:1px solid #2e4068;background:#0f1922;overflow:hidden}
+.admin-pw-wrap:focus-within{border-color:#3b82f6}
+.admin-pw-wrap input{flex:1;min-width:0;border:none!important;border-radius:0!important;background:transparent!important;padding:10px 12px!important}
+.admin-pw-toggle{flex:0 0 44px;border:none;background:#162536;color:#8fa4c8;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1rem;transition:background .15s,color .15s}
+.admin-pw-toggle:hover{background:#243368;color:#e2e8f0}
+.admin-archive-visible-login .admin-archive-visible-field-label{display:block;color:#8fa4c8;margin-bottom:6px;font-size:0.88rem}
+.admin-archive-visible-login .admin-archive-enabled-label{display:flex;align-items:center;gap:8px;color:#cdd6e8;font-size:0.88rem;cursor:pointer;margin-top:0;width:fit-content;max-width:100%}
 .btn{padding:10px 20px;border-radius:6px;border:none;font-size:0.95rem;font-weight:600;cursor:pointer;transition:background 0.15s}
 .btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
 .btn-primary:disabled{background:#1e3a6b;cursor:not-allowed}
@@ -700,6 +707,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .btn-success{background:#16a34a;color:#fff;padding:8px 16px;font-size:0.88rem}.btn-success:hover{background:#15803d}
 .btn-danger{background:#dc2626;color:#fff;padding:6px 12px;font-size:0.82rem}.btn-danger:hover{background:#b91c1c}
 .btn-warning{background:#d97706;color:#fff;padding:6px 12px;font-size:0.82rem}.btn-warning:hover{background:#b45309}
+.btn-compact-secondary{background:#2e4068;color:#e2e8f0;padding:6px 12px;font-size:0.82rem;font-weight:600;border-radius:6px;border:none;cursor:pointer;transition:background .15s,color .15s}
+.btn-compact-secondary:hover:not(:disabled){background:#3d5288;color:#fff}
+.btn-compact-secondary:disabled{opacity:0.45;cursor:not-allowed}
 .btn-info{background:#0e7490;color:#fff;padding:6px 12px;font-size:0.82rem}.btn-info:hover{background:#0c5f75}
 .error{color:#f87171;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.25);padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:0.9rem;display:none}
 #login-section{display:flex;align-items:center;justify-content:center;min-height:100vh}
@@ -922,14 +932,13 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <h2 style="margin:0"><i class="fas fa-archive" style="color:#3b82f6;margin-right:8px"></i>Archives</h2>
       </div>
       <p style="color:#8fa4c8;font-size:.88rem;margin-bottom:16px">
-        Archive profiles stored in the billing database.
+        Archive profiles stored in the admin database.
         Disabling an archive hides it from the login dropdown.
-        The server opens the archive marked as <strong style="color:#cdd6e8">startup default</strong> (or the only enabled archive). Main databases are not read from <code style="font-size:.82rem">SQLITE_PATH</code>.
+        The server opens the archive marked as <strong style="color:#cdd6e8">startup default</strong>. 
       </p>
       <div id="archives-error" class="error" style="margin-bottom:12px;display:none"></div>
       <div style="border:1px solid #2e4068;border-radius:8px;padding:12px;margin-bottom:12px;background:#0f1922">
-        <div style="color:#cdd6e8;font-weight:600;margin-bottom:8px">Create new archive</div>
-        <p style="color:#8fa4c8;font-size:0.82rem;margin:0 0 10px 0">Creates a new SQLite file at the path below, runs migrations, and registers the first owner account in that archive.</p>
+        <p style="color:#8fa4c8;font-size:0.82rem;margin:0 0 10px 0"><span style="color:#cdd6e8;font-weight:600;margin-bottom:8px;font-size:1.0rem">Create New Archive</span> Creates a new SQLite file at the path below, runs migrations, and registers the first owner account in that archive.</p>
         <div class="form-row">
           <div class="form-group">
             <label for="archive-add-first-name">First name *</label>
@@ -945,10 +954,10 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             <label for="archive-add-username">Username *</label>
             <input id="archive-add-username" type="text" placeholder="login username">
           </div>
-          <div class="form-group">
-            <label for="archive-add-enabled">Visible on login</label>
-            <label style="display:flex;align-items:center;gap:8px;color:#cdd6e8;font-size:0.88rem;cursor:pointer;margin-top:8px">
-              <input id="archive-add-enabled" type="checkbox" checked style="accent-color:#3b82f6">
+          <div class="form-group admin-archive-visible-login">
+            <label class="admin-archive-visible-field-label" for="archive-add-enabled">Visible on login</label>
+            <label class="admin-archive-enabled-label" for="archive-add-enabled">
+              <input id="archive-add-enabled" type="checkbox" checked style="accent-color:#3b82f6;width:auto;margin:0">
               Enabled
             </label>
           </div>
@@ -956,11 +965,17 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <div class="form-row">
           <div class="form-group">
             <label for="archive-add-password">Password *</label>
-            <input id="archive-add-password" type="password" placeholder="At least 12 characters" autocomplete="new-password">
+            <div class="admin-pw-wrap">
+              <input id="archive-add-password" type="password" placeholder="At least 12 characters" autocomplete="new-password">
+              <button type="button" class="admin-pw-toggle" id="archive-add-password-toggle" aria-label="Show password" aria-pressed="false" title="Show password"><i class="far fa-eye" aria-hidden="true"></i></button>
+            </div>
           </div>
           <div class="form-group">
             <label for="archive-add-password-confirm">Confirm password *</label>
-            <input id="archive-add-password-confirm" type="password" placeholder="Re-enter" autocomplete="new-password">
+            <div class="admin-pw-wrap">
+              <input id="archive-add-password-confirm" type="password" placeholder="Re-enter" autocomplete="new-password">
+              <button type="button" class="admin-pw-toggle" id="archive-add-password-confirm-toggle" aria-label="Show password" aria-pressed="false" title="Show password"><i class="far fa-eye" aria-hidden="true"></i></button>
+            </div>
           </div>
         </div>
         <div class="form-group">
@@ -1910,8 +1925,19 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         firstEl.value = '';
         familyEl.value = '';
         usernameEl.value = '';
+        passwordEl.type = 'password';
+        confirmEl.type = 'password';
         passwordEl.value = '';
         confirmEl.value = '';
+        ['archive-add-password-toggle','archive-add-password-confirm-toggle'].forEach(function(tid) {
+          var b = document.getElementById(tid);
+          if (!b) return;
+          b.setAttribute('aria-pressed', 'false');
+          b.setAttribute('aria-label', 'Show password');
+          b.title = 'Show password';
+          var ic = b.querySelector('i');
+          if (ic) ic.className = 'far fa-eye';
+        });
         dbPathEl.value = '';
         enabledEl.checked = true;
         loadArchives();
@@ -1923,6 +1949,23 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         archiveAddBtn.innerHTML = oldHtml;
       }
     });
+
+    function wireAdminArchivePwToggle(toggleId, inputId) {
+      var btn = document.getElementById(toggleId);
+      var inp = document.getElementById(inputId);
+      if (!btn || !inp) return;
+      btn.addEventListener('click', function() {
+        var show = inp.type === 'password';
+        inp.type = show ? 'text' : 'password';
+        btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+        btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        btn.title = show ? 'Hide password' : 'Show password';
+        var i = btn.querySelector('i');
+        if (i) { i.className = show ? 'far fa-eye-slash' : 'far fa-eye'; }
+      });
+    }
+    wireAdminArchivePwToggle('archive-add-password-toggle', 'archive-add-password');
+    wireAdminArchivePwToggle('archive-add-password-confirm-toggle', 'archive-add-password-confirm');
 
     function renderArchives(profiles) {
       var tbody = document.getElementById('archives-body');
@@ -1938,26 +1981,26 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         var defCell = p.is_default
           ? '<span class="badge badge-active" title="Opened at server startup when the file exists">Default</span>'
           : '<span style="color:#6b7c99">—</span>';
-        var defBtn;
+        var actionDefault = '';
         if (p.is_default) {
-          defBtn = '<button type="button" class="btn btn-secondary" style="margin-top:6px" onclick="clearStartupDefaultArchive(\'' + escAttr(p.id) + '\')">Clear default</button>';
+          actionDefault = '<button type="button" class="btn-compact-secondary" style="margin-right:6px;margin-bottom:4px" onclick="clearStartupDefaultArchive(\'' + escAttr(p.id) + '\')">Clear default</button>';
         } else if (p.enabled) {
-          defBtn = '<button type="button" class="btn btn-secondary" style="margin-top:6px" onclick="setStartupDefaultArchive(\'' + escAttr(p.id) + '\')">Set as default</button>';
+          actionDefault = '<button type="button" class="btn-compact-secondary" style="margin-right:6px;margin-bottom:4px" onclick="setStartupDefaultArchive(\'' + escAttr(p.id) + '\')">Set Default</button>';
         } else {
-          defBtn = '<button type="button" class="btn btn-secondary" style="margin-top:6px" disabled title="Enable this archive first">Set as default</button>';
+          actionDefault = '<button type="button" class="btn-compact-secondary" style="margin-right:6px;margin-bottom:4px" disabled title="Enable this archive first">Set Default</button>';
         }
         return '<tr>' +
           '<td>' + escHtml(p.name) + '</td>' +
           '<td>' + escHtml(p.username || '—') + '</td>' +
           '<td style="font-family:monospace;font-size:.82rem;word-break:break-all">' + escHtml(p.db_path) + '</td>' +
           '<td>' + badge + '</td>' +
-          '<td style="vertical-align:top">' + defCell + defBtn + '</td>' +
+          '<td style="vertical-align:middle">' + defCell + '</td>' +
           '<td style="color:#8fa4c8">' + lu + '</td>' +
-          '<td style="white-space:nowrap">' +
-            '<button class="btn btn-warning" onclick="toggleArchive(\'' +
+          '<td style="white-space:normal;max-width:320px">' + actionDefault +
+            '<button class="btn btn-warning" style="margin-right:6px;margin-bottom:4px" onclick="toggleArchive(\'' +
               escAttr(p.id) + '\',' + (!p.enabled) + ')">' +
               (p.enabled ? 'Disable' : 'Enable') + '</button>' +
-            ' <button class="btn btn-danger" style="margin-left:6px" onclick="openDelArchiveModal(\'' +
+            '<button class="btn btn-danger" style="margin-bottom:4px" onclick="openDelArchiveModal(\'' +
               escAttr(p.id) + '\',\'' + escAttr(p.name) + '\',\'' + escAttr(p.db_path) + '\')">Delete</button>' +
           '</td>' +
           '</tr>';
