@@ -762,6 +762,27 @@ func schemaDDL() []string {
 		`CREATE INDEX IF NOT EXISTS idx_interview_turns_interview_turn ON interview_turns (interview_id, turn_number)`,
 		`CREATE INDEX IF NOT EXISTS idx_interview_turns_user_id        ON interview_turns (user_id)`,
 
+		// ── have_a_chat_sessions ─────────────────────────────────────────────
+		// Saved two-voice Have a Chat transcripts when the user stops a run.
+		`CREATE TABLE IF NOT EXISTS have_a_chat_sessions (
+			id              SERIAL PRIMARY KEY,
+			user_id         BIGINT REFERENCES users(id) ON DELETE CASCADE,
+			created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			stopped_at      TIMESTAMPTZ,
+			topic           TEXT,
+			voice_a         TEXT NOT NULL,
+			voice_b         TEXT NOT NULL,
+			provider_a      TEXT NOT NULL,
+			provider_b      TEXT NOT NULL,
+			banter_mode     BOOLEAN NOT NULL DEFAULT FALSE,
+			temperature     DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+			allow_explicit  BOOLEAN NOT NULL DEFAULT FALSE,
+			turn_count      INTEGER NOT NULL DEFAULT 0,
+			history_json    JSONB NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_have_a_chat_sessions_user_id    ON have_a_chat_sessions (user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_have_a_chat_sessions_stopped_at ON have_a_chat_sessions (stopped_at)`,
+
 		// ── background_jobs ──────────────────────────────────────────────────
 		// Per-user scheduling state for the maintenance jobs exposed in the
 		// Configuration > Background Jobs panel. One row per (user_id, job_name).
@@ -812,6 +833,7 @@ func rlsDDL() []string {
 		"chat_conversations", "chat_turns",
 		"complete_profiles", "saved_responses",
 		"interviews", "interview_turns",
+		"have_a_chat_sessions",
 		"pam_bot_sessions", "pam_bot_turns", "pam_bot_subjects",
 		"import_control_last_run",
 		"email_classifications", "email_matches", "email_exclusions",

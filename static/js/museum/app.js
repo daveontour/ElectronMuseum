@@ -1076,10 +1076,9 @@ const App = (() => {
             });
         });
 
-        // Dashboard: load stats and render. prefix: '' for config modal, 'stats-' for Statistics modal
+        // Dashboard: load stats and render. prefix e.g. 'stats-' for Dashboard modal (ids: prefix + 'dashboard-stats', …).
         async function loadDashboard(prefix) {
             prefix = prefix || '';
-            const includeCharts = prefix !== 'overview-';
             const container = document.getElementById(prefix + 'dashboard-stats');
             const loadingEl = document.getElementById(prefix + 'dashboard-loading');
             const errorEl = document.getElementById(prefix + 'dashboard-load-error');
@@ -1092,13 +1091,11 @@ const App = (() => {
                 const data = await response.json();
                 if (loadingEl) loadingEl.style.display = 'none';
                 renderDashboardStats(container, data);
-                if (includeCharts) {
-                    renderDashboardMessagesByYearChart(data, prefix);
-                    renderDashboardEmailsByYearChart(data, prefix);
-                    renderDashboardContactsByCategoryChart(data, prefix);
-                    renderDashboardImagesByRegionChart(data, prefix);
-                    renderDashboardMessagesByContactChart(data, prefix);
-                }
+                renderDashboardMessagesByYearChart(data, prefix);
+                renderDashboardEmailsByYearChart(data, prefix);
+                renderDashboardContactsByCategoryChart(data, prefix);
+                renderDashboardImagesByRegionChart(data, prefix);
+                renderDashboardMessagesByContactChart(data, prefix);
             } catch (err) {
                 if (loadingEl) loadingEl.style.display = 'none';
                 if (errorEl) {
@@ -1106,20 +1103,25 @@ const App = (() => {
                     errorEl.textContent = err.message || 'Failed to load dashboard';
                 }
                 container.innerHTML = '';
-                if (includeCharts) {
-                    const yearChart = document.getElementById(prefix + 'dashboard-messages-by-year-chart');
-                    const emailsYearChart = document.getElementById(prefix + 'dashboard-emails-by-year-chart');
-                    const contactsCatChart = document.getElementById(prefix + 'dashboard-contacts-by-category-chart');
-                    const imagesRegionChart = document.getElementById(prefix + 'dashboard-images-by-region-chart');
-                    const contactChart = document.getElementById(prefix + 'dashboard-messages-by-contact-chart');
-                    if (yearChart) yearChart.innerHTML = '';
-                    if (emailsYearChart) emailsYearChart.innerHTML = '';
-                    if (contactsCatChart) contactsCatChart.innerHTML = '';
-                    if (imagesRegionChart) imagesRegionChart.innerHTML = '';
-                    if (contactChart) contactChart.innerHTML = '';
-                }
+                const yearChart = document.getElementById(prefix + 'dashboard-messages-by-year-chart');
+                const emailsYearChart = document.getElementById(prefix + 'dashboard-emails-by-year-chart');
+                const contactsCatChart = document.getElementById(prefix + 'dashboard-contacts-by-category-chart');
+                const imagesRegionChart = document.getElementById(prefix + 'dashboard-images-by-region-chart');
+                const contactChart = document.getElementById(prefix + 'dashboard-messages-by-contact-chart');
+                if (yearChart) yearChart.innerHTML = '';
+                if (emailsYearChart) emailsYearChart.innerHTML = '';
+                if (contactsCatChart) contactsCatChart.innerHTML = '';
+                if (imagesRegionChart) imagesRegionChart.innerHTML = '';
+                if (contactChart) contactChart.innerHTML = '';
             }
         }
+
+        function openDashboardModal() {
+            if (!DOM.statisticsModal) return;
+            DOM.statisticsModal.style.display = 'flex';
+            void loadDashboard('stats-');
+        }
+        window.openDashboardModal = openDashboardModal;
 
         function renderDashboardMessagesByYearChart(data, prefix) {
             prefix = prefix || '';
@@ -1363,17 +1365,17 @@ const App = (() => {
                 const dOk = !!av.deepseek_available;
                 const lOk = !!av.localai_available;
                 const gemVal = gOk
-                    ? '<strong style="color:#15803d;">Ready</strong> — Gemini can be selected as AI Provider'
+                    ? '<strong style="color:#15803d;">Ready</strong>'
                     : '<strong style="color:#b91c1c;">Not available</strong> — configure a Gemini API key';
                 const claVal = cOk
-                    ? '<strong style="color:#15803d;">Ready</strong> — Claude can be selected as AI Provider'
+                    ? '<strong style="color:#15803d;">Ready</strong>'
                     : '<strong style="color:#b91c1c;">Not available</strong> — configure an Anthropic API key';
                 const deepVal = dOk
-                    ? '<strong style="color:#15803d;">Ready</strong> — DeepSeek can be selected as AI Provider'
+                    ? '<strong style="color:#15803d;">Ready</strong>'
                     : '<strong style="color:#b91c1c;">Not available</strong> — configure a DeepSeek API key';
                 const localVal = lOk
-                    ? '<strong style="color:#15803d;">Ready</strong> — Local AI can be selected as AI Provider'
-                    : '<strong style="color:#b91c1c;">Not available</strong> — set LOCALAI_BASE_URL in server config';
+                    ? '<strong style="color:#15803d;">Ready</strong>'
+                    : '<strong style="color:#b91c1c;">Not Available</strong>';
                 const parts = [];
                 parts.push(row2('<span style="color:#64748b;">Gemini</span>', `<span>${gemVal}</span>`));
                 parts.push(row2('<span style="color:#64748b;">Claude</span>', `<span>${claVal}</span>`));
@@ -1404,10 +1406,10 @@ const App = (() => {
                         ? '<strong style="color:#15803d;">Key set</strong> — ElevenLabs integrations can use your API key' + (sess ? ' <span style="color:#64748b;font-weight:normal;">(this session)</span>' : '')
                         : '<span style="color:#64748b;">No personal ElevenLabs key in Settings — server default or none</span>';
                     parts.push(row2('<span style="color:#64748b;">ElevenLabs</span>', `<span>${elVal}</span>`));
-                    const deepKeyVal = ls.deepseek_api_key_set
-                        ? '<strong style="color:#15803d;">Key set</strong> — DeepSeek can use your API key' + (sess ? ' <span style="color:#64748b;font-weight:normal;">(this session)</span>' : '')
-                        : '<span style="color:#64748b;">No personal DeepSeek key in Settings — server default or none</span>';
-                    parts.push(row2('<span style="color:#64748b;">DeepSeek (API key)</span>', `<span>${deepKeyVal}</span>`));
+                    // const deepKeyVal = ls.deepseek_api_key_set
+                    //     ? '<strong style="color:#15803d;">Key set</strong> — DeepSeek can use your API key' + (sess ? ' <span style="color:#64748b;font-weight:normal;">(this session)</span>' : '')
+                    //     : '<span style="color:#64748b;">No personal DeepSeek key in Settings — server default or none</span>';
+                    // parts.push(row2('<span style="color:#64748b;">DeepSeek (API key)</span>', `<span>${deepKeyVal}</span>`));
                     // if (sess) {
                     //     parts.push('<div style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:0.85rem;color:#64748b;">Visitor session: keys you leave blank use the archive owner’s saved keys when available, then server defaults.</div>');
                     // }
@@ -1643,7 +1645,7 @@ const App = (() => {
                 setCell('zip_facebook', fbZipTotal);
                 // Image rows: prefer filesystem-scoped split from API (matches DB is_referenced for source=filesystem).
                 // If the server predates those fields, use imported_images / reference_images so the table matches
-                // the Statistics dialog (media_type image/*, is_referenced).
+                // the Dashboard dialog (media_type image/*, is_referenced).
                 const hasFsSplit = Object.prototype.hasOwnProperty.call(d, 'filesystem_images_embedded_count')
                     && Object.prototype.hasOwnProperty.call(d, 'filesystem_images_referenced_count');
                 let uploadPhotosCount;
@@ -3898,10 +3900,7 @@ const App = (() => {
 
         if (DOM.statisticsSidebarBtn) {
             DOM.statisticsSidebarBtn.addEventListener('click', () => {
-                if (DOM.statisticsModal) {
-                    DOM.statisticsModal.style.display = 'flex';
-                    loadDashboard('stats-');
-                }
+                openDashboardModal();
             });
         }
         if (DOM.closeStatisticsModalBtn) {
@@ -3913,10 +3912,6 @@ const App = (() => {
             DOM.statisticsModal.addEventListener('click', (e) => {
                 if (e.target === DOM.statisticsModal) DOM.statisticsModal.style.display = 'none';
             });
-        }
-        const statsRefreshBtn = document.getElementById('stats-dashboard-refresh-btn');
-        if (statsRefreshBtn) {
-            statsRefreshBtn.addEventListener('click', () => loadDashboard('stats-'));
         }
 
         // if (DOM.haveYourSaySidebarBtn) {
@@ -4433,6 +4428,7 @@ const App = (() => {
                 void (async () => {
                     if (!(await ensureMasterKeyForDataImport())) return;
                     dataImportModal.style.display = 'flex';
+                    markOnboardingChecklistStepDone('import_data');
                     loadControlDefaults();
                     if (typeof loadDataImportModalCounts === 'function') void loadDataImportModalCounts();
                     if (typeof loadImportControlLastRun === 'function') loadImportControlLastRun();
@@ -4568,50 +4564,60 @@ const App = (() => {
             });
         }
 
-        (function setupWelcomeArchiveOverviewSection() {
-            const welcomeModal = document.getElementById('info-box-modal');
-            if (!welcomeModal || welcomeModal.classList.contains('info-box-modal-closed')) return;
-            if (!document.getElementById('overview-llm-status-body')) return;
-            void loadArchiveOverviewLLMStatus();
-            void loadDashboard('overview-');
-        })();
+        setupWelcomeOnboardingUI();
+        void syncOnboardingUnlockStatus();
 
     }
 
     async function loadLLMProviderAvailability() {
         const select = DOM.llmProviderSelect;
-        if (!select) return;
+        const profileSelect = DOM.profilesLlmProviderSelect;
+        if (!select && !profileSelect) return;
+        function applyProviderAvailabilityToSelect(sel, availability) {
+            if (!sel) return;
+            const providers = [
+                { value: 'gemini', label: 'Gemini', available: !!availability.gemini_available },
+                { value: 'claude', label: 'Claude', available: !!availability.claude_available },
+                { value: 'deepseek', label: 'DeepSeek', available: !!availability.deepseek_available },
+                { value: 'localai', label: 'Local AI', available: !!availability.localai_available },
+            ];
+
+            providers.forEach((p) => {
+                const opt = sel.querySelector(`option[value="${p.value}"]`);
+                if (!opt) return;
+                opt.disabled = !p.available;
+                // Native <option> cannot contain styled HTML; emoji renders as green tick / red cross on most UIs.
+                opt.textContent = `${p.label} ${p.available ? '\u2705' : '\u274C'}`;
+            });
+
+            const current = sel.value;
+            const currentUnavailable =
+                (current === 'gemini' && !availability.gemini_available) ||
+                (current === 'claude' && !availability.claude_available) ||
+                (current === 'deepseek' && !availability.deepseek_available) ||
+                (current === 'localai' && !availability.localai_available);
+            if (currentUnavailable) {
+                sel.value = availability.gemini_available
+                    ? 'gemini'
+                    : (availability.claude_available
+                        ? 'claude'
+                        : (availability.deepseek_available
+                            ? 'deepseek'
+                            : (availability.localai_available ? 'localai' : 'gemini')));
+            } else {
+                // Prefer Local AI as the startup default while still respecting explicit user changes.
+                const userSelected = sel.dataset.userSelectedProvider === 'true';
+                if (!userSelected && availability.localai_available) {
+                    sel.value = 'localai';
+                }
+            }
+        }
         try {
             const res = await fetch('/chat/availability', { credentials: 'same-origin' });
             if (!res.ok) return;
             const av = await res.json();
-            const gemini_available = !!av.gemini_available;
-            const claude_available = !!av.claude_available;
-            const deepseek_available = !!av.deepseek_available;
-            const localai_available = !!av.localai_available;
-            const geminiOpt = select.querySelector('option[value="gemini"]');
-            const claudeOpt = select.querySelector('option[value="claude"]');
-            const deepseekOpt = select.querySelector('option[value="deepseek"]');
-            const localaiOpt = select.querySelector('option[value="localai"]');
-            if (geminiOpt) geminiOpt.disabled = !gemini_available;
-            if (claudeOpt) claudeOpt.disabled = !claude_available;
-            if (deepseekOpt) deepseekOpt.disabled = !deepseek_available;
-            if (localaiOpt) localaiOpt.disabled = !localai_available;
-            const current = select.value;
-            const currentUnavailable =
-                (current === 'gemini' && !gemini_available) ||
-                (current === 'claude' && !claude_available) ||
-                (current === 'deepseek' && !deepseek_available) ||
-                (current === 'localai' && !localai_available);
-            if (currentUnavailable) {
-                select.value = gemini_available ? 'gemini' : (claude_available ? 'claude' : (deepseek_available ? 'deepseek' : (localai_available ? 'localai' : 'gemini')));
-            } else {
-                // Prefer Local AI as the startup default while still respecting explicit user changes.
-                const userSelected = select.dataset.userSelectedProvider === 'true';
-                if (!userSelected && localai_available) {
-                    select.value = 'localai';
-                }
-            }
+            applyProviderAvailabilityToSelect(select, av);
+            applyProviderAvailabilityToSelect(profileSelect, av);
             if (typeof UI !== 'undefined' && UI.updateChatContextStatusBarFromAvailability) {
                 UI.updateChatContextStatusBarFromAvailability(av);
             }
@@ -4639,6 +4645,274 @@ const App = (() => {
         if (visitorBtn) {
             visitorBtn.disabled = false;
             visitorBtn.textContent = 'Unlock as visitor';
+        }
+    }
+
+    // Phase 1 onboarding persistence is localStorage-based.
+    // Phase 2 (optional): persist this state server-side per user for multi-device continuity.
+    // Suggested contract:
+    //   GET  /auth/me/ui-preferences -> { onboarding: { dont_show_again, checklist, version } }
+    //   PATCH /auth/me/ui-preferences (same shape) with localStorage as fallback cache.
+    const ONBOARDING_SCHEMA_VERSION = 1;
+    const ONBOARDING_STATE_PREFIX = 'dm_onboarding_state_v1';
+    const ONBOARDING_STEPS = ['import_data', 'subject_config', 'ask_first_question', 'unlock_sensitive'];
+
+    function onboardingDefaultState() {
+        return {
+            version: ONBOARDING_SCHEMA_VERSION,
+            dontShowAgain: false,
+            checklist: {
+                import_data: false,
+                subject_config: false,
+                ask_first_question: false,
+                unlock_sensitive: false
+            }
+        };
+    }
+
+    function getOnboardingIdentityKey() {
+        try {
+            const authUser = (typeof AuthModule !== 'undefined' && AuthModule.getUser) ? AuthModule.getUser() : null;
+            if (authUser && authUser.id != null) return `uid_${String(authUser.id)}`;
+            const legacy = localStorage.getItem('userId');
+            if (legacy && legacy.trim()) return `legacy_${legacy.trim()}`;
+        } catch (e) {
+            // ignore storage/auth lookup issues
+        }
+        return 'anonymous';
+    }
+
+    function getOnboardingStorageKey() {
+        return `${ONBOARDING_STATE_PREFIX}_${getOnboardingIdentityKey()}`;
+    }
+
+    function getOnboardingStorageKeys() {
+        const keys = [getOnboardingStorageKey(), `${ONBOARDING_STATE_PREFIX}_anonymous`];
+        const seen = new Set();
+        return keys.filter((k) => {
+            if (!k || seen.has(k)) return false;
+            seen.add(k);
+            return true;
+        });
+    }
+
+    function readOnboardingState() {
+        const base = onboardingDefaultState();
+        try {
+            const out = {
+                version: ONBOARDING_SCHEMA_VERSION,
+                dontShowAgain: false,
+                checklist: { ...base.checklist }
+            };
+            let foundAny = false;
+            getOnboardingStorageKeys().forEach((key) => {
+                const raw = localStorage.getItem(key);
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return;
+                foundAny = true;
+                out.dontShowAgain = out.dontShowAgain || !!parsed.dontShowAgain;
+                if (parsed.checklist && typeof parsed.checklist === 'object') {
+                    ONBOARDING_STEPS.forEach((step) => {
+                        out.checklist[step] = out.checklist[step] || !!parsed.checklist[step];
+                    });
+                }
+            });
+            return foundAny ? out : base;
+        } catch (e) {
+            return base;
+        }
+    }
+
+    function writeOnboardingState(state) {
+        try {
+            const serialized = JSON.stringify(state);
+            getOnboardingStorageKeys().forEach((key) => {
+                localStorage.setItem(key, serialized);
+            });
+        } catch (e) {
+            // ignore storage failures
+        }
+    }
+
+    function setOnboardingDontShowAgain(flag) {
+        const state = readOnboardingState();
+        state.dontShowAgain = !!flag;
+        writeOnboardingState(state);
+    }
+
+    function resetOnboardingState() {
+        writeOnboardingState(onboardingDefaultState());
+    }
+
+    function markOnboardingChecklistStepDone(stepKey) {
+        if (!ONBOARDING_STEPS.includes(stepKey)) return;
+        const state = readOnboardingState();
+        state.checklist[stepKey] = true;
+        writeOnboardingState(state);
+        renderOnboardingChecklistState();
+    }
+
+    function renderOnboardingChecklistState() {
+        const state = readOnboardingState();
+        ONBOARDING_STEPS.forEach((step) => {
+            const row = document.querySelector(`.onboarding-checklist-item[data-onboarding-step="${step}"]`);
+            const status = document.getElementById(`onboarding-step-status-${step}`);
+            const done = !!(state.checklist && state.checklist[step]);
+            if (row) row.classList.toggle('onboarding-checklist-item--done', done);
+            if (status) {
+                status.textContent = done ? 'Done' : (step === 'unlock_sensitive' ? 'Optional' : 'Pending');
+            }
+        });
+        const dontShow = document.getElementById('welcome-dont-show-again-checkbox');
+        if (dontShow) dontShow.checked = !!state.dontShowAgain;
+    }
+
+    function showWelcomeOnboardingModal() {
+        const modal = document.getElementById('info-box-modal');
+        if (!modal) return;
+        modal.classList.remove('info-box-modal-closed');
+        modal.style.display = 'flex';
+        if (typeof UI !== 'undefined' && UI.setControlsEnabled) UI.setControlsEnabled(false);
+        renderOnboardingChecklistState();
+        void loadArchiveOverviewLLMStatus();
+    }
+
+    function restartOnboardingFlow() {
+        resetOnboardingState();
+        showWelcomeOnboardingModal();
+    }
+
+    function setupWelcomeOnboardingUI() {
+        renderOnboardingChecklistState();
+        const dontShow = document.getElementById('welcome-dont-show-again-checkbox');
+        if (dontShow && !dontShow.dataset.onboardingWired) {
+            dontShow.dataset.onboardingWired = '1';
+            dontShow.addEventListener('change', () => {
+                setOnboardingDontShowAgain(dontShow.checked);
+                if (dontShow.checked && window.AppDialogs && typeof window.AppDialogs.showAppAlert === 'function') {
+                    void window.AppDialogs.showAppAlert(
+                        'Welcome dialog',
+                        'You can restart onboarding anytime from Guide → Restart onboarding.'
+                    );
+                }
+            });
+        }
+
+        const skipBtn = document.getElementById('welcome-skip-for-now-btn');
+        if (skipBtn && !skipBtn.dataset.onboardingWired) {
+            skipBtn.dataset.onboardingWired = '1';
+            skipBtn.addEventListener('click', () => {
+                if (window.closeInfoBoxModal) window.closeInfoBoxModal();
+            });
+        }
+
+        const openGuideBtn = document.getElementById('welcome-open-guide-btn');
+        if (openGuideBtn && !openGuideBtn.dataset.onboardingWired) {
+            openGuideBtn.dataset.onboardingWired = '1';
+            openGuideBtn.addEventListener('click', () => {
+                if (window.closeInfoBoxModal) window.closeInfoBoxModal({ skipMasterPrompt: true });
+                if (typeof Guide !== 'undefined' && Guide.openGuideModal) Guide.openGuideModal();
+            });
+        }
+
+        const welcomeDashboardBtn = document.getElementById('welcome-open-dashboard-btn');
+        if (welcomeDashboardBtn && !welcomeDashboardBtn.dataset.onboardingWired) {
+            welcomeDashboardBtn.dataset.onboardingWired = '1';
+            welcomeDashboardBtn.addEventListener('click', () => {
+                if (typeof window.openDashboardModal === 'function') window.openDashboardModal();
+            });
+        }
+
+        const quickSetupBtn = document.getElementById('welcome-start-quick-setup-btn');
+        if (quickSetupBtn && !quickSetupBtn.dataset.onboardingWired) {
+            quickSetupBtn.dataset.onboardingWired = '1';
+            quickSetupBtn.addEventListener('click', () => {
+                if (window.closeInfoBoxModal) window.closeInfoBoxModal({ skipMasterPrompt: true });
+                if (typeof Guide !== 'undefined' && Guide.onTopicSelected) Guide.onTopicSelected('FirstRunQuickSetup');
+            });
+        }
+
+        const restartBtn = document.getElementById('guide-restart-onboarding-btn');
+        if (restartBtn && !restartBtn.dataset.onboardingWired) {
+            restartBtn.dataset.onboardingWired = '1';
+            restartBtn.addEventListener('click', () => {
+                if (typeof Guide !== 'undefined' && Guide.closeAll) Guide.closeAll();
+                restartOnboardingFlow();
+            });
+        }
+
+        const importBtn = document.getElementById('onboarding-checklist-import-btn');
+        if (importBtn && !importBtn.dataset.onboardingWired) {
+            importBtn.dataset.onboardingWired = '1';
+            importBtn.addEventListener('click', () => {
+                const dataImportBtn = document.getElementById('data-import-sidebar-btn');
+                if (dataImportBtn) dataImportBtn.click();
+            });
+        }
+
+        const subjectBtn = document.getElementById('onboarding-checklist-subject-btn');
+        if (subjectBtn && !subjectBtn.dataset.onboardingWired) {
+            subjectBtn.dataset.onboardingWired = '1';
+            subjectBtn.addEventListener('click', () => {
+                const configBtn = document.getElementById('settings-data-import-sidebar-btn');
+                if (configBtn) configBtn.click();
+                setTimeout(() => {
+                    const subjectTab = document.querySelector('.config-tab-button[data-tab="subject-configuration"]');
+                    if (subjectTab) subjectTab.click();
+                }, 120);
+            });
+        }
+
+        const questionBtn = document.getElementById('onboarding-checklist-question-btn');
+        if (questionBtn && !questionBtn.dataset.onboardingWired) {
+            questionBtn.dataset.onboardingWired = '1';
+            questionBtn.addEventListener('click', () => {
+                if (DOM.userInput) DOM.userInput.focus();
+            });
+        }
+
+        const unlockBtn = document.getElementById('onboarding-checklist-unlock-btn');
+        if (unlockBtn && !unlockBtn.dataset.onboardingWired) {
+            unlockBtn.dataset.onboardingWired = '1';
+            unlockBtn.addEventListener('click', () => {
+                const modal = document.getElementById('master-key-unlock-modal');
+                const input = document.getElementById('master-key-unlock-input');
+                if (modal) modal.style.display = 'flex';
+                if (input) input.focus();
+            });
+        }
+
+        if (DOM.chatForm && !DOM.chatForm.dataset.onboardingWired) {
+            DOM.chatForm.dataset.onboardingWired = '1';
+            DOM.chatForm.addEventListener('submit', () => {
+                const userPrompt = DOM.userInput ? DOM.userInput.value.trim() : '';
+                if (userPrompt) markOnboardingChecklistStepDone('ask_first_question');
+            });
+        }
+
+        const saveSubject = document.getElementById('save-subject-config-btn');
+        if (saveSubject && !saveSubject.dataset.onboardingWired) {
+            saveSubject.dataset.onboardingWired = '1';
+            saveSubject.addEventListener('click', () => {
+                markOnboardingChecklistStepDone('subject_config');
+            });
+        }
+    }
+
+    function shouldShowOnboardingWelcome() {
+        const state = readOnboardingState();
+        return !state.dontShowAgain;
+    }
+
+    async function syncOnboardingUnlockStatus() {
+        try {
+            const st = await fetch('/api/session/master-key/status', { credentials: 'same-origin' });
+            if (!st.ok) return;
+            const sj = await st.json();
+            if (sj && sj.unlocked) markOnboardingChecklistStepDone('unlock_sensitive');
+        } catch (e) {
+            // ignore
         }
     }
 
@@ -4718,8 +4992,12 @@ const App = (() => {
 
     async function init() {
         // Info box modal: set up close first (before other inits that might throw)
-        window.closeInfoBoxModal = function() {
+        window.closeInfoBoxModal = function(options = {}) {
             const modal = document.getElementById('info-box-modal');
+            const dontShow = document.getElementById('welcome-dont-show-again-checkbox');
+            if (dontShow) {
+                setOnboardingDontShowAgain(!!dontShow.checked);
+            }
             if (modal) {
                 modal.classList.add('info-box-modal-closed');
                 if (typeof UI !== 'undefined' && UI.setControlsEnabled) UI.setControlsEnabled(true);
@@ -4735,7 +5013,9 @@ const App = (() => {
                     undefined
                 );
             }
-            maybePromptMasterKeyUnlock();
+            if (!options || !options.skipMasterPrompt) {
+                maybePromptMasterKeyUnlock();
+            }
         };
         const infoBoxModal = document.getElementById('info-box-modal');
         if (infoBoxModal) {
@@ -4743,7 +5023,13 @@ const App = (() => {
                 if (e.target === infoBoxModal) window.closeInfoBoxModal();
             });
             document.getElementById('info-box-close-btn')?.addEventListener('click', window.closeInfoBoxModal);
-            if (typeof UI !== 'undefined' && UI.setControlsEnabled) UI.setControlsEnabled(false);
+            if (shouldShowOnboardingWelcome()) {
+                infoBoxModal.classList.remove('info-box-modal-closed');
+                if (typeof UI !== 'undefined' && UI.setControlsEnabled) UI.setControlsEnabled(false);
+            } else {
+                infoBoxModal.classList.add('info-box-modal-closed');
+                if (typeof UI !== 'undefined' && UI.setControlsEnabled) UI.setControlsEnabled(true);
+            }
         }
 
         installVisitorFeatureGateCapture();
@@ -4841,6 +5127,7 @@ const App = (() => {
                     return;
                 }
                 closeMasterKeyUnlockModal();
+                markOnboardingChecklistStepDone('unlock_sensitive');
                 refreshDataImportMasterKeyAccessUI();
             } catch (e) {
                 if (errEl) {

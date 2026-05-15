@@ -46,6 +46,6 @@ extraResources:
   # Packaged app loads defaults from process.resourcesPath (see main.js dotEnvDefaults).
   # Do not reference a secret .env here — that file is not in the repo.
   - from: .env.defaults
-    to: .env.defaults
+    to: .env
 
 asar: true

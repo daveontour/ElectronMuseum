@@ -284,6 +284,7 @@
             <div id="have-a-chat-round-prompt" class="have-a-chat-round-prompt" style="display:none;">
                 <span class="have-a-chat-round-prompt-msg"><i class="fas fa-check-circle"></i> Round complete — continue the conversation?</span>
                 <button id="have-a-chat-continue-btn"><i class="fas fa-play"></i> Continue</button>
+                <button id="have-a-chat-free-run-btn" type="button"><i class="fas fa-fast-forward"></i> Free Run</button>
                 <button id="have-a-chat-inject-round-btn"><i class="fas fa-comment-medical"></i> Inject Comment</button>
                 <button id="have-a-chat-stop-round-btn" class="stop-btn"><i class="fas fa-stop"></i> Stop</button>
             </div>
@@ -347,7 +348,7 @@
                         <i class="fas fa-lock"></i> Sensitive &amp; Private Data
                     </button>
                     <button type="button" class="more-options-btn" id="statistics-sidebar-btn">
-                        <i class="fas fa-chart-bar"></i> Statistics
+                        <i class="fas fa-chart-bar"></i> Dashboard
                     </button>
                 </div>
                 <div class="sidebar-spacer" aria-hidden="true"></div>
@@ -398,7 +399,7 @@
 
         <!-- Have A Chat Setup Modal -->
         <div id="have-a-chat-setup-modal" class="modal" style="display:none;">
-            <div class="modal-content" style="max-width:540px; width:92vw;" onclick="event.stopPropagation()">
+            <div class="modal-content" style="max-width:810px; width:92vw;" onclick="event.stopPropagation()">
                 <div class="modal-header">
                     <h2><i class="fas fa-comments"></i> Have a Chat</h2>
                     <button class="modal-close-btn" id="close-have-a-chat-setup-modal">&times;</button>
@@ -451,9 +452,56 @@
                         <label style="display:block; font-weight:bold; margin-bottom:4px;">Temperature: <span id="have-a-chat-temperature-display">0.7</span></label>
                         <input type="range" id="have-a-chat-temperature" min="0" max="2" step="0.1" value="0.7" style="width:100%;">
                     </div>
-                    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
-                        <button class="modal-btn modal-btn-secondary" id="have-a-chat-cancel-btn">Cancel</button>
-                        <button class="modal-btn modal-btn-primary" id="have-a-chat-start-btn"><i class="fas fa-play"></i> Start Chat</button>
+                    <div>
+                        <label for="have-a-chat-free-run-rounds" style="display:block; font-weight:bold; margin-bottom:4px;">Free run (full rounds)</label>
+                        <p style="margin:0 0 8px 0; color:var(--color-text-muted); font-size:var(--text-sm); line-height:1.4;">When a round ends, choose <strong>Free Run</strong> to keep both voices going for this many complete rounds (each round is both speakers) without pausing. Set to 1 or more before you start.</p>
+                        <input type="number" id="have-a-chat-free-run-rounds" min="1" max="50" value="3" style="width:7rem; max-width:100%; box-sizing:border-box; border-radius:6px; border:1px solid #bfc9da; padding:8px; font-size:var(--text-base);">
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center; margin-top:4px;">
+                        <button type="button" class="modal-btn modal-btn-secondary" id="have-a-chat-previous-sessions-btn"><i class="fas fa-history"></i> Previous conversations</button>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+                            <button class="modal-btn modal-btn-secondary" id="have-a-chat-cancel-btn">Cancel</button>
+                            <button class="modal-btn modal-btn-primary" id="have-a-chat-start-btn"><i class="fas fa-play"></i> Start Chat</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Have A Chat — saved sessions -->
+        <div id="have-a-chat-sessions-modal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:640px; width:92vw;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2><i class="fas fa-history"></i> Previous Have a Chat</h2>
+                    <button class="modal-close-btn" id="close-have-a-chat-sessions-modal">&times;</button>
+                </div>
+                <div class="modal-body" style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                    <p style="margin:0; color:var(--color-text-muted); font-size:var(--text-sm); line-height:1.45;">Conversations you chose to save when stopping a run appear here. Select one to read the transcript or download it as Markdown.</p>
+                    <p id="have-a-chat-sessions-error" style="display:none; margin:0; color:#b91c1c; font-size:var(--text-sm);"></p>
+                    <div id="have-a-chat-sessions-list"></div>
+                    <div id="have-a-chat-sessions-detail" style="min-height:4rem;"></div>
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end;">
+                        <button type="button" class="modal-btn modal-btn-secondary" id="have-a-chat-sessions-download-btn" style="display:none;"><i class="fas fa-file-download"></i> Download Markdown</button>
+                        <button type="button" class="modal-btn modal-btn-primary" id="have-a-chat-sessions-close-btn">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Have A Chat — save stopped conversation? -->
+        <div id="have-a-chat-save-prompt-modal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:440px; width:92vw;" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2><i class="fas fa-save"></i> Save conversation?</h2>
+                    <button type="button" class="modal-close-btn" id="close-have-a-chat-save-prompt-modal">&times;</button>
+                </div>
+                <div class="modal-body" style="padding:20px; display:flex; flex-direction:column; gap:12px;">
+                    <p style="margin:0; color:var(--color-text-muted); font-size:var(--text-lead); line-height:1.45;">Save this Have a Chat transcript to your archive? You can reopen it later from <strong>Previous conversations</strong> or download it as Markdown.</p>
+                    <p style="margin:0; font-size:var(--text-sm); color:var(--color-text-muted);"><span id="have-a-chat-save-prompt-turn-count">0</span> turns will be stored.</p>
+                    <p id="have-a-chat-save-prompt-error" style="display:none; margin:0; color:#b91c1c; font-size:var(--text-sm);"></p>
+                    <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+                        <button type="button" class="modal-btn modal-btn-secondary" id="have-a-chat-save-prompt-discard-btn">Don't save</button>
+                        <button type="button" class="modal-btn modal-btn-primary" id="have-a-chat-save-prompt-save-btn"><i class="fas fa-check"></i> Save to archive</button>
                     </div>
                 </div>
             </div>
@@ -884,11 +932,11 @@
                                 <i class="fas fa-spinner fa-spin"></i> Loading...
                             </div>
                             <div id="interests-table-container-sc" style="overflow-x: auto; max-height: 55vh; overflow-y: auto;">
-                                <table class="contacts-table interests-table-sc" id="interests-table-sc" style="width: 100%; margin-top: 0;">
+                                <table class="contacts-table manage-contacts-data-table" id="interests-table-sc" style="width: 100%; margin-top: 0;">
                                     <thead>
                                         <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
-                                            <th class="interests-table-th-name">Name</th>
-                                            <th class="interests-table-th-actions">Actions</th>
+                                            <th class="manage-contacts-th">Name</th>
+                                            <th class="manage-contacts-th manage-contacts-th-actions">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody id="interests-tbody-sc">
@@ -1756,21 +1804,17 @@
             </div>
         </div>
 
-        <!-- Statistics Modal (same content as Dashboard tab) -->
+        <!-- Dashboard modal (archive metrics and charts) -->
         <div id="statistics-modal" class="modal" style="display: none; position: fixed; z-index: 4000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center;">
             <div class="modal-content" style="max-width: 90vw; width: 90vw; max-height: 90vh; padding: 0; display: flex; flex-direction: column; overflow: hidden;" onclick="event.stopPropagation()">
                 <div class="modal-header">
-                    <h2><i class="fas fa-chart-bar"></i> Statistics</h2>
+                    <h2><i class="fas fa-chart-bar"></i> Dashboard</h2>
                     <button class="modal-close-btn" id="close-statistics-modal">&times;</button>
                 </div>
                 <div style="padding: 20px; overflow-y: auto; flex: 1;">
                     <section class="config-section">
-                        <h3>Dashboard</h3>
                         <div class="setting-group">
-                            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 12px;">
-                                <button type="button" id="stats-dashboard-refresh-btn" class="modal-btn modal-btn-secondary">
-                                    <i class="fas fa-sync-alt"></i> Refresh
-                                </button>
+                            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 12px; min-height: 2rem;">
                                 <span id="stats-dashboard-loading" style="color: #666; display: none;">
                                     <i class="fas fa-spinner fa-spin"></i> Loading...
                                 </span>
@@ -2077,17 +2121,20 @@
         </div>
 
         <!-- Display Suggestions Modal -->
-        <div id="tile-suggestions-modal" class="modal">
-            <div class="modal-content tile-suggestions-modal-content">
-                <div class="modal-suggestions-header">
+        <div id="tile-suggestions-modal" class="modal tile-suggestions-modal-outer" style="display: none;">
+            <div class="modal-content tile-suggestions-modal-shell" onclick="event.stopPropagation()">
+                <div class="modal-header">
                     <h2 id="tile-suggestions-modal-title"><i class="fas fa-lightbulb"></i> Suggestions</h2>
-                    <button id="modal-suggestions-close-btn">&times;</button>
+                    <button type="button" class="modal-close-btn" id="modal-suggestions-close-btn" aria-label="Close">&times;</button>
                 </div>
-                <p id="tile-suggestions-modal-description">Choose a suggestion from one of the categories below</p>
-                <div class="suggestions-table-wrapper">
-                    <table class="suggestions-table">
-                        <tbody id="tile-suggestions-container"></tbody>
-                    </table>
+                <p class="tile-suggestions-modal-lead" id="tile-suggestions-modal-description">Pick a starter prompt or open a gallery. Prompts use your subject name and pronouns from Subject Configuration.</p>
+                <div class="tile-suggestions-toolbar">
+                    <button type="button" id="suggestions-expand-all-btn" class="modal-btn modal-btn-secondary">Expand all</button>
+                    <button type="button" id="suggestions-collapse-all-btn" class="modal-btn modal-btn-secondary">Collapse all</button>
+                    <label class="tile-suggestions-mature-label"><input type="checkbox" id="suggestions-show-mature-checkbox"> Show mature / long-form examples</label>
+                </div>
+                <div class="suggestions-list-scroll">
+                    <div id="tile-suggestions-container" class="suggestions-list-root" aria-live="polite"></div>
                 </div>
             </div>
         </div>
@@ -3355,6 +3402,11 @@
                 </div>
                 <div class="modal-body">
                     <p class="guide-modal-intro">Select a topic for step-by-step help.</p>
+                    <div class="guide-modal-quick-actions">
+                        <button type="button" id="guide-restart-onboarding-btn" class="modal-btn modal-btn-secondary">
+                            <i class="fas fa-rotate-right"></i> Restart onboarding
+                        </button>
+                    </div>
                     <div id="guide-topics-list" class="guide-topics-list" role="list"></div>
                 </div>
             </div>
@@ -4421,20 +4473,54 @@
             </div>
             </div>
             <div class="info-box-archive-overview" aria-label="Archive overview" style="padding:10px;">
-                <span id="overview-dashboard-loading" class="info-box-dashboard-loading">Loading metrics…</span>
-                <div id="overview-dashboard-load-error" class="info-box-dashboard-load-error" style="display: none;"></div>
-                <div id="overview-dashboard-stats" class="info-box-dashboard-stats"></div>
-                <section id="overview-llm-section" class="info-box-overview-llm" style="margin-top:10px;">
-                    <h4 class="info-box-overview-llm-heading">AI &amp; API configuration</h4>
-                    <div class="info-box-overview-llm-row">
-                        <div id="overview-llm-status-body" class="info-box-overview-llm-body">Loading…</div>
-                        <div id="overview-llm-keys-button-wrap" class="overview-llm-keys-button-wrap" style="display:none;">
-                            <button type="button" id="overview-llm-keys-open-btn" class="modal-btn modal-btn-primary overview-llm-keys-open-btn">
-                                <i class="fas fa-key" style="margin-right:6px;"></i><span id="overview-llm-keys-open-btn-label">Add API keys</span>
-                            </button>
-                            <p class="overview-llm-keys-hint">You can continue without adding keys; AI features will not be available until keys are configured.</p>
-                        </div>
+                <section class="info-box-onboarding-controls" aria-label="Getting started controls">
+                    <div class="info-box-onboarding-actions">
+                        <button type="button" id="welcome-start-quick-setup-btn" class="modal-btn modal-btn-primary">
+                            <i class="fas fa-play"></i> Start quick setup
+                        </button>
+                        <button type="button" id="welcome-open-guide-btn" class="modal-btn modal-btn-secondary">
+                            <i class="fas fa-question-circle"></i> Open guide
+                        </button>
+                        <button type="button" id="welcome-skip-for-now-btn" class="modal-btn modal-btn-secondary">
+                            <i class="fas fa-forward"></i> Skip for now
+                        </button>
+                        <button type="button" id="welcome-open-dashboard-btn" class="modal-btn modal-btn-secondary">
+                            <i class="fas fa-chart-bar"></i> Open dashboard
+                        </button>
                     </div>
+                    <label class="info-box-onboarding-dismiss-label">
+                        <input type="checkbox" id="welcome-dont-show-again-checkbox">
+                        <span>Don't show this welcome dialog automatically</span>
+                    </label>
+                </section>
+                <section id="onboarding-checklist-panel" class="info-box-onboarding-checklist" aria-label="Starter checklist">
+                    <h4 class="info-box-onboarding-checklist-heading">Starter checklist</h4>
+                    <ul class="info-box-onboarding-checklist-list">
+                        <li class="onboarding-checklist-item" data-onboarding-step="import_data">
+                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-import-btn">
+                                Add or import some data
+                            </button>
+                            <span class="onboarding-checklist-status" id="onboarding-step-status-import_data">Pending</span>
+                        </li>
+                        <li class="onboarding-checklist-item" data-onboarding-step="subject_config">
+                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-subject-btn">
+                                Review Subject Configuration
+                            </button>
+                            <span class="onboarding-checklist-status" id="onboarding-step-status-subject_config">Pending</span>
+                        </li>
+                        <li class="onboarding-checklist-item" data-onboarding-step="ask_first_question">
+                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-question-btn">
+                                Ask your first question
+                            </button>
+                            <span class="onboarding-checklist-status" id="onboarding-step-status-ask_first_question">Pending</span>
+                        </li>
+                        <li class="onboarding-checklist-item" data-onboarding-step="unlock_sensitive">
+                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-unlock-btn">
+                                Unlock encryption (optional)
+                            </button>
+                            <span class="onboarding-checklist-status" id="onboarding-step-status-unlock_sensitive">Optional</span>
+                        </li>
+                    </ul>
                 </section>
             </div>
         </div>

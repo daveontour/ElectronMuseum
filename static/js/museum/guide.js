@@ -15,6 +15,46 @@ const Guide = {
             recommended: true,
             steps: [{ navigate() { Guide._showGettingStartedDialog(); } }]
         },
+        FirstRunQuickSetup: {
+            title: 'Quick setup checklist',
+            description: 'A short first-run flow: import, configure, ask a question, unlock.',
+            category: 'Getting Started',
+            recommended: true,
+            steps: [
+                {
+                    text: 'Open Import & Manage Data and run at least one import.',
+                    glow: '#data-import-sidebar-btn',
+                    navigate() {
+                        const btn = document.getElementById('data-import-sidebar-btn');
+                        if (btn) btn.click();
+                    }
+                },
+                {
+                    text: 'Open Configuration and review Subject Configuration details.',
+                    glow: '#settings-data-import-sidebar-btn',
+                    navigate() {
+                        const cfgBtn = document.getElementById('settings-data-import-sidebar-btn');
+                        if (cfgBtn) cfgBtn.click();
+                        setTimeout(() => {
+                            const subjectTab = document.querySelector('.config-tab-button[data-tab="subject-configuration"]');
+                            if (subjectTab) subjectTab.click();
+                        }, 120);
+                    }
+                },
+                { text: 'Ask your first question in chat to verify everything is working.', glow: '#user-input' },
+                {
+                    text: 'Optional: unlock encryption for sensitive-data tools and private store access.',
+                    glow: '#master-key-unlock-submit',
+                    position: 'middle-center',
+                    navigate() {
+                        const modal = document.getElementById('master-key-unlock-modal');
+                        const input = document.getElementById('master-key-unlock-input');
+                        if (modal) modal.style.display = 'flex';
+                        if (input) input.focus();
+                    }
+                }
+            ]
+        },
         AskingQuestions: {
             title: 'Asking questions',
             description: 'Get better answers and steer perspective and tone.',

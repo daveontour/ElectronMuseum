@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -177,6 +178,9 @@ func (h *TemplateHandler) GetRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetSuggestions handles GET /api/suggestions.
+// It renders static/data/suggestions.json with subject Jinja variables, optionally merges
+// static/data/suggestions.override.json (same shape; categories with matching names append suggestions),
+// and injects _meta.deployment_nature_local for client-side filtering.
 func (h *TemplateHandler) GetSuggestions(w http.ResponseWriter, r *http.Request) {
 	ctx := h.buildContext(r)
 
@@ -187,17 +191,100 @@ func (h *TemplateHandler) GetSuggestions(w http.ResponseWriter, r *http.Request)
 	}
 
 	rendered := renderJinja(content, ctx, nil)
-
-	// Validate it's still valid JSON after substitution.
-	var parsed any
-	if err := json.Unmarshal([]byte(rendered), &parsed); err != nil {
+	root, err := unmarshalSuggestionsJSON(rendered)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("suggestions template produced invalid JSON: %s", err))
+		return
+	}
+
+	overridePath := filepath.Join(h.pythonStaticDir, "data", "suggestions.override.json")
+	ob, errRead := os.ReadFile(overridePath)
+	if errRead == nil {
+		ren := renderJinja(string(ob), ctx, nil)
+		oroot, errO := unmarshalSuggestionsJSON(ren)
+		if errO == nil {
+			if baseCats, ok := root["categories"].([]any); ok {
+				if ovrCats, ok := oroot["categories"].([]any); ok && len(ovrCats) > 0 {
+					root["categories"] = mergeSuggestionCategoryLists(baseCats, ovrCats)
+				}
+			}
+		}
+	} else if !errors.Is(errRead, os.ErrNotExist) {
+		// Optional file; ignore missing only.
+	}
+
+	meta := map[string]any{
+		"deployment_nature_local": ctx["deployment_nature_local"],
+	}
+	if existing, ok := root["_meta"].(map[string]any); ok {
+		for k, v := range meta {
+			existing[k] = v
+		}
+		root["_meta"] = existing
+	} else {
+		root["_meta"] = meta
+	}
+
+	outBytes, err := json.Marshal(root)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("suggestions marshal: %s", err))
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	_, _ = w.Write([]byte(rendered))
+	_, _ = w.Write(outBytes)
+}
+
+func unmarshalSuggestionsJSON(rendered string) (map[string]any, error) {
+	var root map[string]any
+	if err := json.Unmarshal([]byte(rendered), &root); err != nil {
+		return nil, err
+	}
+	return root, nil
+}
+
+// mergeSuggestionCategoryLists appends suggestions from override categories onto base categories
+// when category names match (trimmed); unmatched override categories are appended as new categories.
+func mergeSuggestionCategoryLists(base, override []any) []any {
+	out := append([]any(nil), base...)
+	byName := make(map[string]int, len(out))
+	for i, item := range out {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := m["category"].(string)
+		name = strings.TrimSpace(name)
+		if name != "" {
+			byName[name] = i
+		}
+	}
+	for _, item := range override {
+		om, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := om["category"].(string)
+		name = strings.TrimSpace(name)
+		add, ok := om["suggestions"].([]any)
+		if !ok || len(add) == 0 || name == "" {
+			continue
+		}
+		if idx, found := byName[name]; found {
+			bm, ok := out[idx].(map[string]any)
+			if !ok {
+				continue
+			}
+			existing, _ := bm["suggestions"].([]any)
+			bm["suggestions"] = append(existing, add...)
+			out[idx] = bm
+		} else {
+			out = append(out, om)
+			byName[name] = len(out) - 1
+		}
+	}
+	return out
 }
 
 // GetFoundationJS handles GET /static/js/museum/foundation.js.

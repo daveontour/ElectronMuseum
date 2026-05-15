@@ -3994,15 +3994,17 @@ Modals.Interests = (() => {
             });
 
             const rowsHtml = data.map((row) => `
-                <tr style="border-bottom: 1px solid #e9ecef;">
+                <tr>
                     <td>${escapeHtml(row.name)}</td>
                     <td>
-                        <button type="button" class="interest-edit-btn modal-btn modal-btn-secondary" data-id="${row.id}" aria-label="Edit interest" title="Edit">
+                        <span class="manage-contacts-actions-cell">
+                        <button type="button" class="interest-edit-btn manage-contacts-icon-btn modal-btn modal-btn-secondary" data-id="${row.id}" aria-label="Edit interest" title="Edit">
                             <i class="fas fa-edit" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="interest-delete-btn modal-btn" data-id="${row.id}" aria-label="Delete interest" title="Delete" style="background: #dc3545; color: white; margin-left: 4px;">
+                        <button type="button" class="interest-delete-btn manage-contacts-icon-btn manage-contacts-icon-btn--delete modal-btn" data-id="${row.id}" aria-label="Delete interest" title="Delete">
                             <i class="fas fa-trash-alt" aria-hidden="true"></i>
                         </button>
+                        </span>
                     </td>
                 </tr>
             `).join('');

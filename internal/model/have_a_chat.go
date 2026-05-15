@@ -31,3 +31,48 @@ type HaveAChatResponse struct {
 	Voice        string         `json:"voice"`
 	EmbeddedJSON map[string]any `json:"embedded_json,omitempty"`
 }
+
+// HaveAChatSessionSave is the POST body for saving a stopped conversation.
+type HaveAChatSessionSave struct {
+	Topic          string          `json:"topic"`
+	VoiceA         string          `json:"voice_a"`
+	VoiceB         string          `json:"voice_b"`
+	ProviderA      string          `json:"provider_a"`
+	ProviderB      string          `json:"provider_b"`
+	BanterMode     bool            `json:"banter_mode"`
+	Temperature    float64         `json:"temperature"`
+	AllowExplicit  bool            `json:"allow_explicit"`
+	TurnCount      int             `json:"turn_count"`
+	History        []HaveAChatTurn `json:"history"`
+}
+
+// HaveAChatSessionListItem is a row in GET /api/have-a-chat/sessions.
+type HaveAChatSessionListItem struct {
+	ID         int64  `json:"id"`
+	CreatedAt  string `json:"created_at"`
+	StoppedAt  string `json:"stopped_at,omitempty"`
+	Topic      string `json:"topic"`
+	TurnCount  int    `json:"turn_count"`
+}
+
+// HaveAChatSessionDetail is a full saved session for GET /api/have-a-chat/sessions/{id}.
+type HaveAChatSessionDetail struct {
+	ID            int64           `json:"id"`
+	CreatedAt     string          `json:"created_at"`
+	StoppedAt     string          `json:"stopped_at,omitempty"`
+	Topic         string          `json:"topic"`
+	VoiceA        string          `json:"voice_a"`
+	VoiceB        string          `json:"voice_b"`
+	ProviderA     string          `json:"provider_a"`
+	ProviderB     string          `json:"provider_b"`
+	BanterMode    bool            `json:"banter_mode"`
+	Temperature   float64         `json:"temperature"`
+	AllowExplicit bool            `json:"allow_explicit"`
+	TurnCount     int             `json:"turn_count"`
+	History       []HaveAChatTurn `json:"history"`
+}
+
+// HaveAChatSessionSaveResponse is returned after POST save.
+type HaveAChatSessionSaveResponse struct {
+	ID int64 `json:"id"`
+}

@@ -22,9 +22,64 @@ const HaveAChat = (() => {
     let _pendingInjection = null;
     let _voiceNames     = {};  // { key: displayName } populated when voices load
     let _turnCount      = 0;   // incremented after each completed turn; prompt shown every 2 turns
+    /** Full rounds (A+B) to auto-continue when user clicks Free Run; read from setup at start(). */
+    let _freeRunRoundsPreset = 0;
+    /** Decremented after each full round while > 0 to skip the round-end pause. */
+    let _freeRunRoundsRemaining = 0;
+    /** True while a Free Run burst is in progress (also reflected in the status text). */
+    let _freeRunActive = false;
+    /** Snapshot for post-stop save prompt (null when not showing save dialog). */
+    let _pendingSavePayload = null;
 
     // ── DOM helpers ──────────────────────────────────────────────────────────
     const _el = (id) => document.getElementById(id);
+
+    const FREE_RUN_ROUNDS_MAX = 50;
+
+    function _readFreeRunPresetRounds() {
+        const el = _el('have-a-chat-free-run-rounds');
+        const raw = el && el.value != null ? String(el.value).trim() : '';
+        const n = parseInt(raw, 10);
+        if (!Number.isFinite(n) || n < 1) return 0;
+        return Math.min(n, FREE_RUN_ROUNDS_MAX);
+    }
+
+    /** Rounds to use for Free Run (never 0 when field + preset are broken; default 3). */
+    function _resolveFreeRunRoundCountForAction() {
+        let n = _readFreeRunPresetRounds();
+        if (n < 1) n = _freeRunRoundsPreset;
+        if (n < 1) n = 3;
+        return Math.min(Math.max(n, 1), FREE_RUN_ROUNDS_MAX);
+    }
+
+    /** Leave round-end UI and unblock the async loop (do not gate on _isPaused — it can desync). */
+    function _exitRoundPromptUnpause(statusText) {
+        _hideRoundPrompt();
+        if (!_isRunning) return;
+        _isPaused = false;
+        _setPauseButtonLabel(false);
+        _setStatus(statusText || 'Resuming…');
+    }
+
+    /** Shorter delay between AI turns while a free-run burst is active. */
+    function _betweenTurnDelayMs() {
+        if (_freeRunActive) return 0;
+        return _banterMode ? 900 : 1500;
+    }
+
+    function _cancelFreeRun(reason) {
+        if (_freeRunActive || _freeRunRoundsRemaining > 0) {
+            try { console.info('[HaveAChat] Free Run cancelled', reason || ''); } catch (_) { /* ignore */ }
+        }
+        _freeRunActive = false;
+        _freeRunRoundsRemaining = 0;
+    }
+
+    function _freeRunStatusText() {
+        if (!_freeRunActive || _freeRunRoundsRemaining < 1) return '';
+        const r = _freeRunRoundsRemaining;
+        return r === 1 ? 'Free Run — 1 round remaining' : `Free Run — ${r} rounds remaining`;
+    }
 
     function _llmDisplayName(provider) {
         if (provider === 'claude') return 'Claude';
@@ -103,6 +158,151 @@ const HaveAChat = (() => {
     function _closeSetupModal() {
         const modal = _el('have-a-chat-setup-modal');
         if (modal) modal.style.display = 'none';
+    }
+
+    function _closeSessionsModal() {
+        const modal = _el('have-a-chat-sessions-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    function _formatSessionStamp(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleString();
+    }
+
+    function _speakerLabel(s) {
+        if (s === 'a') return 'Voice A';
+        if (s === 'b') return 'Voice B';
+        if (s === 'user') return 'You';
+        return s || '?';
+    }
+
+    async function openSessionsHistory() {
+        const modal = _el('have-a-chat-sessions-modal');
+        const listEl = _el('have-a-chat-sessions-list');
+        const detailEl = _el('have-a-chat-sessions-detail');
+        const errEl = _el('have-a-chat-sessions-error');
+        const dlBtn = _el('have-a-chat-sessions-download-btn');
+        if (!modal || !listEl || !detailEl) return;
+        if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+        if (dlBtn) dlBtn.style.display = 'none';
+        detailEl.innerHTML = '<p style="margin:0;color:var(--color-text-muted);font-size:var(--text-sm);">Select a session to view the transcript.</p>';
+        listEl.innerHTML = '<p style="margin:0;color:var(--color-text-muted);">Loading…</p>';
+        modal.style.display = 'flex';
+
+        const base = _sessionsApiBase();
+        let res;
+        try {
+            res = await fetch(base + '?limit=50', { credentials: 'same-origin' });
+        } catch (e) {
+            listEl.innerHTML = '';
+            if (errEl) {
+                errEl.textContent = 'Could not load sessions (network error).';
+                errEl.style.display = 'block';
+            }
+            return;
+        }
+        if (!res.ok) {
+            listEl.innerHTML = '';
+            let msg = `Could not load sessions (HTTP ${res.status}).`;
+            if (res.status === 403) msg = 'Unlock the archive keyring to view saved Have a Chat sessions.';
+            if (errEl) {
+                errEl.textContent = msg;
+                errEl.style.display = 'block';
+            }
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
+        const sessions = (data && data.sessions) || [];
+        listEl.innerHTML = '';
+        if (!sessions.length) {
+            listEl.innerHTML = '<p style="margin:0;color:var(--color-text-muted);">No saved conversations yet. When you stop a run, choose <strong>Save to archive</strong> to keep the transcript here.</p>';
+            return;
+        }
+        const ul = document.createElement('ul');
+        ul.style.cssText = 'list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;';
+        sessions.forEach((s) => {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'modal-btn modal-btn-secondary';
+            btn.style.cssText = 'width:100%;text-align:left;justify-content:flex-start;font-size:var(--text-sm);';
+            const when = _formatSessionStamp(s.stopped_at || s.created_at);
+            const topic = (s.topic && String(s.topic).trim()) ? String(s.topic).trim().slice(0, 80) : '(no topic)';
+            const turns = typeof s.turn_count === 'number' ? s.turn_count : '';
+            btn.innerHTML = `<span style="font-weight:600;">${when}</span><span style="opacity:0.85;"> — ${topic}${turns !== '' ? ` (${turns} turns)` : ''}</span>`;
+            btn.addEventListener('click', () => {
+                void _loadSessionDetail(s.id, detailEl, errEl, dlBtn);
+            });
+            li.appendChild(btn);
+            ul.appendChild(li);
+        });
+        listEl.appendChild(ul);
+    }
+
+    async function _loadSessionDetail(id, detailEl, errEl, dlBtn) {
+        if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+        if (dlBtn) dlBtn.style.display = 'none';
+        detailEl.innerHTML = '<p style="margin:0;color:var(--color-text-muted);">Loading…</p>';
+        const base = _sessionsApiBase();
+        const res = await fetch(`${base}/${id}`, { credentials: 'same-origin' });
+        if (!res.ok) {
+            detailEl.innerHTML = '';
+            if (errEl) {
+                errEl.textContent = res.status === 404 ? 'Session not found.' : `Could not load session (HTTP ${res.status}).`;
+                errEl.style.display = 'block';
+            }
+            return;
+        }
+        const d = await res.json();
+        if (dlBtn) {
+            dlBtn.style.display = 'inline-flex';
+            dlBtn.dataset.sessionId = String(id);
+        }
+        const metaBits = [
+            `Stopped: ${_formatSessionStamp(d.stopped_at || d.created_at)}`,
+            `Voice A: ${d.voice_a} (${d.provider_a})`,
+            `Voice B: ${d.voice_b} (${d.provider_b})`,
+            `Banter: ${d.banter_mode ? 'on' : 'off'} · Temp: ${d.temperature} · Explicit: ${d.allow_explicit ? 'allowed' : 'off'}`,
+        ];
+        const topicHtml = (d.topic && String(d.topic).trim())
+            ? `<p style="margin:0 0 10px 0;"><strong>Topic:</strong> ${String(d.topic).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+            : '';
+        const parts = [];
+        parts.push(`<div style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:12px;line-height:1.5;">${metaBits.map((x) => x.replace(/</g, '&lt;')).join('<br>')}</div>`);
+        parts.push(topicHtml);
+        parts.push('<div style="border-top:1px solid var(--color-border);padding-top:12px;max-height:280px;overflow-y:auto;font-size:var(--text-md);line-height:1.45;">');
+        (d.history || []).forEach((turn, i) => {
+            const lab = _speakerLabel(turn.speaker);
+            const body = String(turn.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            parts.push(`<p style="margin:0 0 14px 0;"><strong>${i + 1}. ${lab}</strong><br><span style="white-space:pre-wrap;">${body}</span></p>`);
+        });
+        parts.push('</div>');
+        detailEl.innerHTML = parts.join('');
+    }
+
+    async function _downloadSessionMarkdown() {
+        const dlBtn = _el('have-a-chat-sessions-download-btn');
+        const id = dlBtn && dlBtn.dataset.sessionId;
+        if (!id) return;
+        const base = _sessionsApiBase();
+        const res = await fetch(`${base}/${id}/markdown`, { credentials: 'same-origin' });
+        if (!res.ok) {
+            try { console.warn('[HaveAChat] Markdown export failed', res.status); } catch (_) { /* ignore */ }
+            return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `have-a-chat-${id}.md`;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
     }
 
     function _closeInjectModal() {
@@ -304,19 +504,36 @@ const HaveAChat = (() => {
 
                 // Alternate slot
                 _currentSlot = _currentSlot === 'a' ? 'b' : 'a';
-                _setStatus('');
 
-                // After every complete round (both voices have spoken), pause and prompt
+                // After every complete round (both voices have spoken), pause and prompt — unless Free Run still has rounds left
                 if (_turnCount % 2 === 0) {
-                    _isPaused = true;
-                    _showRoundPrompt();
-                    while (_isPaused && !_stopRequested) {
-                        await _sleep(200);
+                    if (_freeRunActive && _freeRunRoundsRemaining > 0) {
+                        _freeRunRoundsRemaining--;
+                        try { console.info('[HaveAChat] Free Run round consumed; remaining =', _freeRunRoundsRemaining); } catch (_) { /* ignore */ }
+                        if (_freeRunRoundsRemaining <= 0) {
+                            _freeRunActive = false;
+                            _setStatus('Free Run complete — pausing at next round end.');
+                        } else {
+                            _setStatus(_freeRunStatusText());
+                        }
+                        // No artificial inter-round delay during or at the tail of a burst.
+                    } else {
+                        _setStatus('');
+                        _freeRunActive = false;
+                        _isPaused = true;
+                        _showRoundPrompt();
+                        while (_isPaused && !_stopRequested) {
+                            await _sleep(150);
+                        }
+                        if (_stopRequested) break;
                     }
-                    if (_stopRequested) break;
                 } else {
-                    // Natural pause between turns within a round (shorter in banter mode)
-                    await _sleep(_banterMode ? 900 : 1500);
+                    if (_freeRunActive) {
+                        _setStatus(_freeRunStatusText());
+                    } else {
+                        _setStatus('');
+                    }
+                    await _sleep(_betweenTurnDelayMs());
                 }
 
             } catch (err) {
@@ -342,10 +559,15 @@ const HaveAChat = (() => {
         _temperature = parseFloat(_el('have-a-chat-temperature')?.value || '0.7');
         _chatHistory   = [];
         _turnCount     = 0;
+        _freeRunRoundsPreset = _readFreeRunPresetRounds();
+        if (_freeRunRoundsPreset < 1) _freeRunRoundsPreset = 3;
+        _freeRunRoundsRemaining = 0;
+        _freeRunActive = false;
         _isRunning     = true;
         _isPaused      = false;
         _stopRequested = false;
         _pendingInjection = null;
+        try { console.info('[HaveAChat] start; freeRunPreset =', _freeRunRoundsPreset); } catch (_) { /* ignore */ }
 
         // Randomly decide who goes first
         _currentSlot = Math.random() < 0.5 ? 'a' : 'b';
@@ -365,6 +587,7 @@ const HaveAChat = (() => {
 
     function pause() {
         if (!_isRunning || _isPaused) return;
+        _cancelFreeRun('pause');
         _isPaused = true;
         _setPauseButtonLabel(true);
         _setStatus('Paused — click Resume to continue.');
@@ -378,16 +601,101 @@ const HaveAChat = (() => {
         _setStatus('Resuming…');
     }
 
+    function _closeSavePromptModal() {
+        const modal = _el('have-a-chat-save-prompt-modal');
+        if (modal) modal.style.display = 'none';
+        const err = _el('have-a-chat-save-prompt-error');
+        if (err) {
+            err.textContent = '';
+            err.style.display = 'none';
+        }
+        const saveBtn = _el('have-a-chat-save-prompt-save-btn');
+        if (saveBtn) saveBtn.disabled = false;
+        _pendingSavePayload = null;
+    }
+
+    function _openSavePromptAfterStop() {
+        const history = _chatHistory.slice();
+        if (!history.length) return;
+        _pendingSavePayload = {
+            topic: _topic,
+            voice_a: _voiceA,
+            voice_b: _voiceB,
+            provider_a: _providerA,
+            provider_b: _providerB,
+            banter_mode: _banterMode,
+            temperature: _temperature,
+            allow_explicit: _allowExplicit,
+            turn_count: _turnCount > 0 ? _turnCount : history.length,
+            history,
+        };
+        const err = _el('have-a-chat-save-prompt-error');
+        if (err) {
+            err.textContent = '';
+            err.style.display = 'none';
+        }
+        const tc = _el('have-a-chat-save-prompt-turn-count');
+        if (tc) tc.textContent = String(history.length);
+        const saveBtn = _el('have-a-chat-save-prompt-save-btn');
+        if (saveBtn) saveBtn.disabled = false;
+        const modal = _el('have-a-chat-save-prompt-modal');
+        if (modal) modal.style.display = 'flex';
+    }
+
+    async function _submitPendingSave() {
+        if (!_pendingSavePayload) return;
+        const err = _el('have-a-chat-save-prompt-error');
+        const saveBtn = _el('have-a-chat-save-prompt-save-btn');
+        if (saveBtn) saveBtn.disabled = true;
+        const base = _sessionsApiBase();
+        try {
+            const res = await fetch(base, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(_pendingSavePayload),
+            });
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({}));
+                let msg = (d && (d.error || d.detail)) || `HTTP ${res.status}`;
+                if (res.status === 403) msg = 'Unlock the archive keyring to save this conversation.';
+                if (err) {
+                    err.textContent = msg;
+                    err.style.display = 'block';
+                }
+                if (saveBtn) saveBtn.disabled = false;
+                return;
+            }
+            try { console.info('[HaveAChat] Session saved to archive'); } catch (_) { /* ignore */ }
+            _closeSavePromptModal();
+        } catch (e) {
+            if (err) {
+                err.textContent = 'Could not reach the server. Try again.';
+                err.style.display = 'block';
+            }
+            if (saveBtn) saveBtn.disabled = false;
+        }
+    }
+
+    function _sessionsApiBase() {
+        return (typeof CONSTANTS !== 'undefined' && CONSTANTS.API_PATHS && CONSTANTS.API_PATHS.HAVE_A_CHAT_SESSIONS)
+            ? CONSTANTS.API_PATHS.HAVE_A_CHAT_SESSIONS
+            : '/api/have-a-chat/sessions';
+    }
+
     function stop() {
         _isRunning     = false;
         _isPaused      = false;
         _stopRequested = true;
+        _cancelFreeRun('stop');
+        const hadHistory = _chatHistory.length > 0;
         _hideControlBar();
         const prompt = _el('have-a-chat-round-prompt');
         if (prompt) prompt.style.display = 'none';
         _disableChatForm(false);
         _setStatus('');
         _syncContextStatusBar();
+        if (hadHistory) _openSavePromptAfterStop();
     }
 
     function injectComment() {
@@ -409,6 +717,9 @@ const HaveAChat = (() => {
 
     // ── Init: wire all DOM events ────────────────────────────────────────────
     function init() {
+        if (document.body.dataset.haveAChatInit === '1') return;
+        document.body.dataset.haveAChatInit = '1';
+
         const sidebarBtn = _el('have-a-chat-sidebar-btn');
         if (sidebarBtn) sidebarBtn.addEventListener('click', open);
 
@@ -430,6 +741,24 @@ const HaveAChat = (() => {
         const startBtn = _el('have-a-chat-start-btn');
         if (startBtn) startBtn.addEventListener('click', start);
 
+        const prevBtn = _el('have-a-chat-previous-sessions-btn');
+        if (prevBtn) prevBtn.addEventListener('click', () => { void openSessionsHistory(); });
+
+        const closeSess = _el('close-have-a-chat-sessions-modal');
+        const closeSess2 = _el('have-a-chat-sessions-close-btn');
+        if (closeSess) closeSess.addEventListener('click', _closeSessionsModal);
+        if (closeSess2) closeSess2.addEventListener('click', _closeSessionsModal);
+
+        const dlMd = _el('have-a-chat-sessions-download-btn');
+        if (dlMd) dlMd.addEventListener('click', () => { void _downloadSessionMarkdown(); });
+
+        const closeSavePrompt = _el('close-have-a-chat-save-prompt-modal');
+        const discardSavePrompt = _el('have-a-chat-save-prompt-discard-btn');
+        const confirmSavePrompt = _el('have-a-chat-save-prompt-save-btn');
+        if (closeSavePrompt) closeSavePrompt.addEventListener('click', _closeSavePromptModal);
+        if (discardSavePrompt) discardSavePrompt.addEventListener('click', _closeSavePromptModal);
+        if (confirmSavePrompt) confirmSavePrompt.addEventListener('click', () => { void _submitPendingSave(); });
+
         const providerAEl = _el('have-a-chat-provider-a');
         const providerBEl = _el('have-a-chat-provider-b');
         if (providerAEl) {
@@ -448,18 +777,30 @@ const HaveAChat = (() => {
         const injectBtn = _el('have-a-chat-inject-btn');
         const stopBtn   = _el('have-a-chat-stop-btn');
         if (pauseBtn)  pauseBtn.addEventListener('click', () => _isPaused ? resume() : pause());
-        if (injectBtn) injectBtn.addEventListener('click', injectComment);
+        if (injectBtn) injectBtn.addEventListener('click', () => {
+            _cancelFreeRun('inject-mid-round');
+            injectComment();
+        });
         if (stopBtn)   stopBtn.addEventListener('click', stop);
 
         // Round-end prompt
         const continueBtn       = _el('have-a-chat-continue-btn');
+        const freeRunBtn        = _el('have-a-chat-free-run-btn');
         const injectRoundBtn    = _el('have-a-chat-inject-round-btn');
         const stopRoundBtn      = _el('have-a-chat-stop-round-btn');
         if (continueBtn)    continueBtn.addEventListener('click', () => {
-            _hideRoundPrompt();
-            resume();
+            _cancelFreeRun('continue');
+            _exitRoundPromptUnpause();
+        });
+        if (freeRunBtn) freeRunBtn.addEventListener('click', () => {
+            const n = _resolveFreeRunRoundCountForAction();
+            _freeRunRoundsRemaining = n;
+            _freeRunActive = n > 0;
+            try { console.info('[HaveAChat] Free Run requested; rounds =', n); } catch (_) { /* ignore */ }
+            _exitRoundPromptUnpause(_freeRunActive ? _freeRunStatusText() : 'Resuming…');
         });
         if (injectRoundBtn) injectRoundBtn.addEventListener('click', () => {
+            _cancelFreeRun('inject-round');
             injectComment();
             // injectComment resumes automatically when the injection is submitted
         });
@@ -489,7 +830,7 @@ const HaveAChat = (() => {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    return { init, open, start, pause, resume, stop, injectComment };
+    return { init, open, start, pause, resume, stop, injectComment, openSessionsHistory };
 })();
 
 // have-a-chat.js is deferred after app.js, so Modals.initAll() has already run.

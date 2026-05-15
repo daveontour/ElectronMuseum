@@ -289,7 +289,8 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	chatHandler := handler.NewChatHandler(chatSvc, completeProfileRepo, sessionMasterStore)
 	chatHandler.RegisterRoutes(r)
 
-	haveAChatHandler := handler.NewHaveAChatHandler(chatSvc, sessionMasterStore)
+	haveAChatSessionRepo := repository.NewHaveAChatSessionRepo(pool)
+	haveAChatHandler := handler.NewHaveAChatHandler(chatSvc, sessionMasterStore, haveAChatSessionRepo)
 	haveAChatHandler.RegisterRoutes(r)
 
 	interviewRepo := repository.NewInterviewRepo(pool)

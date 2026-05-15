@@ -21,3 +21,6 @@ electron/dist/
 electron/build/
 electron/dist/
 dist/
+
+# Optional merge for GET /api/suggestions (see CLAUDE.md)
+static/data/suggestions.override.json

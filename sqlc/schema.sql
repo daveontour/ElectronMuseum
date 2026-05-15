@@ -788,6 +788,27 @@ CREATE TABLE IF NOT EXISTS interview_turns (
 CREATE INDEX IF NOT EXISTS idx_interview_turns_interview_turn ON interview_turns (interview_id, turn_number);
 CREATE INDEX IF NOT EXISTS idx_interview_turns_user_id        ON interview_turns (user_id);
 
+-- Saved Have a Chat (two-voice) transcripts when the user stops a run.
+CREATE TABLE IF NOT EXISTS have_a_chat_sessions (
+    id              SERIAL PRIMARY KEY,
+    user_id         BIGINT REFERENCES users(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    stopped_at      TIMESTAMPTZ,
+    topic           TEXT,
+    voice_a         TEXT NOT NULL,
+    voice_b         TEXT NOT NULL,
+    provider_a      TEXT NOT NULL,
+    provider_b      TEXT NOT NULL,
+    banter_mode     BOOLEAN NOT NULL DEFAULT FALSE,
+    temperature     DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+    allow_explicit  BOOLEAN NOT NULL DEFAULT FALSE,
+    turn_count      INTEGER NOT NULL DEFAULT 0,
+    history_json    JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_have_a_chat_sessions_user_id    ON have_a_chat_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_have_a_chat_sessions_stopped_at ON have_a_chat_sessions (stopped_at);
+
 -- Per-user scheduling state for the maintenance jobs exposed in
 -- Configuration > Background Jobs. One row per (user_id, job_name).
 CREATE TABLE IF NOT EXISTS background_jobs (

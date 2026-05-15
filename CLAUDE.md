@@ -320,6 +320,13 @@ lives under `/admin/llm-usage/…`. Users can download their own PDF bill via
 - **Provider selection:** `"claude"`, `"gemini"`, `"deepseek"`, or `"localai"` in request body
 - All AI tool SQL is scoped by `user_id` via `toolsUIDFilter(ctx, q, args)` in `internal/ai/tools.go`
 
+### Suggestions library (chat sidebar)
+
+- **`GET /api/suggestions`** — [`internal/handler/template_handler.go`](internal/handler/template_handler.go) renders [`static/data/suggestions.json`](static/data/suggestions.json) with Jinja subject variables from `buildContext` (`owner`, `owners`, `full_name`, `he` / `him` / `his` / `himself`, `owner_gender`, `deployment_nature_local`, image tokens, etc.).
+- Optional **`static/data/suggestions.override.json`** (gitignored): same top-level shape as `suggestions.json`. Categories with the same `category` name **append** their `suggestions` arrays to the base file; new category names are appended whole. Lets operators add prompts without editing the stock file.
+- The JSON response includes **`_meta.deployment_nature_local`** (`True` / `False` strings) for client-side rules (e.g. `requires: ["local_only"]` on an item).
+- UI: [`static/js/museum/modals-suggestions.js`](static/js/museum/modals-suggestions.js); optional per-item fields include `action_label`, `description`, `requires`, `sensitivity`, and `function` (must match a key on `AppActions` in [`static/js/museum/app.js`](static/js/museum/app.js)).
+
 ### Import Pipeline
 
 | Tier | Mechanism | Endpoint |
@@ -440,6 +447,7 @@ UI typography is centralised in `static/css/museum_of.css` under `:root` (same f
 | Main SPA template | `templates/index.template.html` |
 | Login / register page | `templates/login.html` |
 | Share visitor page | `templates/share.html` |
+| Suggestions JSON + optional override | `static/data/suggestions.json`, `static/data/suggestions.override.json` (override gitignored) |
 
 ## Security Notes
 
