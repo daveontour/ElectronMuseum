@@ -60,6 +60,7 @@ const AppActions = {
     //[CONSTANTS.FUNCTION_NAMES.SeventhFunction]: () => SSE.browserFunctions.testEmail(), // showImageGalleryOptions
  // showEmailGalleryOptions
     ["listContacts"]: () => Modals.Contacts.open(),
+    ["openIdentityWizard"]: () => Modals.IdentityProfileWizard && Modals.IdentityProfileWizard.open(),
 
 };
 window.customObject = AppActions; // Expose for Suggestions.json if it relies on global `customObject`
@@ -4655,7 +4656,7 @@ const App = (() => {
     //   PATCH /auth/me/ui-preferences (same shape) with localStorage as fallback cache.
     const ONBOARDING_SCHEMA_VERSION = 1;
     const ONBOARDING_STATE_PREFIX = 'dm_onboarding_state_v1';
-    const ONBOARDING_STEPS = ['import_data', 'subject_config', 'ask_first_question', 'unlock_sensitive'];
+    const ONBOARDING_STEPS = ['import_data', 'subject_config', 'identity_profile', 'ask_first_question', 'unlock_sensitive'];
 
     function onboardingDefaultState() {
         return {
@@ -4664,6 +4665,7 @@ const App = (() => {
             checklist: {
                 import_data: false,
                 subject_config: false,
+                identity_profile: false,
                 ask_first_question: false,
                 unlock_sensitive: false
             }
@@ -4752,6 +4754,7 @@ const App = (() => {
         writeOnboardingState(state);
         renderOnboardingChecklistState();
     }
+    window.markOnboardingChecklistStepDone = markOnboardingChecklistStepDone;
 
     function renderOnboardingChecklistState() {
         const state = readOnboardingState();

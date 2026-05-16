@@ -880,6 +880,84 @@ func (s *ChatService) TurnCountsBatch(ctx context.Context, ids []int64) (map[int
 	return s.chatRepo.TurnCountsBatch(ctx, ids)
 }
 
+// identityExtractionPrompt is sent to Claude/Gemini to extract structured identity fields from free text.
+const identityExtractionPrompt = `You are extracting biographical information from a personal profile document.
+Return ONLY valid JSON with exactly this structure. Use null for any field you cannot find. Do not add extra fields.
+{
+  "basic": {
+    "full_name": null, "preferred_name": null, "date_of_birth": null, "gender": null,
+    "nationality": null, "residence": null, "emails": null, "phones": null,
+    "linkedin": null, "social": null, "handedness": null, "religion": null, "other": null
+  },
+  "health": { "conditions": null, "hospitalisations": null, "surgeries": null, "mental_health": null },
+  "family": { "parents": null, "siblings": null, "extended": null, "early_life": null },
+  "education": { "primary": null, "secondary": null, "university": null, "vocational": null },
+  "career": { "summary": null, "timeline": null, "skills": null, "anecdotes": null },
+  "relationships": { "romantic_history": null, "close_friends": null, "social_notes": null },
+  "interests": { "sports": null, "arts": null, "music": null, "intellectual": null, "travel": null, "technology": null },
+  "personal": { "communication_style": null, "values": null, "rules_for_life": null, "psychological_notes": null },
+  "additional": { "notes": null }
+}
+
+Document to extract from:
+`
+
+// ExtractIdentityProfile uses Claude (falling back to Gemini) to parse free-text and return
+// a structured map of identity fields for the profile wizard.
+func (s *ChatService) ExtractIdentityProfile(ctx context.Context, r *http.Request, text string) (map[string]any, error) {
+	prompt := identityExtractionPrompt + text
+
+	var raw string
+	var usage *appai.LLMUsage
+	var providerName string
+
+	claude := s.effectiveClaudeProvider(ctx, r, "")
+	if claude != nil && claude.IsAvailable() {
+		providerName = "claude"
+		if cp, ok := claude.(*appai.ClaudeProvider); ok {
+			var err error
+			raw, usage, err = cp.SimpleGenerate(ctx, prompt)
+			if err != nil {
+				return make(map[string]any), err
+			}
+		}
+	} else {
+		providerName = "gemini"
+		gemini := s.effectiveGeminiProvider(ctx, r, "")
+		if gemini == nil || !gemini.IsAvailable() {
+			return make(map[string]any), fmt.Errorf("no AI provider available for extraction")
+		}
+		if gp, ok := gemini.(*appai.GeminiProvider); ok {
+			var err error
+			raw, usage, err = gp.SimpleGenerate(ctx, prompt)
+			if err != nil {
+				return make(map[string]any), err
+			}
+		}
+	}
+	_ = providerName
+	s.applyUsageKeySourceToLLMUsage(ctx, r, "", usage)
+	RecordLLMUsage(ctx, s.billing, s.userRepo, usage, nil)
+
+	// Strip markdown code fences if the model wrapped the JSON
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "```") {
+		if idx := strings.Index(raw, "\n"); idx != -1 {
+			raw = raw[idx+1:]
+		}
+		if idx := strings.LastIndex(raw, "```"); idx != -1 {
+			raw = raw[:idx]
+		}
+		raw = strings.TrimSpace(raw)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		return make(map[string]any), fmt.Errorf("parse extraction response: %w", err)
+	}
+	return result, nil
+}
+
 // GenerateCompleteProfile builds a multi-step relationship profile for a contact
 // from messages and emails, using the specified AI provider (gemini or claude) to summarize,
 // and saves it to complete_profiles. Mirrors the Python base_chat_service.get_complete_profile_by_name.

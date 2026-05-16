@@ -3604,6 +3604,7 @@ Modals.initAll = () => {
         if (Modals.SaveResponseTitle && Modals.SaveResponseTitle.init) Modals.SaveResponseTitle.init();
         if (Modals.UserLLMSettings && Modals.UserLLMSettings.init) Modals.UserLLMSettings.init();
         if (typeof HaveAChat !== 'undefined' && HaveAChat.init) HaveAChat.init();
+        if (Modals.IdentityProfileWizard && Modals.IdentityProfileWizard.init) Modals.IdentityProfileWizard.init();
 };
 
 Modals.closeAll = () => {

@@ -85,6 +85,21 @@ func (s *DocumentService) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// UpdateContent replaces the binary data of a document, encrypting if masterPassword is non-empty.
+func (s *DocumentService) UpdateContent(ctx context.Context, id int64, data []byte, masterPassword string) error {
+	size := int64(len(data))
+	isEncrypted := false
+	if masterPassword != "" {
+		enc, err := appcrypto.EncryptDocumentData(ctx, s.pool, masterPassword, data, s.pepper)
+		if err != nil {
+			return fmt.Errorf("encrypt document data: %w", err)
+		}
+		data = enc
+		isEncrypted = true
+	}
+	return s.repo.UpdateDocumentContent(ctx, id, data, size, isEncrypted)
+}
+
 // EncryptExisting encrypts all non-sensitive, non-encrypted documents using the keyring DEK.
 // Returns the count of documents encrypted.
 func (s *DocumentService) EncryptExisting(ctx context.Context, masterPassword string) (int, error) {

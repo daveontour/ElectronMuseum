@@ -293,6 +293,12 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 	haveAChatHandler := handler.NewHaveAChatHandler(chatSvc, sessionMasterStore, haveAChatSessionRepo)
 	haveAChatHandler.RegisterRoutes(r)
 
+	// ── Identity Profile Wizard ───────────────────────────────────────────────
+	identityProfileHandler := handler.NewIdentityProfileHandler(
+		chatSvc, documentSvc, documentRepo, subjectConfigSvc, sessionMasterStore,
+	)
+	identityProfileHandler.RegisterRoutes(r)
+
 	interviewRepo := repository.NewInterviewRepo(pool)
 	interviewHandler := handler.NewInterviewHandler(chatSvc, interviewRepo, sessionMasterStore)
 	interviewHandler.RegisterRoutes(r)

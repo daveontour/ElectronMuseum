@@ -178,12 +178,20 @@
                     <button type="button" class="more-options-btn" id="artefacts-sidebar-btn">
                         <i class="fas fa-box-open"></i> Artefacts
                     </button>
-                    <button type="button" class="more-options-btn" id="pam-bot-trigger-btn" style="background:linear-gradient(135deg,#2c5282,#4a7fcb);color:#fff;margin-top:6px;">
+
+                    <!-- This isn't ready yet -->
+                    <!-- <button type="button" class="more-options-btn" id="pam-bot-trigger-btn" style="background:linear-gradient(135deg,#2c5282,#4a7fcb);color:#fff;margin-top:6px;">
                         <i class="fas fa-heart"></i> Memory Companion
-                    </button>
+                    </button> -->
+                    <!-- <button type="button" class="more-options-btn" id="identity-profile-wizard-btn" title="Create or edit your identity profile" style="margin-top:4px;">
+                        <i class="fas fa-id-card"></i> Identity Profile
+                    </button> -->
                 </div>
                 <div class="sidebar-spacer" aria-hidden="true"></div>
                 <div class="sidebar-bottom-tile">
+                    <button type="button" class="more-options-btn sidebar-settings-btn" id="identity-profile-wizard-btn" title="Create or edit your identity profile" style="margin-top:4px;">
+                        <i class="fas fa-id-card"></i> Profile
+                    </button>
                     <button type="button" class="more-options-btn sidebar-settings-btn" id="data-import-sidebar-btn">
                         <i class="fas fa-database"></i> Import &amp; Manage Data
                     </button>
@@ -3711,6 +3719,7 @@
     <script src="/static/js/museum/modals-artefacts.js" defer></script>
     <script src="/static/js/museum/modals-sensitive.js" defer></script>
     <script src="/static/js/museum/modals-settings.js?v={{ static_modals_settings_js_cache_bust }}" defer></script>
+    <script src="/static/js/museum/identity-profile-wizard.js" defer></script>
     <script src="/static/js/museum/guide.js?v={{ static_app_js_cache_bust }}" defer></script>
     <script src="/static/js/museum/interviewer.js" defer></script>
     <script src="/static/js/museum/chat-voice-input.js" defer></script>
@@ -4508,6 +4517,12 @@
                             </button>
                             <span class="onboarding-checklist-status" id="onboarding-step-status-subject_config">Pending</span>
                         </li>
+                        <li class="onboarding-checklist-item" data-onboarding-step="identity_profile">
+                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-identity-btn">
+                                Build your Identity Profile
+                            </button>
+                            <span class="onboarding-checklist-status" id="onboarding-step-status-identity_profile">Pending</span>
+                        </li>
                         <li class="onboarding-checklist-item" data-onboarding-step="ask_first_question">
                             <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-question-btn">
                                 Ask your first question
@@ -4621,6 +4636,289 @@
         <img id="pam-bot-photo-img" src="" alt="Memory photo" />
     </div>
 </div>
+
+<!-- ── Identity Profile Wizard Modal ──────────────────────────────────────── -->
+<div id="identity-profile-wizard-modal" class="modal" style="display:none;" onclick="if(event.target===this)Modals.IdentityProfileWizard&&Modals.IdentityProfileWizard.close()">
+  <div class="modal-content identity-profile-wizard-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2><i class="fas fa-id-card"></i> Subject Profile</h2>
+      <button id="close-identity-profile-wizard" class="modal-close-btn" type="button">&times;</button>
+    </div>
+
+    <!-- Step progress bar (dots rendered by JS) -->
+    <div class="wizard-progress-bar" id="wizard-progress-bar"></div>
+
+    <!-- Step panels -->
+    <div class="wizard-steps-container" id="wizard-steps-container">
+
+      <!-- Step 0: Basic Identity -->
+      <div class="wizard-step" id="wizard-step-0">
+        <h3>Basic Identity</h3>
+        <div class="wizard-fields wizard-fields--identity">
+          <!-- Left column: all single-line inputs -->
+          <div class="wizard-identity-inputs">
+            <label>Full Name <input type="text" id="wf-full-name" class="form-control" placeholder="e.g. David John Burton"></label>
+            <label>Preferred Name <input type="text" id="wf-preferred-name" class="form-control" placeholder="e.g. Dave"></label>
+            <label>Date of Birth <input type="date" id="wf-dob" class="form-control"></label>
+            <label>Gender
+              <select id="wf-gender" class="form-control">
+                <option value="">-- Select --</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </label>
+            <label>Nationality <input type="text" id="wf-nationality" class="form-control" placeholder="e.g. Australian"></label>
+            <label>Current Residence <input type="text" id="wf-residence" class="form-control" placeholder="e.g. Brisbane, Australia"></label>
+            <label>Email Addresses <input type="text" id="wf-emails" class="form-control" placeholder="comma-separated"></label>
+            <label>Phone Numbers <input type="text" id="wf-phones" class="form-control" placeholder="comma-separated"></label>
+            <label>LinkedIn URL <input type="url" id="wf-linkedin" class="form-control" placeholder="https://linkedin.com/in/…"></label>
+            <label>Other Social / Web <input type="text" id="wf-social" class="form-control" placeholder="Facebook, website, etc."></label>
+            <label>Handedness
+              <select id="wf-handedness" class="form-control">
+                <option value="">-- Select --</option>
+                <option value="Right-handed">Right-handed</option>
+                <option value="Left-handed">Left-handed</option>
+                <option value="Ambidextrous">Ambidextrous</option>
+              </select>
+            </label>
+            <label>Religion / Beliefs <input type="text" id="wf-religion" class="form-control" placeholder="e.g. Atheist, Catholic, Buddhist…"></label>
+          </div>
+          <!-- Right column: textarea fills full height -->
+          <label class="wizard-identity-notes">Other Basic Facts
+            <textarea id="wf-basic-other" placeholder="Childhood address, first car, quirks, memorable facts, other notes about yourself…"></textarea>
+          </label>
+        </div>
+        <!-- AI document import — fixed at bottom of Basic Identity step -->
+        <div class="wizard-parse-section">
+          <p class="wizard-parse-label">Import from existing document — paste any biography, CV, or personal document and AI will extract the details</p>
+          <textarea id="wizard-parse-input" class="form-control wizard-parse-textarea" rows="4" placeholder="Paste any existing biography, CV, or personal document here&#8230;"></textarea>
+          <div class="wizard-parse-actions">
+            <button id="wizard-parse-btn" type="button" class="modal-btn modal-btn-secondary">
+              <i class="fas fa-magic"></i> Extract with AI
+            </button>
+            <span id="wizard-parse-status" class="wizard-parse-status"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 1: Health -->
+      <div class="wizard-step" id="wizard-step-1" style="display:none">
+        <div class="wizard-fields wizard-fields--health">
+          <div class="wizard-chip-group">
+            <span class="wizard-chip-group-label">Known Conditions (click to select)</span>
+            <div class="wizard-chip-container" id="wf-conditions-chips">
+              <button type="button" class="wizard-chip" data-value="High blood pressure">High blood pressure</button>
+              <button type="button" class="wizard-chip" data-value="Gout">Gout</button>
+              <button type="button" class="wizard-chip" data-value="Diabetes">Diabetes</button>
+              <button type="button" class="wizard-chip" data-value="Asthma">Asthma</button>
+              <button type="button" class="wizard-chip" data-value="Heart disease">Heart disease</button>
+              <button type="button" class="wizard-chip" data-value="Arthritis">Arthritis</button>
+              <button type="button" class="wizard-chip" data-value="Depression">Depression</button>
+              <button type="button" class="wizard-chip" data-value="Anxiety">Anxiety</button>
+              <button type="button" class="wizard-chip" data-value="Low heart rate">Low heart rate</button>
+            </div>
+            <label style="font-size:var(--text-sm);color:var(--color-text-muted);">Other conditions (comma-separated)
+              <input type="text" id="wf-conditions-custom" class="form-control" placeholder="Any other conditions…">
+            </label>
+          </div>
+          <label>Hospitalisations
+            <textarea id="wf-hospitalisations" rows="3" placeholder="Year and reason, one per line&#10;e.g. 1994 — Dehydration from stomach virus"></textarea>
+          </label>
+          <label>Surgeries
+            <textarea id="wf-surgeries" rows="3" placeholder="Year and procedure, one per line&#10;e.g. 2015 — Ankle surgery"></textarea>
+          </label>
+          <label>Mental Health Notes
+            <textarea id="wf-mental-health" rows="4" placeholder="Any periods of depression, anxiety, psychological help sought, coping strategies…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 2: Family -->
+      <div class="wizard-step" id="wizard-step-2" style="display:none">
+        <h3>Family</h3>
+        <div class="wizard-fields">
+          <label>Parents
+            <textarea id="wf-parents" rows="4" placeholder="Names, dates of birth, occupations, notable facts…"></textarea>
+          </label>
+          <label>Siblings
+            <textarea id="wf-siblings" rows="4" placeholder="Names, birth dates, partners, children, relationship with each…"></textarea>
+          </label>
+          <label>Extended Family
+            <textarea id="wf-extended-family" rows="3" placeholder="Grandparents, aunts, uncles, cousins, notable family members…"></textarea>
+          </label>
+          <label>Early Family Life
+            <textarea id="wf-early-life" rows="3" placeholder="Childhood home, family dynamics, holidays, formative memories…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 3: Education -->
+      <div class="wizard-step" id="wizard-step-3" style="display:none">
+        <h3>Education &amp; Qualifications</h3>
+        <div class="wizard-fields">
+          <label>Primary School
+            <textarea id="wf-primary" rows="3" placeholder="School name, years attended, notable achievements, teachers…"></textarea>
+          </label>
+          <label>High School / Secondary
+            <textarea id="wf-secondary" rows="4" placeholder="School name, years, subjects, achievements, social life…"></textarea>
+          </label>
+          <label>University / Tertiary
+            <textarea id="wf-university" rows="3" placeholder="Institution, degree, years, notable experiences…"></textarea>
+          </label>
+          <label>Vocational &amp; Professional Qualifications
+            <textarea id="wf-vocational" rows="3" placeholder="Pilots licence, martial arts belts, professional certifications, courses…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 4: Career -->
+      <div class="wizard-step" id="wizard-step-4" style="display:none">
+        <h3>Career History</h3>
+        <div class="wizard-fields">
+          <label>Career Summary
+            <textarea id="wf-career-summary" rows="4" placeholder="A paragraph describing your overall career profile, expertise and approach…"></textarea>
+          </label>
+          <label>Career Timeline (one role per line: Years | Role | Organisation)
+            <textarea id="wf-career-timeline" rows="6" placeholder="e.g.&#10;1987–1996 | Engineer/Consultant | Hewlett-Packard&#10;2016–2023 | Head Integration Services | SITA, Dubai"></textarea>
+          </label>
+          <label>Key Skills
+            <textarea id="wf-career-skills" rows="3" placeholder="e.g. Enterprise Architecture · Aviation IT · Program Management · Cloud…"></textarea>
+          </label>
+          <label>Career Anecdotes &amp; Highlights
+            <textarea id="wf-career-anecdotes" rows="4" placeholder="Memorable moments, major wins, lessons learned, notable projects…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 5: Relationships & Social -->
+      <div class="wizard-step" id="wizard-step-5" style="display:none">
+        <h3>Relationships &amp; Social Life</h3>
+        <div class="wizard-fields">
+          <label>Romantic History
+            <textarea id="wf-romantic-history" rows="5" placeholder="Significant relationships, how you met, what they meant to you…"></textarea>
+          </label>
+          <label>Close Friends
+            <textarea id="wf-close-friends" rows="5" placeholder="Name, how you met, why they matter, memorable moments…"></textarea>
+          </label>
+          <label>Social Notes
+            <textarea id="wf-social-notes" rows="3" placeholder="How you make friends, social style, community involvement, recurring social activities…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 6: Interests & Hobbies -->
+      <div class="wizard-step" id="wizard-step-6" style="display:none">
+        <h3>Interests, Hobbies &amp; Travel</h3>
+        <div class="wizard-fields wizard-fields--interests">
+          <div class="wizard-chip-group">
+            <span class="wizard-chip-group-label">Sports &amp; Fitness</span>
+            <div class="wizard-chip-container" id="wf-sports-chips">
+              <button type="button" class="wizard-chip" data-value="Running">Running</button>
+              <button type="button" class="wizard-chip" data-value="Cycling">Cycling</button>
+              <button type="button" class="wizard-chip" data-value="Triathlon">Triathlon</button>
+              <button type="button" class="wizard-chip" data-value="Swimming">Swimming</button>
+              <button type="button" class="wizard-chip" data-value="Martial arts">Martial arts</button>
+              <button type="button" class="wizard-chip" data-value="Tennis">Tennis</button>
+              <button type="button" class="wizard-chip" data-value="Golf">Golf</button>
+              <button type="button" class="wizard-chip" data-value="Football">Football</button>
+              <button type="button" class="wizard-chip" data-value="Gym">Gym</button>
+              <button type="button" class="wizard-chip" data-value="Hiking">Hiking</button>
+            </div>
+          </div>
+          <div class="wizard-chip-group">
+            <span class="wizard-chip-group-label">Arts &amp; Culture</span>
+            <div class="wizard-chip-container" id="wf-arts-chips">
+              <button type="button" class="wizard-chip" data-value="Theatre">Theatre</button>
+              <button type="button" class="wizard-chip" data-value="Improv">Improv</button>
+              <button type="button" class="wizard-chip" data-value="Music">Music</button>
+              <button type="button" class="wizard-chip" data-value="Film">Film</button>
+              <button type="button" class="wizard-chip" data-value="Dance">Dance</button>
+              <button type="button" class="wizard-chip" data-value="Writing">Writing</button>
+              <button type="button" class="wizard-chip" data-value="Photography">Photography</button>
+              <button type="button" class="wizard-chip" data-value="Reading">Reading</button>
+            </div>
+          </div>
+          <div class="wizard-chip-group">
+            <span class="wizard-chip-group-label">Intellectual Interests</span>
+            <div class="wizard-chip-container" id="wf-intellectual-chips">
+              <button type="button" class="wizard-chip" data-value="Science">Science</button>
+              <button type="button" class="wizard-chip" data-value="Philosophy">Philosophy</button>
+              <button type="button" class="wizard-chip" data-value="Technology">Technology</button>
+              <button type="button" class="wizard-chip" data-value="Politics">Politics</button>
+              <button type="button" class="wizard-chip" data-value="History">History</button>
+              <button type="button" class="wizard-chip" data-value="Economics">Economics</button>
+              <button type="button" class="wizard-chip" data-value="Atheism / Secularism">Atheism / Secularism</button>
+              <button type="button" class="wizard-chip" data-value="Aviation">Aviation</button>
+            </div>
+          </div>
+          <label>Music — Favourite artists, concerts, genres
+            <textarea id="wf-music" rows="3" placeholder="e.g. Top 5 concerts: Bruce Springsteen, Pink… Favourite genres…"></textarea>
+          </label>
+          <label>Travel Highlights
+            <textarea id="wf-travel" rows="4" placeholder="Countries lived in, most memorable trips, travel style…"></textarea>
+          </label>
+          <label>Technology &amp; Computing
+            <textarea id="wf-technology" rows="3" placeholder="How you use technology, projects, skills, notable experiences…"></textarea>
+          </label>
+          <label>Other Interests
+            <textarea id="wf-other-interests" rows="3" placeholder="Anything else you enjoy, collect, or care about…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 7: Personal Profile -->
+      <div class="wizard-step" id="wizard-step-7" style="display:none">
+        <h3>Personal Profile &amp; Values</h3>
+        <div class="wizard-fields">
+          <label>Communication Style
+            <textarea id="wf-communication-style" rows="4" placeholder="How you communicate — tone, humour, formality, written vs. spoken differences…"></textarea>
+          </label>
+          <label>Values &amp; Beliefs
+            <textarea id="wf-values" rows="4" placeholder="What matters most to you — ethical stances, guiding principles, things you won't compromise on…"></textarea>
+          </label>
+          <label>Rules for Life
+            <textarea id="wf-rules-for-life" rows="3" placeholder="Your personal mottos or rules — one per line&#10;e.g. Stay Curious&#10;Be good to each other"></textarea>
+          </label>
+          <label>Psychological &amp; Personality Notes
+            <textarea id="wf-psychological-notes" rows="4" placeholder="Psychometric profiles, self-assessments, strengths, blind spots, recurring patterns…"></textarea>
+          </label>
+          <label>Favourite Quotes
+            <textarea id="wf-quotes" rows="3" placeholder="Quotes that resonate with you, books or people that shaped your thinking…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 8: Additional Information -->
+      <div class="wizard-step" id="wizard-step-8" style="display:none">
+        <h3>Additional Information</h3>
+        <div class="wizard-fields wizard-fields--single">
+          <label style="grid-column:1/-1;">Other Information
+            <textarea id="wf-additional-info" placeholder="Any other facts, stories, context, preferences, or notes about yourself…"></textarea>
+          </label>
+        </div>
+      </div>
+
+    </div><!-- /.wizard-steps-container -->
+
+    <!-- Navigation bar -->
+    <div class="wizard-nav">
+      <button type="button" id="wizard-prev-btn" class="modal-btn modal-btn-secondary" style="display:none;">
+        <i class="fas fa-arrow-left"></i> Previous
+      </button>
+      <span class="wizard-step-label" id="wizard-step-label">Step 1 of 9 — Basic Identity</span>
+      <div style="display:flex;gap:8px;">
+        <button type="button" id="wizard-next-btn" class="modal-btn modal-btn-primary">
+          Next <i class="fas fa-arrow-right"></i>
+        </button>
+        <button type="button" id="wizard-save-btn" class="modal-btn modal-btn-primary" style="display:none;">
+          <i class="fas fa-save"></i> Save Profile
+        </button>
+      </div>
+    </div>
+  </div><!-- /.modal-content -->
+</div><!-- /#identity-profile-wizard-modal -->
 
 <!-- LLM API Keys field help (fixed layer; must stay outside overflow:auto config tabs) -->
 <div id="user-llm-info-popover" class="user-llm-info-popover" hidden>

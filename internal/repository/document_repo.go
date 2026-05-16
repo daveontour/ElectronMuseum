@@ -225,6 +225,35 @@ func (r *DocumentRepo) UpdateData(ctx context.Context, id int64, data []byte, is
 	return err
 }
 
+// FindIdentityProfile returns the identity_profile.md reference document for the current user,
+// or (nil, nil) if none exists. Does not return the binary blob — use GetData separately.
+func (r *DocumentRepo) FindIdentityProfile(ctx context.Context) (*model.ReferenceDocument, error) {
+	uid := uidFromCtx(ctx)
+	q := `SELECT ` + documentCols + ` FROM reference_documents
+	      WHERE filename = 'identity_profile.md' AND tags LIKE '%identity-profile%'`
+	args := []any{}
+	q, args = addUIDFilter(q, args, uid)
+	q += ` LIMIT 1`
+	d, err := scanDocument(r.pool.QueryRowContext(ctx, q, args...))
+	if err != nil {
+		if isNoRows(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("FindIdentityProfile: %w", err)
+	}
+	return d, nil
+}
+
+// UpdateDocumentContent replaces the binary blob, size, and encryption state of a document.
+func (r *DocumentRepo) UpdateDocumentContent(ctx context.Context, id int64, data []byte, size int64, isEncrypted bool) error {
+	uid := uidFromCtx(ctx)
+	q := `UPDATE reference_documents SET data=?1, size=?2, is_encrypted=?3, updated_at=CURRENT_TIMESTAMP WHERE id=?4`
+	args := []any{data, size, isEncrypted, id}
+	q, args = addUIDFilter(q, args, uid)
+	_, err := r.pool.ExecContext(ctx, q, args...)
+	return err
+}
+
 // Delete removes a reference document.
 func (r *DocumentRepo) Delete(ctx context.Context, id int64) error {
 	uid := uidFromCtx(ctx)
