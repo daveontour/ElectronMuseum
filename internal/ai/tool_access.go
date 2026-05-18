@@ -144,6 +144,15 @@ type ToolMeta struct {
 	Description string `json:"description"`
 }
 
+// AllToolsEnabledPolicy returns a policy with every known tool enabled.
+func AllToolsEnabledPolicy() ToolAccessPolicy {
+	out := make(ToolAccessPolicy)
+	for _, m := range AllToolMetas() {
+		out[m.Name] = ToolAccessRule{Enabled: true}
+	}
+	return out
+}
+
 // AllToolMetas lists every tool with description (for settings UI).
 func AllToolMetas() []ToolMeta {
 	var out []ToolMeta

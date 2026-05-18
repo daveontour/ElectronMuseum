@@ -108,44 +108,35 @@ Modals.Suggestions = (() => {
         const card = document.createElement('article');
         card.className = 'suggestions-item-card';
 
+        const promptText = (sugg.prompt || '').trim();
+        const showPreview = promptText.length > 0 && promptText !== '-Initiates LocalProcessing-';
+
+        // Header row: title left, buttons right
+        const header = document.createElement('div');
+        header.className = 'suggestions-item-header';
+
         const titleEl = document.createElement('h3');
         titleEl.className = 'suggestions-item-title';
         titleEl.textContent = sugg.title || 'Untitled';
-        card.appendChild(titleEl);
+        header.appendChild(titleEl);
 
-        if (sugg.description && String(sugg.description).trim()) {
-            const desc = document.createElement('p');
-            desc.className = 'suggestions-item-desc';
-            desc.textContent = String(sugg.description).trim();
-            card.appendChild(desc);
-        }
+        const actions = document.createElement('div');
+        actions.className = 'suggestions-item-actions';
 
-        const promptText = (sugg.prompt || '').trim();
-        const showFn = !!(sugg.function && typeof AppActions !== 'undefined' && typeof AppActions[sugg.function] === 'function');
-        const showPreview = promptText.length > 0 && promptText !== '-Initiates LocalProcessing-';
-
+        let toggle = null;
         if (showPreview) {
-            const previewWrap = document.createElement('div');
-            previewWrap.className = 'suggestions-preview-wrap';
-            const toggle = document.createElement('button');
+            toggle = document.createElement('button');
             toggle.type = 'button';
             toggle.className = 'suggestions-preview-toggle';
             toggle.textContent = 'Show prompt';
-            const body = document.createElement('div');
-            body.className = 'suggestions-preview-body';
-            body.textContent = promptText;
             toggle.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const open = card.classList.toggle('suggestions-item-card--preview-open');
                 toggle.textContent = open ? 'Hide prompt' : 'Show prompt';
             });
-            previewWrap.appendChild(toggle);
-            previewWrap.appendChild(body);
-            card.appendChild(previewWrap);
+            actions.appendChild(toggle);
         }
 
-        const actions = document.createElement('div');
-        actions.className = 'suggestions-item-actions';
         const runBtn = document.createElement('button');
         runBtn.type = 'button';
         runBtn.className = 'modal-btn suggestions-run-btn';
@@ -155,7 +146,26 @@ Modals.Suggestions = (() => {
             maybeConfirmAndRun(sugg, cat);
         });
         actions.appendChild(runBtn);
-        card.appendChild(actions);
+
+        header.appendChild(actions);
+        card.appendChild(header);
+
+        if (sugg.description && String(sugg.description).trim()) {
+            const desc = document.createElement('p');
+            desc.className = 'suggestions-item-desc';
+            desc.textContent = String(sugg.description).trim();
+            card.appendChild(desc);
+        }
+
+        if (showPreview) {
+            const previewWrap = document.createElement('div');
+            previewWrap.className = 'suggestions-preview-wrap';
+            const body = document.createElement('div');
+            body.className = 'suggestions-preview-body';
+            body.textContent = promptText;
+            previewWrap.appendChild(body);
+            card.appendChild(previewWrap);
+        }
 
         return card;
     }

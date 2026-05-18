@@ -194,7 +194,7 @@ func New(pool *sql.DB, billingPool *sql.DB, cfg *config.Config) (http.Handler, *
 
 	// ── Contacts, email-matches, exclusions, classifications ──────────────────
 	contactSvc := service.NewContactService(contactRepo, subjectConfigRepo)
-	contactHandler := handler.NewContactHandler(contactSvc, sessionMasterStore)
+	contactHandler := handler.NewContactHandler(contactSvc, sessionMasterStore, pool)
 	contactHandler.RegisterRoutes(r)
 
 	// ── Attachments ───────────────────────────────────────────────────────────

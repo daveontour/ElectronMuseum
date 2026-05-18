@@ -1671,34 +1671,31 @@ body {
     overflow-y: auto;
 }
 
-/* Welcome + archive overview: 30% wider than former 1000px, fixed 80vh; bottom section scrolls */
+/* Welcome dialog: auto-height, capped so it fits comfortably on screen */
 .info-box.info-box-welcome-extended {
     width: 1300px;
     max-width: min(1300px, 96vw);
-    height: 80vh;
+    height: auto;
     max-height: 80vh;
     min-width: 0;
     align-items: stretch;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow-y: auto;
 }
 .info-box-modal .info-box.info-box-welcome-extended {
     max-height: 80vh;
 }
 .info-box-welcome-top {
     flex-shrink: 0;
-    max-height: 42vh;
     min-width: 0;
     max-width: 100%;
     overflow-x: hidden;
-    overflow-y: auto;
     width: 100%;
     box-sizing: border-box;
 }
 .info-box-archive-overview {
-    flex: 1 1 0;
+    flex-shrink: 0;
     min-width: 0;
-    min-height: 0;
     max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
@@ -3111,12 +3108,12 @@ body {
 }
 
 /* Manage Contacts tab + Subject Configuration Interests — same compact table chrome */
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table,
+#contacts-modal table.manage-contacts-data-table.contacts-table,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table {
     font-size: calc(1.5 * var(--text-2xs));
     line-height: var(--line-height-tight, 1.2);
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table thead th,
+#contacts-modal table.manage-contacts-data-table.contacts-table thead th,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table thead th {
     padding: 3px 9px;
     font-size: calc(1.5 * 0.65rem);
@@ -3126,28 +3123,28 @@ body {
     color: var(--color-text-muted, #555);
     vertical-align: middle;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-th,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-th,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-th {
     text-align: left;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-th-actions,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-th-actions,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-th-actions {
     text-align: center;
     width: calc(1.5 * 4.75rem);
     min-width: calc(1.5 * 4.75rem);
     white-space: nowrap;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table tbody td,
+#contacts-modal table.manage-contacts-data-table.contacts-table tbody td,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table tbody td {
     padding: 3px 9px;
     vertical-align: middle;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table tbody td:last-child,
+#contacts-modal table.manage-contacts-data-table.contacts-table tbody td:last-child,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table tbody td:last-child {
     text-align: center;
     vertical-align: middle;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-actions-cell,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-actions-cell,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-actions-cell {
     display: flex;
     justify-content: center;
@@ -3157,8 +3154,8 @@ body {
     width: 100%;
     min-height: calc(1.5 * 1.25rem);
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn.modal-btn,
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn.modal-btn,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn.modal-btn,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn {
     padding: 2px 5px;
@@ -3169,30 +3166,30 @@ body {
     vertical-align: middle;
     margin: 0;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn i,
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete i,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn i,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete i,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn i,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete i {
     font-size: 0.85em;
     vertical-align: -0.06em;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn {
     background: #e8ecf2;
     color: #dc3545;
     border: 1px solid #d0d8e4;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn:hover,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn:hover,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn:hover {
     background: #dde3ec;
     color: #b02a37;
     border-color: #c5cedc;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn i,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn i,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn i {
     color: #dc3545;
 }
-#manage-contacts-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn:hover i,
+#contacts-modal table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn:hover i,
 #subject-configuration-tab table.manage-contacts-data-table.contacts-table .manage-contacts-icon-btn--delete.modal-btn:hover i {
     color: #b02a37;
 }
@@ -4987,10 +4984,11 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 }
 .confirmation-modal-body {
     padding: 1.5rem;
+    text-align: center;
 }
 .confirmation-modal-buttons {
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
     gap: 0.75em;
     padding: 0 1.5rem 1.5rem;
 }
@@ -5265,8 +5263,13 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     min-height: 0;
     overflow: hidden;
 }
-#manage-contacts-tab .manage-contacts-tab-content.active {
+#contacts-modal .manage-contacts-tab-content.active {
     display: flex;
+}
+#contacts-modal .manage-contacts-tab-content:not(.active) {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden;
 }
 
 /* Writing Style AI markdown display */
@@ -5485,14 +5488,23 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 .suggestions-item-card {
     border: 1px solid #e8ecf1;
     border-radius: 10px;
-    padding: 0.75rem 0.9rem;
+    padding: 0.65rem 0.9rem;
     background: #fcfdfe;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.3rem;
+}
+
+.suggestions-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
 }
 
 .suggestions-item-title {
+    flex: 1;
+    min-width: 0;
     margin: 0;
     font-family: var(--font-sans-ui);
     font-size: var(--text-md);
@@ -5511,10 +5523,9 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 
 .suggestions-item-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-shrink: 0;
     align-items: center;
     gap: 8px;
-    margin-top: 0.15rem;
 }
 
 .suggestions-item-actions .modal-btn {
@@ -5535,7 +5546,7 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
 }
 
 .suggestions-preview-wrap {
-    margin-top: 0.25rem;
+    margin-top: 0.15rem;
 }
 
 .suggestions-preview-toggle {
@@ -10210,7 +10221,7 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     }
 }
 
-/* --- Relationships Modal (inline graph from rel.html) --- */
+/* --- Relationships graph (Contacts modal tab) --- */
 .relationships-modal-content {
     width: 95vw;
     max-width: 95vw;
@@ -10222,41 +10233,110 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     overflow: hidden;
     background: #f4f7f9;
 }
-.relationships-modal-content > .rel-dashboard {
+#contacts-modal .contacts-relationships-panel {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #f4f7f9;
+    position: relative;
+    box-sizing: border-box;
+}
+#contacts-modal .contacts-relationships-panel .rel-dashboard {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 3;
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: flex-start;
+    align-items: flex-start;
+    pointer-events: auto;
+}
+#contacts-modal .contacts-relationships-panel .rel-main-layout {
+    flex: 1 1 auto;
+    min-height: 200px;
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 16px;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+}
+#contacts-modal .contacts-relationships-panel .rel-cy-container {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    order: 1;
+    position: relative;
+    z-index: 1;
+    pointer-events: auto;
+    overflow: hidden;
+}
+#contacts-modal .contacts-relationships-panel .rel-legend {
+    flex: 0 0 280px;
+    width: 280px;
+    max-width: 280px;
+    min-width: 280px;
+    order: 2;
+    overflow-y: auto;
+    align-self: stretch;
+    box-sizing: border-box;
+}
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel > .rel-dashboard {
     margin-top: 0;
 }
 
-.relationships-modal-content .rel-dashboard {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-dashboard {
     background: white;
     padding: 15px 20px;
     border-radius: 0;
     margin: 0;
+    width: 100%;
     display: flex;
     flex-wrap: wrap;
     gap: 20px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    align-items: start;
+    align-items: flex-start;
+    justify-content: flex-start;
 }
 
-.relationships-modal-content .rel-control-group {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-control-group {
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
-.relationships-modal-content .rel-control-group label {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-control-group label {
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     color: var(--color-text-muted);
 }
 
-.relationships-modal-content .rel-hub-label {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-hub-label {
     color: #1a73e8 !important;
     font-weight: bold !important;
 }
 
-.relationships-modal-content .rel-checkbox-grid {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-checkbox-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 6px 16px;
@@ -10265,7 +10345,8 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     text-transform: none;
 }
 
-.relationships-modal-content .rel-checkbox-grid label {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-checkbox-grid label {
     font-size: 12px;
     font-weight: normal;
     text-transform: none;
@@ -10274,19 +10355,22 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     gap: 6px;
 }
 
-.relationships-modal-content .rel-control-group input[type="text"] {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-control-group input[type="text"] {
     padding: 8px;
     border: 1px solid #ddd;
     border-radius: 6px;
     width: 180px;
 }
 
-.relationships-modal-content .rel-btn-row {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-btn-row {
     display: flex;
     gap: 10px;
 }
 
-.relationships-modal-content .rel-btn {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-btn {
     border: none;
     padding: 10px 20px;
     border-radius: 6px;
@@ -10294,113 +10378,147 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     font-weight: 600;
 }
 
-.relationships-modal-content .rel-btn-primary {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-btn-primary {
     background: #1a73e8;
     color: white;
 }
 
-.relationships-modal-content .rel-btn:disabled {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-btn:disabled {
     background: #ccc;
     color: #888;
     cursor: not-allowed;
 }
 
-.relationships-modal-content .rel-btn-secondary {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-btn-secondary {
     background: #e8eaed;
     color: #3c4043;
 }
 
 .relationships-modal-content .rel-main-layout {
     display: flex;
-    gap: 20px;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 16px;
     flex: 1;
     min-height: 0;
+    min-width: 0;
+    width: 100%;
 }
 
-.relationships-modal-content .rel-cy-container {
+.relationships-modal-content .rel-cy-container,
+#contacts-modal .contacts-relationships-panel .rel-cy-container {
     position: relative;
-    height: 100%;
-    flex-grow: 1;
-    min-height: 300px;
     border-radius: 12px;
     border: 1px solid #ddd;
     overflow: hidden;
     background: white;
+}
+.relationships-modal-content .rel-cy-container {
+    flex-grow: 1;
+    height: 100%;
+    min-height: 300px;
 }
 
 .relationships-modal-content #rel-cy {
     width: 100%;
     height: 100%;
 }
+#contacts-modal .contacts-relationships-panel #rel-cy {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: auto;
+}
+#contacts-modal .contacts-relationships-panel .rel-cy-container canvas {
+    pointer-events: auto;
+}
 
-.relationships-modal-content .rel-legend {
-    width: 300px;
-    flex-shrink: 0;
+.relationships-modal-content .rel-legend,
+#contacts-modal .contacts-relationships-panel .rel-legend {
     background: white;
     padding: 20px;
     border-radius: 12px;
     border: 1px solid #ddd;
     font-size: 13px;
+    box-sizing: border-box;
+}
+.relationships-modal-content .rel-legend {
+    width: 300px;
+    flex: 0 0 300px;
 }
 
-.relationships-modal-content .rel-node-details {
-    max-height: 450px;
+.relationships-modal-content .rel-node-details,
+#contacts-modal .contacts-relationships-panel .rel-node-details {
     overflow-y: auto;
 }
 
-.relationships-modal-content .rel-legend-item {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-legend-item {
     display: flex;
     align-items: center;
     margin-bottom: 12px;
     gap: 10px;
 }
 
-.relationships-modal-content .rel-circle {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-circle {
     border-radius: 50%;
     background: #4285f4;
 }
 
-.relationships-modal-content .rel-circle.rel-subject {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-circle.rel-subject {
     width: 24px;
     height: 24px;
     background: #1a73e8;
     border: 2px solid #000;
 }
 
-.relationships-modal-content .rel-circle.rel-influential {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-circle.rel-influential {
     width: 18px;
     height: 18px;
 }
 
-.relationships-modal-content .rel-circle.rel-standard {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-circle.rel-standard {
     width: 10px;
     height: 10px;
 }
 
-.relationships-modal-content .rel-line {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-line {
     height: 4px;
     background: #4285f4;
     border-radius: 2px;
 }
 
-.relationships-modal-content .rel-line.rel-strong {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-line.rel-strong {
     width: 30px;
     height: 6px;
 }
 
-.relationships-modal-content .rel-line.rel-weak {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-line.rel-weak {
     width: 30px;
     height: 2px;
     background: #e0e0e0;
 }
 
-.relationships-modal-content .rel-tip {
+.relationships-modal-content,
+#contacts-modal .contacts-relationships-panel .rel-tip {
     font-size: 11px;
     color: #777;
     margin-top: 15px;
 }
 
-.relationships-modal-content .rel-balloon {
+.relationships-modal-content .rel-balloon,
+#contacts-modal .contacts-relationships-panel .rel-balloon {
     position: absolute;
     display: none;
     background: rgba(33, 37, 41, 0.95);
@@ -12240,15 +12358,48 @@ body.deployment-hide-path-import-tiles #data-import-modal .data-import-path-row 
     font-size: var(--text-sm);
     color: var(--color-text-muted);
 }
+.wizard-parse-body {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+    min-height: 110px;
+}
 .wizard-parse-textarea {
+    flex: 1;
     resize: none;
     font-size: 0.84rem;
     font-family: var(--font-sans-ui);
+    background: #fff;
+    border: 1px solid var(--color-border-input);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    color: var(--color-text);
+    box-sizing: border-box;
 }
-.wizard-parse-actions {
+.wizard-parse-textarea:focus {
+    outline: none;
+    border-color: var(--color-blue);
+    box-shadow: var(--focus-ring);
+}
+.wizard-parse-side {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+    align-items: stretch;
+}
+.wizard-parse-run-btn {
+    background:aliceblue;
+    color: black;
+    border: 1px solid #1e3a8a;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 0.55em 1.1em;
+    flex-shrink: 0;
+}
+.wizard-parse-run-btn:hover:not(:disabled) {
+    background: #1e3a8a;
+    color: #fff;
 }
 .wizard-parse-status {
     font-size: var(--text-xs);

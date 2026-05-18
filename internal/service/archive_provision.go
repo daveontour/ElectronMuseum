@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	appai "github.com/daveontour/aimuseum/internal/ai"
 	"github.com/daveontour/aimuseum/internal/appctx"
 	"github.com/daveontour/aimuseum/internal/config"
 	appcrypto "github.com/daveontour/aimuseum/internal/crypto"
 	"github.com/daveontour/aimuseum/internal/database"
 	"github.com/daveontour/aimuseum/internal/repository"
+	backgroundjobs "github.com/daveontour/aimuseum/internal/service/background_jobs"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -110,15 +112,6 @@ func (s *ArchiveProvisionService) CreateArchiveWithFirstUser(
 	if err := database.MigratePamBot(migrateCtx, db); err != nil {
 		return fmt.Errorf("migrate pambot: %w", err)
 	}
-	if err := database.SeedEmailExclusionsFromJSON(migrateCtx, db, "static/data/exclusions.json"); err != nil {
-		return fmt.Errorf("seed email exclusions: %w", err)
-	}
-	if err := database.SeedEmailMatchesFromJSON(migrateCtx, db, "static/data/email_matches.json"); err != nil {
-		return fmt.Errorf("seed email matches: %w", err)
-	}
-	if err := database.SeedEmailClassificationsFromJSON(migrateCtx, db, "static/data/email_classifications.json"); err != nil {
-		return fmt.Errorf("seed email classifications: %w", err)
-	}
 	if err := database.SeedAppSystemInstructionsFromFiles(migrateCtx, db, "static"); err != nil {
 		return fmt.Errorf("seed app system instructions: %w", err)
 	}
@@ -141,6 +134,14 @@ func (s *ArchiveProvisionService) CreateArchiveWithFirstUser(
 		if err := appcrypto.InitSensitiveKeyring(userCtx, db, password, s.keyringPepper); err != nil {
 			return fmt.Errorf("init keyring: %w", err)
 		}
+		policyJSON, err := appai.MarshalToolAccessPolicyJSON(appai.AllToolsEnabledPolicy())
+		if err != nil {
+			return fmt.Errorf("llm tools policy: %w", err)
+		}
+		privateStore := NewPrivateStoreService(repository.NewPrivateStoreRepo(db), db, s.keyringPepper)
+		if err := privateStore.Upsert(userCtx, appai.LLMToolsAccessStoreKey, policyJSON, password); err != nil {
+			return fmt.Errorf("seed llm tools access: %w", err)
+		}
 	}
 	// Subject config must be written to the new archive — not via the app-wide SubjectConfigService (main pool).
 	subjectLocal := NewSubjectConfigService(repository.NewSubjectConfigRepo(db), nil, nil)
@@ -152,6 +153,10 @@ func (s *ArchiveProvisionService) CreateArchiveWithFirstUser(
 		Gender:      &gender,
 	}); err != nil {
 		return fmt.Errorf("subject configuration: %w", err)
+	}
+	bgJobsRepo := repository.NewBackgroundJobRepo(db)
+	if err := backgroundjobs.SeedForNewArchive(userCtx, bgJobsRepo); err != nil {
+		return fmt.Errorf("background jobs: %w", err)
 	}
 	return nil
 }

@@ -17,7 +17,7 @@ function installVisitorFeatureGateCapture() {
             let ok = true;
             if (g === 'messages_chat') ok = !!va.can_messages_chat;
             else if (g === 'emails') ok = !!va.can_emails;
-            else if (g === 'contacts') ok = !!va.can_contacts;
+            else if (g === 'contacts') ok = !!(va.can_contacts || va.can_relationships);
             else if (g === 'relationship') ok = !!va.can_relationships;
             else if (g === 'sensitive_private') ok = !!va.can_sensitive_private;
             else return;
@@ -968,12 +968,6 @@ const App = (() => {
                     targetContent.classList.add('active');
                 }
                 
-                // Load email matches and classifications when Manage Contacts tab is opened
-                if (targetTab === 'manage-contacts') {
-                    if (Modals.EmailMatches && Modals.EmailMatches.load) Modals.EmailMatches.load();
-                    if (Modals.EmailClassifications && Modals.EmailClassifications.load) Modals.EmailClassifications.load();
-                    if (Modals.EmailExclusions && Modals.EmailExclusions.load) Modals.EmailExclusions.load();
-                }
                 // Load subject configuration when Subject Configuration tab is opened
                 if (targetTab === 'subject-configuration') {
                     if (Modals.SubjectConfiguration && Modals.SubjectConfiguration.loadAndPopulateForm) {
@@ -1061,21 +1055,6 @@ const App = (() => {
                 }
             });
         }
-
-        // Manage Contacts inner tabs: switch table (Email Matches / Exclusions / Classifications)
-        document.querySelectorAll('.manage-contacts-tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tabName = btn.getAttribute('data-manage-contacts-tab');
-                if (!tabName) return;
-                const container = document.getElementById('manage-contacts-tab');
-                if (!container) return;
-                container.querySelectorAll('.manage-contacts-tab-btn').forEach(b => b.classList.remove('active'));
-                container.querySelectorAll('.manage-contacts-tab-content').forEach(c => c.classList.remove('active'));
-                btn.classList.add('active');
-                const content = document.getElementById(`${tabName}-tab-content`);
-                if (content) content.classList.add('active');
-            });
-        });
 
         // Dashboard: load stats and render. prefix e.g. 'stats-' for Dashboard modal (ids: prefix + 'dashboard-stats', …).
         async function loadDashboard(prefix) {
@@ -4366,13 +4345,6 @@ const App = (() => {
             });
         }
 
-        const relationshipsBtn = document.getElementById('relationships-btn');
-        if (relationshipsBtn) {
-            relationshipsBtn.addEventListener('click', () => {
-                Modals.Relationships.open();
-            });
-        }
-
         if (DOM.artefactsSidebarBtn) {
             DOM.artefactsSidebarBtn.addEventListener('click', () => {
                 Modals.Artefacts.open();
@@ -4796,7 +4768,7 @@ const App = (() => {
                 if (dontShow.checked && window.AppDialogs && typeof window.AppDialogs.showAppAlert === 'function') {
                     void window.AppDialogs.showAppAlert(
                         'Welcome dialog',
-                        'You can restart onboarding anytime from Guide → Restart onboarding.'
+                        'You can restart onboarding anytime from Guide → Reeanable Welcome Dialog.'
                     );
                 }
             });
@@ -4824,6 +4796,15 @@ const App = (() => {
             welcomeDashboardBtn.dataset.onboardingWired = '1';
             welcomeDashboardBtn.addEventListener('click', () => {
                 if (typeof window.openDashboardModal === 'function') window.openDashboardModal();
+            });
+        }
+
+        const identityProfileWelcomeBtn = document.getElementById('welcome-identity-profile-btn');
+        if (identityProfileWelcomeBtn && !identityProfileWelcomeBtn.dataset.onboardingWired) {
+            identityProfileWelcomeBtn.dataset.onboardingWired = '1';
+            identityProfileWelcomeBtn.addEventListener('click', () => {
+                if (window.closeInfoBoxModal) window.closeInfoBoxModal({ skipMasterPrompt: true });
+                if (typeof Modals !== 'undefined' && Modals.IdentityProfileWizard) Modals.IdentityProfileWizard.open();
             });
         }
 
@@ -4984,8 +4965,7 @@ const App = (() => {
             }
             gate('sms-messages-sidebar-btn', !!va.can_messages_chat, 'messages_chat');
             gate('email-gallery-sidebar-btn', !!va.can_emails, 'emails');
-            gate('contacts-sidebar-btn', !!va.can_contacts, 'contacts');
-            gate('relationships-btn', !!va.can_relationships, 'relationship');
+            gate('contacts-sidebar-btn', !!(va.can_contacts || va.can_relationships), 'contacts');
             gate('sensitive-data-sidebar-btn', !!va.can_sensitive_private, 'sensitive_private');
             gate('profiles-sidebar-btn', !!va.can_relationships, 'relationship');
         } catch (e) {

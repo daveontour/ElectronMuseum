@@ -3656,10 +3656,6 @@ Modals.closeAll = () => {
         } catch (e) { console.debug('Error closing Profiles modal:', e); }
         
         try {
-            if (Modals.Relationships && Modals.Relationships.close) Modals.Relationships.close();
-        } catch (e) { console.debug('Error closing Relationships modal:', e); }
-        
-        try {
             if (Modals.Locations && Modals.Locations.close) Modals.Locations.close();
         } catch (e) { console.debug('Error closing Locations modal:', e); }
         
@@ -3912,6 +3908,32 @@ Modals.EmailMatches = (() => {
         if (modal) {
             modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
         }
+
+        const exportBtn = getEl('email-matches-export-btn');
+        const importBtn = getEl('email-matches-import-btn');
+        const importFile = getEl('email-matches-import-file');
+        if (exportBtn) exportBtn.addEventListener('click', () => { window.location.href = '/email-matches/export'; });
+        if (importBtn) importBtn.addEventListener('click', () => importFile && importFile.click());
+        if (importFile) importFile.addEventListener('change', async () => {
+            if (!importFile.files || !importFile.files[0]) return;
+            const file = importFile.files[0];
+            importFile.value = '';
+            try {
+                const text = await file.text();
+                const res = await fetch('/email-matches/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: text,
+                    credentials: 'same-origin',
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || res.statusText);
+                await AppDialogs.showAppAlert(`Imported ${data.imported} email match(es).`);
+                loadEmailMatches();
+            } catch (err) {
+                await AppDialogs.showAppAlert('Import failed: ' + err.message);
+            }
+        });
     }
 
     return {
@@ -4440,6 +4462,32 @@ Modals.EmailClassifications = (() => {
 
         const modal = getEl('email-classification-modal');
         if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+        const exportBtn = getEl('email-classifications-export-btn');
+        const importBtn = getEl('email-classifications-import-btn');
+        const importFile = getEl('email-classifications-import-file');
+        if (exportBtn) exportBtn.addEventListener('click', () => { window.location.href = '/email-classifications/export'; });
+        if (importBtn) importBtn.addEventListener('click', () => importFile && importFile.click());
+        if (importFile) importFile.addEventListener('change', async () => {
+            if (!importFile.files || !importFile.files[0]) return;
+            const file = importFile.files[0];
+            importFile.value = '';
+            try {
+                const text = await file.text();
+                const res = await fetch('/email-classifications/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: text,
+                    credentials: 'same-origin',
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || res.statusText);
+                await AppDialogs.showAppAlert(`Imported ${data.imported} classification(s).`);
+                loadEmailClassifications();
+            } catch (err) {
+                await AppDialogs.showAppAlert('Import failed: ' + err.message);
+            }
+        });
     }
 
     return {
@@ -4731,6 +4779,32 @@ Modals.EmailExclusions = (() => {
         if (modal) {
             modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
         }
+
+        const exportBtn = getEl('email-exclusions-export-btn');
+        const importBtn = getEl('email-exclusions-import-btn');
+        const importFile = getEl('email-exclusions-import-file');
+        if (exportBtn) exportBtn.addEventListener('click', () => { window.location.href = '/email-exclusions/export'; });
+        if (importBtn) importBtn.addEventListener('click', () => importFile && importFile.click());
+        if (importFile) importFile.addEventListener('change', async () => {
+            if (!importFile.files || !importFile.files[0]) return;
+            const file = importFile.files[0];
+            importFile.value = '';
+            try {
+                const text = await file.text();
+                const res = await fetch('/email-exclusions/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: text,
+                    credentials: 'same-origin',
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || res.statusText);
+                await AppDialogs.showAppAlert(`Imported ${data.imported} email exclusion(s).`);
+                loadEmailExclusions();
+            } catch (err) {
+                await AppDialogs.showAppAlert('Import failed: ' + err.message);
+            }
+        });
     }
 
     return {

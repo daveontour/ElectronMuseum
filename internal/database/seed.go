@@ -31,14 +31,18 @@ func SeedEmailExclusionsFromJSON(ctx context.Context, db *sql.DB, path string) e
 		}
 		return fmt.Errorf("read exclusions file: %w", err)
 	}
+	return SeedEmailExclusionsFromBytes(ctx, db, raw)
+}
 
+// SeedEmailExclusionsFromBytes parses raw JSON and inserts exclusions that are not
+// already present. Returns the number of rows inserted.
+func SeedEmailExclusionsFromBytes(ctx context.Context, db *sql.DB, raw []byte) error {
 	var data exclusionsJSON
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return fmt.Errorf("parse exclusions JSON: %w", err)
 	}
 
 	inserted := 0
-	// Email-only patterns: (email, "", false)
 	for _, s := range data.Email {
 		email := strings.TrimSpace(s)
 		if email == "" {
@@ -50,7 +54,6 @@ func SeedEmailExclusionsFromJSON(ctx context.Context, db *sql.DB, path string) e
 		}
 		inserted += n
 	}
-	// Name-only patterns: ("", name, false)
 	for _, s := range data.Name {
 		name := strings.TrimSpace(s)
 		if name == "" {
@@ -62,7 +65,6 @@ func SeedEmailExclusionsFromJSON(ctx context.Context, db *sql.DB, path string) e
 		}
 		inserted += n
 	}
-	// Name+email pairs: (email, name, true)
 	for _, p := range data.NameEmail {
 		email := strings.TrimSpace(p.Email)
 		name := strings.TrimSpace(p.Name)
@@ -77,7 +79,7 @@ func SeedEmailExclusionsFromJSON(ctx context.Context, db *sql.DB, path string) e
 	}
 
 	if inserted > 0 {
-		slog.Info("seeded email exclusions from JSON", "path", path, "inserted", inserted)
+		slog.Info("seeded email exclusions", "inserted", inserted)
 	}
 	return nil
 }
@@ -121,7 +123,12 @@ func SeedEmailMatchesFromJSON(ctx context.Context, db *sql.DB, path string) erro
 		}
 		return fmt.Errorf("read email matches file: %w", err)
 	}
+	return SeedEmailMatchesFromBytes(ctx, db, raw)
+}
 
+// SeedEmailMatchesFromBytes parses raw JSON and inserts email matches that are not
+// already present.
+func SeedEmailMatchesFromBytes(ctx context.Context, db *sql.DB, raw []byte) error {
 	var data emailMatchesJSON
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return fmt.Errorf("parse email matches JSON: %w", err)
@@ -147,7 +154,7 @@ func SeedEmailMatchesFromJSON(ctx context.Context, db *sql.DB, path string) erro
 	}
 
 	if inserted > 0 {
-		slog.Info("seeded email matches from JSON", "path", path, "inserted", inserted)
+		slog.Info("seeded email matches", "inserted", inserted)
 	}
 	return nil
 }
@@ -186,7 +193,12 @@ func SeedEmailClassificationsFromJSON(ctx context.Context, db *sql.DB, path stri
 		}
 		return fmt.Errorf("read email classifications file: %w", err)
 	}
+	return SeedEmailClassificationsFromBytes(ctx, db, raw)
+}
 
+// SeedEmailClassificationsFromBytes parses raw JSON and inserts classifications that are
+// not already present.
+func SeedEmailClassificationsFromBytes(ctx context.Context, db *sql.DB, raw []byte) error {
 	var data emailClassificationsJSON
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return fmt.Errorf("parse email classifications JSON: %w", err)
@@ -212,7 +224,7 @@ func SeedEmailClassificationsFromJSON(ctx context.Context, db *sql.DB, path stri
 	}
 
 	if inserted > 0 {
-		slog.Info("seeded email classifications from JSON", "path", path, "inserted", inserted)
+		slog.Info("seeded email classifications", "inserted", inserted)
 	}
 	return nil
 }

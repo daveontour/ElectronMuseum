@@ -143,15 +143,6 @@ func run() error {
 			slog.Info("cleared auth sessions after restart", "deleted", n)
 		}
 
-		if err := database.SeedEmailExclusionsFromJSON(migrateCtx, db.Std, "static/data/exclusions.json"); err != nil {
-			return fmt.Errorf("seed email exclusions: %w", err)
-		}
-		if err := database.SeedEmailMatchesFromJSON(migrateCtx, db.Std, "static/data/email_matches.json"); err != nil {
-			return fmt.Errorf("seed email matches: %w", err)
-		}
-		if err := database.SeedEmailClassificationsFromJSON(migrateCtx, db.Std, "static/data/email_classifications.json"); err != nil {
-			return fmt.Errorf("seed email classifications: %w", err)
-		}
 		if err := database.SeedAppSystemInstructionsFromFiles(migrateCtx, db.Std, "static"); err != nil {
 			return fmt.Errorf("seed app system instructions: %w", err)
 		}

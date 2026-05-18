@@ -11,15 +11,6 @@ import (
 	backgroundjobs "github.com/daveontour/aimuseum/internal/service/background_jobs"
 )
 
-// Background job names — the canonical IDs stored in background_jobs.job_name.
-const (
-	BackgroundJobThumbnails               = "thumbnails"
-	BackgroundJobImageTagEmbeddings       = "image_tag_embeddings"
-	BackgroundJobImageAIClassification    = "image_ai_classification"
-	BackgroundJobMessageContextEmbeddings = "message_context_embeddings"
-	BackgroundJobEmailEmbeddings          = "email_embeddings"
-)
-
 // backgroundJobsRunner adapts the existing in-process worker functions
 // (and their *importer.ImportJob singletons) to the
 // service/background_jobs.JobRunner interface so the scheduler and the new
@@ -43,51 +34,21 @@ func NewBackgroundJobsRunner(pool *sql.DB, imageSvc *service.ImageService, embed
 
 // Definitions lists the five maintenance jobs surfaced in the UI.
 func (r *backgroundJobsRunner) Definitions() []backgroundjobs.JobDef {
-	return []backgroundjobs.JobDef{
-		{
-			Name:                   BackgroundJobThumbnails,
-			Title:                  "Generate image thumbnails",
-			Description:            "Generate or refresh thumbnails for images that do not yet have one.",
-			DefaultIntervalSeconds: 10 * 60,
-		},
-		{
-			Name:                   BackgroundJobImageAIClassification,
-			Title:                  "Image AI classification",
-			Description:            "Use AI tools to generate tags for the image based on its content.",
-			DefaultIntervalSeconds: 600,
-		}, {
-			Name:                   BackgroundJobImageTagEmbeddings,
-			Title:                  "Image Classification Encoding",
-			Description:            "Encode image tags to enable textual searches of the image content.",
-			DefaultIntervalSeconds: 10 * 60,
-		},
-		{
-			Name:                   BackgroundJobMessageContextEmbeddings,
-			Title:                  "Message Content Encoding",
-			Description:            "Encode message content to enable similarity searches.",
-			DefaultIntervalSeconds: 600,
-		},
-		{
-			Name:                   BackgroundJobEmailEmbeddings,
-			Title:                  "Email Content Encoding",
-			Description:            "Encode email bodies so to enable similarity searches.",
-			DefaultIntervalSeconds: 600,
-		},
-	}
+	return backgroundjobs.DefaultDefinitions
 }
 
 // jobByName returns the underlying singleton ImportJob for a given canonical name.
 func (r *backgroundJobsRunner) jobByName(name string) (*importer.ImportJob, bool) {
 	switch name {
-	case BackgroundJobThumbnails:
+	case backgroundjobs.JobThumbnails:
 		return thumbnailsJob, true
-	case BackgroundJobImageTagEmbeddings:
+	case backgroundjobs.JobImageTagEmbeddings:
 		return imageTagEmbeddingJob, true
-	case BackgroundJobImageAIClassification:
+	case backgroundjobs.JobImageAIClassification:
 		return imageAIClassificationJob, true
-	case BackgroundJobMessageContextEmbeddings:
+	case backgroundjobs.JobMessageContextEmbeddings:
 		return messageContextEmbeddingBackfillJob, true
-	case BackgroundJobEmailEmbeddings:
+	case backgroundjobs.JobEmailEmbeddings:
 		return emailEmbeddingBackfillJob, true
 	}
 	return nil, false
@@ -120,15 +81,15 @@ func (r *backgroundJobsRunner) Cancel(jobName string) error {
 // name is unknown. The actual work runs in a goroutine.
 func (r *backgroundJobsRunner) Start(ctx context.Context, jobName string, uid int64) error {
 	switch jobName {
-	case BackgroundJobThumbnails:
+	case backgroundjobs.JobThumbnails:
 		return r.startThumbnails(uid)
-	case BackgroundJobImageTagEmbeddings:
+	case backgroundjobs.JobImageTagEmbeddings:
 		return r.startImageTagEmbeddings(uid)
-	case BackgroundJobImageAIClassification:
+	case backgroundjobs.JobImageAIClassification:
 		return r.startImageAIClassification(ctx, uid)
-	case BackgroundJobMessageContextEmbeddings:
+	case backgroundjobs.JobMessageContextEmbeddings:
 		return r.startMessageContextEmbeddings(uid)
-	case BackgroundJobEmailEmbeddings:
+	case backgroundjobs.JobEmailEmbeddings:
 		return r.startEmailEmbeddings(uid)
 	}
 	return fmt.Errorf("unknown background job %q", jobName)

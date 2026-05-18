@@ -389,12 +389,37 @@ Modals.Contacts = (() => {
             if (name) await _openProfileByName(name);
         }
 
-        function open() {
+        function loadContactsModalSubTab(tabName) {
+            if (tabName === 'relationships') {
+                if (Modals.Relationships?.openTab) Modals.Relationships.openTab();
+            } else if (Modals.Relationships?.tearDown) {
+                Modals.Relationships.tearDown();
+            }
+            if (tabName === 'email-matches' && Modals.EmailMatches?.load) Modals.EmailMatches.load();
+            if (tabName === 'email-exclusions' && Modals.EmailExclusions?.load) Modals.EmailExclusions.load();
+            if (tabName === 'email-classifications' && Modals.EmailClassifications?.load) Modals.EmailClassifications.load();
+        }
+
+        function showContactsModalTab(tabName) {
+            const modal = document.getElementById('contacts-modal');
+            if (!modal) return;
+            modal.querySelectorAll('.manage-contacts-tab-btn').forEach(b => {
+                b.classList.toggle('active', b.getAttribute('data-manage-contacts-tab') === tabName);
+            });
+            modal.querySelectorAll('.manage-contacts-tab-content').forEach(c => c.classList.remove('active'));
+            const content = document.getElementById(`${tabName}-tab-content`);
+            if (content) content.classList.add('active');
+        }
+
+        function open(tabName = 'contacts-directory') {
             selectedIds.clear();
             Modals._openModal(DOM.contactsModal);
-            loadContacts();
+            showContactsModalTab(tabName);
+            loadContactsModalSubTab(tabName);
+            if (tabName === 'contacts-directory') loadContacts();
         }
         function close() {
+            if (Modals.Relationships?.tearDown) Modals.Relationships.tearDown();
             Modals._closeModal(DOM.contactsModal);
         }
         async function extractContacts() {
@@ -472,6 +497,18 @@ Modals.Contacts = (() => {
             });
             const saveProfileBtn = document.getElementById('complete-profile-save-btn');
             if (saveProfileBtn) saveProfileBtn.addEventListener('click', handleSaveCompleteProfile);
+            const contactsModal = document.getElementById('contacts-modal');
+            if (contactsModal) {
+                contactsModal.querySelectorAll('.manage-contacts-tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const tabName = btn.getAttribute('data-manage-contacts-tab');
+                        if (!tabName) return;
+                        showContactsModalTab(tabName);
+                        loadContactsModalSubTab(tabName);
+                        if (tabName === 'contacts-directory') loadContacts();
+                    });
+                });
+            }
         }
         return {
             init,
@@ -981,6 +1018,18 @@ Modals.Profiles = (() => {
 Modals.Relationships = (() => {
         let cy = null;
         let hideTimeout = null;
+        let controlsBound = false;
+
+        function relTab() {
+            return document.getElementById('relationships-tab-content');
+        }
+
+        function escapeHtml(s) {
+            if (s == null) return '';
+            const d = document.createElement('div');
+            d.textContent = String(s);
+            return d.innerHTML;
+        }
 
         function getTypeFilterParams() {
             const types = ['friend', 'family', 'colleague', 'acquaintance', 'business', 'social', 'promotional', 'unknown'];
@@ -1051,7 +1100,8 @@ Modals.Relationships = (() => {
         function reLayout() {
             if (!cy) return;
             updateGraph();
-            const hub = cy.getElementById('{{full_name}}');
+            const hub = cy.getElementById('0');
+            if (!hub || hub.length === 0) return;
             hub.unlock();
             hub.position({ x: cy.width() / 2, y: cy.height() / 2 });
             hub.lock();
@@ -1064,25 +1114,70 @@ Modals.Relationships = (() => {
             if (cy) cy.animate({ fit: { eles: cy.elements(':visible'), padding: 50 }, duration: 500 });
         }
 
-        function setupEvents() {
-            const balloon = document.getElementById('rel-balloon');
-            const searchInput = document.getElementById('rel-search-input');
-            const filterSlider = document.getElementById('rel-filter-slider');
-            const sizeSlider = document.getElementById('rel-size-slider');
-            const strVal = document.getElementById('rel-str-val');
-            const sizeVal = document.getElementById('rel-size-val');
-            if (!balloon || !cy) return;
+        function bindStaticControls() {
+            if (controlsBound) return;
+            const root = relTab();
+            if (!root) return;
+            const fitBtn = root.querySelector('#rel-fit-all-btn');
+            const applyBtn = root.querySelector('#rel-apply-filters-btn');
+            const filterSlider = root.querySelector('#rel-filter-slider');
+            const sizeSlider = root.querySelector('#rel-size-slider');
+            const strVal = root.querySelector('#rel-str-val');
+            const sizeVal = root.querySelector('#rel-size-val');
+            const maxNodesSlider = root.querySelector('#rel-max-nodes-slider');
+            const maxNodesVal = root.querySelector('#rel-max-nodes-val');
+            const searchInput = root.querySelector('#rel-search-input');
 
+            if (fitBtn) fitBtn.addEventListener('click', resetView);
+            if (applyBtn) {
+                applyBtn.addEventListener('click', () => {
+                    tearDown();
+                    initGraph();
+                    applyBtn.disabled = true;
+                });
+                const enableApplyOnFilterChange = () => { applyBtn.disabled = false; };
+                root.querySelectorAll('.rel-type-cb, .rel-source-cb').forEach(el => {
+                    el.addEventListener('change', enableApplyOnFilterChange);
+                });
+                if (maxNodesSlider) maxNodesSlider.addEventListener('input', enableApplyOnFilterChange);
+            }
+            if (filterSlider && strVal) {
+                filterSlider.addEventListener('input', function () {
+                    strVal.textContent = this.value;
+                    updateGraph();
+                });
+            }
+            if (sizeSlider && sizeVal) {
+                sizeSlider.addEventListener('input', function () {
+                    sizeVal.textContent = this.value;
+                    updateGraph();
+                });
+            }
+            if (maxNodesSlider && maxNodesVal) {
+                maxNodesSlider.addEventListener('input', function () {
+                    maxNodesVal.textContent = this.value;
+                });
+            }
             if (searchInput) {
                 const doSearch = () => {
+                    if (!cy) return;
                     const text = searchInput.value.toLowerCase().trim();
                     if (!text) return;
                     const found = cy.nodes().filter(n => n.data('name').toLowerCase().includes(text));
-                    if (found.length > 0) { cy.animate({ center: { eles: found[0] }, zoom: 1.2, duration: 400 }); found[0].select(); }
+                    if (found.length > 0) {
+                        cy.animate({ center: { eles: found[0] }, zoom: 1.2, duration: 400 });
+                        found[0].select();
+                    }
                 };
                 searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
-                searchInput.addEventListener('blur', doSearch);
             }
+            controlsBound = true;
+        }
+
+        function setupEvents() {
+            const root = relTab();
+            const balloon = root ? root.querySelector('#rel-balloon') : null;
+            if (!balloon || !cy) return;
 
             cy.on('mouseover', 'node', function(e) {
                 const node = e.target;
@@ -1096,7 +1191,7 @@ Modals.Relationships = (() => {
             });
 
             function positionBalloon(renderedPos) {
-                const container = document.querySelector('.rel-cy-container');
+                const container = root ? root.querySelector('.rel-cy-container') : null;
                 if (!container) return;
                 const rect = container.getBoundingClientRect();
                 balloon.style.top = (renderedPos.y - rect.top - 40) + 'px';
@@ -1118,7 +1213,8 @@ Modals.Relationships = (() => {
             cy.on('tap', 'node', function(e) {
                 const node = e.target;
                 balloon.style.display = 'none';
-                const detailsPanel = document.getElementById('rel-node-details');
+                cy.elements().removeClass('faded highlight');
+                const detailsPanel = root ? root.querySelector('#rel-node-details') : null;
                 if (!detailsPanel) return;
                 const nodeId = node.id();
                 const nodeName = node.data('name');
@@ -1135,7 +1231,7 @@ Modals.Relationships = (() => {
                     ['SMS/iMessage', (node.data('num_sms') || 0) + (node.data('num_imessages') || 0)],
                     ['Instagram', node.data('num_instagram')]
                 ].filter(([, n]) => n != null && n > 0);
-                let html = `<strong>${nodeName}</strong><br>`;
+                let html = `<strong>${escapeHtml(nodeName)}</strong><br>`;
                 if (connections.length > 0) {
                     connections.forEach(c => {
                         html += `<span style="color:#666">Connection strength ${c.strength}/10</span><br/>`;
@@ -1198,27 +1294,23 @@ Modals.Relationships = (() => {
             });
 
             cy.on('tap', function(e) {
-                if (e.target === cy) {
-                    balloon.style.display = 'none';
-                    cy.edges().unselect();
-                    const detailsPanel = document.getElementById('rel-node-details');
-                    if (detailsPanel) {
-                        detailsPanel.innerHTML = '<em style="color: #666;">Click a person to view details</em>';
-                    }
+                if (e.target !== e.cy) return;
+                balloon.style.display = 'none';
+                cy.edges().unselect();
+                cy.elements().removeClass('faded highlight');
+                const detailsPanel = root ? root.querySelector('#rel-node-details') : null;
+                if (detailsPanel) {
+                    detailsPanel.innerHTML = '<em style="color: #666;">Click a person to view details</em>';
                 }
             });
-
-            if (filterSlider && strVal) filterSlider.oninput = function() { strVal.innerText = this.value; updateGraph(); };
-            if (sizeSlider && sizeVal) sizeSlider.oninput = function() { sizeVal.innerText = this.value; updateGraph(); };
-            const maxNodesSlider = document.getElementById('rel-max-nodes-slider');
-            const maxNodesVal = document.getElementById('rel-max-nodes-val');
-            if (maxNodesSlider && maxNodesVal) maxNodesSlider.oninput = function() { maxNodesVal.innerText = this.value; };
 
         }
 
         async function initGraph() {
-            const container = document.getElementById('rel-cy');
+            const root = relTab();
+            const container = root ? root.querySelector('#rel-cy') : null;
             if (!container || typeof cytoscape === 'undefined') return;
+            tearDown();
             let data;
             try {
                 data = await fetchData();
@@ -1233,6 +1325,9 @@ Modals.Relationships = (() => {
             cy = cytoscape({
                 container: container,
                 elements: elements,
+                minZoom: 0.1,
+                maxZoom: 4,
+                wheelSensitivity: 0.2,
                 style: [
                     { selector: 'node', style: { 'background-color': '#4285f4', 'label': 'data(name)', 'font-size': '10px', 'text-valign': 'bottom', 'text-margin-y': 4 } },
                     { selector: 'node[id="0"]', style: { 'background-color': '#1a73e8', 'border-width': 3, 'border-color': '#000', 'z-index': 1000 } },
@@ -1256,46 +1351,74 @@ Modals.Relationships = (() => {
             });
 
             setupEvents();
-            reLayout();
-            resetView();
-            
+            const finishMount = () => {
+                if (!cy) return;
+                cy.resize();
+                reLayout();
+                resetView();
+            };
+            requestAnimationFrame(() => requestAnimationFrame(finishMount));
         }
 
-        function open() {
-            Modals._openModal(DOM.relationshipsModal);
-            initGraph();
+        function resizeGraph() {
+            if (!cy) return;
+            cy.resize();
         }
 
-        function close() {
+        function tearDown() {
+            const root = relTab();
+            const cyContainer = root ? root.querySelector('.rel-cy-container') : null;
+            if (cyContainer && cyContainer._relResizeObs) {
+                cyContainer._relResizeObs.disconnect();
+                delete cyContainer._relResizeObs;
+            }
             if (cy) {
                 try { cy.destroy(); } catch (e) { console.debug('Error destroying cytoscape:', e); }
                 cy = null;
             }
             clearTimeout(hideTimeout);
-            Modals._closeModal(DOM.relationshipsModal);
         }
 
-        function init() {
-            if (DOM.closeRelationshipsModalBtn) DOM.closeRelationshipsModalBtn.addEventListener('click', close);
-            if (DOM.relationshipsModal) DOM.relationshipsModal.addEventListener('click', (e) => { if (e.target === DOM.relationshipsModal) close(); });
-            const fitBtn = document.getElementById('rel-fit-all-btn');
-            const applyBtn = document.getElementById('rel-apply-filters-btn');
-            if (fitBtn) fitBtn.addEventListener('click', resetView);
-            if (applyBtn) {
-                applyBtn.addEventListener('click', () => {
-                    initGraph();
-                    applyBtn.disabled = true;
-                });
-                const enableApplyOnFilterChange = () => { applyBtn.disabled = false; };
-                document.querySelectorAll('.rel-type-cb, .rel-source-cb').forEach(el => {
-                    el.addEventListener('change', enableApplyOnFilterChange);
-                });
-                const maxNodesSlider = document.getElementById('rel-max-nodes-slider');
-                if (maxNodesSlider) maxNodesSlider.addEventListener('input', enableApplyOnFilterChange);
+        function openTab() {
+            bindStaticControls();
+            const run = () => {
+                if (cy) {
+                    resizeGraph();
+                    resetView();
+                    return;
+                }
+                initGraph();
+            };
+            requestAnimationFrame(() => requestAnimationFrame(run));
+            if (typeof ResizeObserver !== 'undefined') {
+                const root = relTab();
+                const cyContainer = root ? root.querySelector('.rel-cy-container') : null;
+                if (cyContainer && !cyContainer._relResizeObs) {
+                    let resizeRaf = null;
+                    const obs = new ResizeObserver(() => {
+                        if (resizeRaf) cancelAnimationFrame(resizeRaf);
+                        resizeRaf = requestAnimationFrame(() => {
+                            resizeRaf = null;
+                            resizeGraph();
+                        });
+                    });
+                    obs.observe(cyContainer);
+                    cyContainer._relResizeObs = obs;
+                }
             }
         }
 
-        return { init, open, close };
+        function open() {
+            if (Modals.Contacts?.open) {
+                Modals.Contacts.open('relationships');
+            }
+        }
+
+        function init() {
+            bindStaticControls();
+        }
+
+        return { init, open, openTab, tearDown };
 })();
 
 

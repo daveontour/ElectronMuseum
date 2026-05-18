@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,11 +20,12 @@ import (
 type ContactHandler struct {
 	svc          *service.ContactService
 	sessionStore *keystore.SessionMasterStore
+	db           *sql.DB
 }
 
 // NewContactHandler creates a ContactHandler.
-func NewContactHandler(svc *service.ContactService, sessionStore *keystore.SessionMasterStore) *ContactHandler {
-	return &ContactHandler{svc: svc, sessionStore: sessionStore}
+func NewContactHandler(svc *service.ContactService, sessionStore *keystore.SessionMasterStore, db *sql.DB) *ContactHandler {
+	return &ContactHandler{svc: svc, sessionStore: sessionStore, db: db}
 }
 
 // RegisterRoutes mounts all contact-related routes.
@@ -37,22 +40,28 @@ func (h *ContactHandler) RegisterRoutes(r chi.Router) {
 	r.Delete("/contacts/{contact_id}", h.Delete)
 	r.Patch("/contacts/update-classification", h.UpdateClassification)
 
-	// Email matches
+	// Email matches — literal routes before parameterised
+	r.Get("/email-matches/export", h.ExportEmailMatches)
+	r.Post("/email-matches/import", h.ImportEmailMatches)
 	r.Get("/email-matches", h.ListEmailMatches)
 	r.Post("/email-matches", h.CreateEmailMatch)
 	r.Get("/email-matches/{match_id}", h.GetEmailMatch)
 	r.Put("/email-matches/{match_id}", h.UpdateEmailMatch)
 	r.Delete("/email-matches/{match_id}", h.DeleteEmailMatch)
 
-	// Email exclusions
+	// Email exclusions — literal routes before parameterised
+	r.Get("/email-exclusions/export", h.ExportEmailExclusions)
+	r.Post("/email-exclusions/import", h.ImportEmailExclusions)
 	r.Get("/email-exclusions", h.ListEmailExclusions)
 	r.Post("/email-exclusions", h.CreateEmailExclusion)
 	r.Get("/email-exclusions/{excl_id}", h.GetEmailExclusion)
 	r.Put("/email-exclusions/{excl_id}", h.UpdateEmailExclusion)
 	r.Delete("/email-exclusions/{excl_id}", h.DeleteEmailExclusion)
 
-	// Email classifications
+	// Email classifications — literal routes before parameterised
 	r.Get("/email-classifications/options", h.GetEmailClassificationOptions)
+	r.Get("/email-classifications/export", h.ExportEmailClassifications)
+	r.Post("/email-classifications/import", h.ImportEmailClassifications)
 	r.Get("/email-classifications", h.ListEmailClassifications)
 	r.Post("/email-classifications", h.CreateEmailClassification)
 	r.Get("/email-classifications/{cls_id}", h.GetEmailClassification)
@@ -774,4 +783,204 @@ func (h *ContactHandler) GetEmailClassificationOptions(w http.ResponseWriter, r 
 		"social", "promotional", "spam", "important", "unknown",
 	}
 	writeJSON(w, map[string]any{"classifications": classifications})
+}
+
+// ── Export / Import ───────────────────────────────────────────────────────────
+
+func (h *ContactHandler) ExportEmailExclusions(w http.ResponseWriter, r *http.Request) {
+	excls, err := h.svc.ListEmailExclusions(r.Context(), "", nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "error exporting email exclusions: "+err.Error())
+		return
+	}
+	type pair struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	emails := []string{}
+	names := []string{}
+	pairs := []pair{}
+	for _, e := range excls {
+		if e.NameEmail {
+			pairs = append(pairs, pair{Name: e.Name, Email: e.Email})
+		} else if e.Email != "" {
+			emails = append(emails, e.Email)
+		} else if e.Name != "" {
+			names = append(names, e.Name)
+		}
+	}
+	b, _ := json.MarshalIndent(map[string]any{"email": emails, "name": names, "name_email": pairs}, "", "  ")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="exclusions.json"`)
+	w.Write(b)
+}
+
+func (h *ContactHandler) ImportEmailExclusions(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read body: "+err.Error())
+		return
+	}
+	type pair struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	var data struct {
+		Email     []string `json:"email"`
+		Name      []string `json:"name"`
+		NameEmail []pair   `json:"name_email"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	imported := 0
+	for _, e := range data.Email {
+		if e = strings.TrimSpace(e); e == "" {
+			continue
+		}
+		if _, err := h.svc.CreateEmailExclusion(r.Context(), e, "", false); err == nil {
+			imported++
+		} else if !strings.HasPrefix(err.Error(), "conflict:") {
+			writeError(w, http.StatusInternalServerError, "import error: "+err.Error())
+			return
+		}
+	}
+	for _, n := range data.Name {
+		if n = strings.TrimSpace(n); n == "" {
+			continue
+		}
+		if _, err := h.svc.CreateEmailExclusion(r.Context(), "", n, false); err == nil {
+			imported++
+		} else if !strings.HasPrefix(err.Error(), "conflict:") {
+			writeError(w, http.StatusInternalServerError, "import error: "+err.Error())
+			return
+		}
+	}
+	for _, p := range data.NameEmail {
+		e := strings.TrimSpace(p.Email)
+		n := strings.TrimSpace(p.Name)
+		if e == "" && n == "" {
+			continue
+		}
+		if _, err := h.svc.CreateEmailExclusion(r.Context(), e, n, true); err == nil {
+			imported++
+		} else if !strings.HasPrefix(err.Error(), "conflict:") {
+			writeError(w, http.StatusInternalServerError, "import error: "+err.Error())
+			return
+		}
+	}
+	writeJSON(w, map[string]any{"imported": imported})
+}
+
+func (h *ContactHandler) ExportEmailMatches(w http.ResponseWriter, r *http.Request) {
+	matches, err := h.svc.ListEmailMatches(r.Context(), "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "error exporting email matches: "+err.Error())
+		return
+	}
+	type entry struct {
+		PrimaryName string   `json:"primary_name"`
+		Emails      []string `json:"emails"`
+	}
+	grouped := make(map[string]*entry)
+	var order []string
+	for _, m := range matches {
+		if _, ok := grouped[m.PrimaryName]; !ok {
+			grouped[m.PrimaryName] = &entry{PrimaryName: m.PrimaryName, Emails: []string{}}
+			order = append(order, m.PrimaryName)
+		}
+		grouped[m.PrimaryName].Emails = append(grouped[m.PrimaryName].Emails, m.Email)
+	}
+	out := make([]entry, 0, len(order))
+	for _, name := range order {
+		out = append(out, *grouped[name])
+	}
+	b, _ := json.MarshalIndent(out, "", "  ")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="email_matches.json"`)
+	w.Write(b)
+}
+
+func (h *ContactHandler) ImportEmailMatches(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read body: "+err.Error())
+		return
+	}
+	var data []struct {
+		PrimaryName string   `json:"primary_name"`
+		Emails      []string `json:"emails"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	imported := 0
+	for _, entry := range data {
+		pn := strings.TrimSpace(entry.PrimaryName)
+		if pn == "" {
+			continue
+		}
+		for _, e := range entry.Emails {
+			if e = strings.TrimSpace(e); e == "" {
+				continue
+			}
+			if _, err := h.svc.CreateEmailMatch(r.Context(), pn, e); err == nil {
+				imported++
+			} else if !strings.HasPrefix(err.Error(), "conflict:") {
+				writeError(w, http.StatusInternalServerError, "import error: "+err.Error())
+				return
+			}
+		}
+	}
+	writeJSON(w, map[string]any{"imported": imported})
+}
+
+func (h *ContactHandler) ExportEmailClassifications(w http.ResponseWriter, r *http.Request) {
+	cls, err := h.svc.ListEmailClassifications(r.Context(), "", "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "error exporting email classifications: "+err.Error())
+		return
+	}
+	out := map[string][]string{}
+	for _, c := range cls {
+		out[c.Classification] = append(out[c.Classification], c.Name)
+	}
+	b, _ := json.MarshalIndent(out, "", "  ")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="email_classifications.json"`)
+	w.Write(b)
+}
+
+func (h *ContactHandler) ImportEmailClassifications(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 10<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read body: "+err.Error())
+		return
+	}
+	var data map[string][]string
+	if err := json.Unmarshal(raw, &data); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	imported := 0
+	for classification, names := range data {
+		classification = strings.TrimSpace(classification)
+		if classification == "" {
+			continue
+		}
+		for _, name := range names {
+			if name = strings.TrimSpace(name); name == "" {
+				continue
+			}
+			if _, err := h.svc.CreateEmailClassification(r.Context(), name, classification); err == nil {
+				imported++
+			} else if !strings.HasPrefix(err.Error(), "conflict:") {
+				writeError(w, http.StatusInternalServerError, "import error: "+err.Error())
+				return
+			}
+		}
+	}
+	writeJSON(w, map[string]any{"imported": imported})
 }

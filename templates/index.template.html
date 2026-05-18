@@ -344,13 +344,10 @@
                         <i class="fas fa-lightbulb"></i> Suggestions
                     </button>
                     <button type="button" class="more-options-btn" id="contacts-sidebar-btn">
-                        <i class="fas fa-address-book"></i> Contacts
+                        <i class="fas fa-address-book"></i> Contacts and Relationships
                     </button>
                     <button type="button" class="more-options-btn" id="profiles-sidebar-btn">
                         <i class="fas fa-id-card"></i> Profiles
-                    </button>
-                    <button type="button" class="more-options-btn" id="relationships-btn">
-                        <i class="fas fa-project-diagram"></i> Relationships
                     </button>
                     <button type="button" class="more-options-btn" id="sensitive-data-sidebar-btn">
                         <i class="fas fa-lock"></i> Sensitive &amp; Private Data
@@ -697,9 +694,6 @@
                         </button>
                         <button type="button" class="config-tab-button config-sidebar-requires-master" data-tab="custom-voices">
                             <i class="fas fa-microphone-alt"></i> Custom Voices
-                        </button>
-                        <button type="button" class="config-tab-button config-sidebar-requires-master" data-tab="manage-contacts">
-                            <i class="fas fa-address-book"></i> Manage Contacts
                         </button>
                         <button type="button" class="config-tab-button config-sidebar-requires-master" data-tab="manage-keys">
                             <i class="fas fa-key"></i> Manage Visitor Keys
@@ -1246,127 +1240,6 @@
                         <p id="background-jobs-empty" style="display:none; color:#666; font-size:var(--text-md);">No background jobs registered.</p>
                     </section>
                 </div>
-                <div class="config-tab-content" id="manage-contacts-tab">
-                    <section class="section-config">
-                        <h1>Email Addresses and Contacts</h1>
-                    </section>
-                    <section class="config-section" style="display: flex; flex-direction: column; height: 100%; min-height: 0;">
-                        <div class="manage-contacts-tabs" style="display: flex; flex-direction: row; border-bottom: 2px solid #bfc9da; margin-bottom: 0.5em; flex-shrink: 0;">
-                            <button type="button" class="manage-contacts-tab-btn active" data-manage-contacts-tab="email-matches">Email Matches</button>
-                            <button type="button" class="manage-contacts-tab-btn" data-manage-contacts-tab="email-exclusions">Email Exclusions</button>
-                            <button type="button" class="manage-contacts-tab-btn" data-manage-contacts-tab="email-classifications">Contact Classifications</button>
-                        </div>
-                        <div id="email-matches-tab-content" class="manage-contacts-tab-content active" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
-                            <div class="setting-group" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
-                                <p style="color: #666; margin-bottom: 10px; flex-shrink: 0;">
-                                    Manage email matches used to merge duplicate contacts. Each row maps an email address to a primary contact name.
-                                </p>
-                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; flex-shrink: 0;">
-                                    <input type="text" id="email-matches-filter" placeholder="Filter by primary name..." style="padding: 6px 10px; width: 220px; border: 1px solid #bfc9da; border-radius: 4px;">
-                                    <button type="button" id="email-matches-refresh-btn" class="modal-btn modal-btn-secondary">
-                                        <i class="fas fa-sync-alt"></i> Refresh
-                                    </button>
-                                    <button type="button" id="email-matches-create-btn" class="modal-btn modal-btn-primary">
-                                        <i class="fas fa-plus"></i> Add Match
-                                    </button>
-                                </div>
-                                <div id="email-matches-loading" class="loading-state" style="flex-shrink: 0;">
-                                    <i class="fas fa-spinner fa-spin"></i> Loading...
-                                </div>
-                                <div id="email-matches-table-container" style="overflow: auto; flex: 1; min-height: 0;">
-                                    <table class="contacts-table manage-contacts-data-table" id="email-matches-table" style="width: 100%; margin-top: 0;">
-                                        <thead>
-                                            <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
-                                                <th class="manage-contacts-th">Primary Name</th>
-                                                <th class="manage-contacts-th">Email</th>
-                                                <th class="manage-contacts-th manage-contacts-th-actions">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="email-matches-tbody">
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <p id="email-matches-empty-msg" style="display: none; padding: 1em; color: #666; text-align: center; flex-shrink: 0;">No email matches. Add one to map emails to a primary contact name.</p>
-                            </div>
-                        </div>
-                        <div id="email-exclusions-tab-content" class="manage-contacts-tab-content" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
-                            <div class="setting-group" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
-                                <p style="color: #666; margin-bottom: 10px; flex-shrink: 0;">
-                                    Manage email and name exclusions used to filter out contacts during import. Email patterns exclude by email substring; name patterns by name; name+email pairs exclude a specific name when paired with a specific email.
-                                </p>
-                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; flex-shrink: 0;">
-                                    <input type="text" id="email-exclusions-filter" placeholder="Filter by email or name..." style="padding: 6px 10px; width: 220px; border: 1px solid #bfc9da; border-radius: 4px;">
-                                    <select id="email-exclusions-type-filter" style="padding: 6px 10px; border: 1px solid #bfc9da; border-radius: 4px;">
-                                        <option value="">All types</option>
-                                        <option value="email">Email pattern</option>
-                                        <option value="name">Name pattern</option>
-                                        <option value="name_email">Name+Email pair</option>
-                                    </select>
-                                    <button type="button" id="email-exclusions-refresh-btn" class="modal-btn modal-btn-secondary">
-                                        <i class="fas fa-sync-alt"></i> Refresh
-                                    </button>
-                                    <button type="button" id="email-exclusions-create-btn" class="modal-btn modal-btn-primary">
-                                        <i class="fas fa-plus"></i> Add Exclusion
-                                    </button>
-                                </div>
-                                <div id="email-exclusions-loading" class="loading-state" style="flex-shrink: 0;">
-                                    <i class="fas fa-spinner fa-spin"></i> Loading...
-                                </div>
-                                <div id="email-exclusions-table-container" style="overflow: auto; flex: 1; min-height: 0;">
-                                    <table class="contacts-table manage-contacts-data-table" id="email-exclusions-table" style="width: 100%; margin-top: 0;">
-                                        <thead>
-                                            <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
-                                                <th class="manage-contacts-th">Email</th>
-                                                <th class="manage-contacts-th">Name</th>
-                                                <th class="manage-contacts-th">Type</th>
-                                                <th class="manage-contacts-th manage-contacts-th-actions">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="email-exclusions-tbody">
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <p id="email-exclusions-empty-msg" style="display: none; padding: 1em; color: #666; text-align: center; flex-shrink: 0;">No email exclusions. Add one to exclude emails or names during contact import.</p>
-                            </div>
-                        </div>
-                        <div id="email-classifications-tab-content" class="manage-contacts-tab-content" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
-                            <div class="setting-group" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
-                                <p style="color: #666; margin-bottom: 10px; flex-shrink: 0;">
-                                    Manage contact classifications (friend, family, colleague, etc.) used to categorise contacts.
-                                </p>
-                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; flex-shrink: 0;">
-                                    <input type="text" id="email-classifications-filter" placeholder="Filter by name..." style="padding: 6px 10px; width: 220px; border: 1px solid #bfc9da; border-radius: 4px;">
-                                    <select id="email-classifications-type-filter" style="padding: 6px 10px; border: 1px solid #bfc9da; border-radius: 4px;">
-                                        <option value="">All types</option>
-                                    </select>
-                                    <button type="button" id="email-classifications-refresh-btn" class="modal-btn modal-btn-secondary">
-                                        <i class="fas fa-sync-alt"></i> Refresh
-                                    </button>
-                                    <button type="button" id="email-classifications-create-btn" class="modal-btn modal-btn-primary">
-                                        <i class="fas fa-plus"></i> Add Classification
-                                    </button>
-                                </div>
-                                <div id="email-classifications-loading" class="loading-state" style="flex-shrink: 0;">
-                                    <i class="fas fa-spinner fa-spin"></i> Loading...
-                                </div>
-                                <div id="email-classifications-table-container" style="overflow: auto; flex: 1; min-height: 0;">
-                                    <table class="contacts-table manage-contacts-data-table" id="email-classifications-table" style="width: 100%; margin-top: 0;">
-                                        <thead>
-                                            <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
-                                                <th class="manage-contacts-th">Name</th>
-                                                <th class="manage-contacts-th">Classification</th>
-                                                <th class="manage-contacts-th manage-contacts-th-actions">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="email-classifications-tbody">
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <p id="email-classifications-empty-msg" style="display: none; padding: 1em; color: #666; text-align: center; flex-shrink: 0;">No email classifications. Add one to assign a contact to a classification.</p>
-                            </div>
-                        </div>
-                    </section>
-                </div>
                     </div>
                 </div>
             </div>
@@ -1567,6 +1440,21 @@
                                         </div>
                                     </div>
                                 </article>
+                                <article class="data-import-card data-import-row" data-import="upload_photos">
+                                    <div class="data-import-card-header">
+                                        <h3 class="data-import-card-title"><i class="fas fa-cloud-upload-alt"></i> Images stored in the database</h3>
+                                    </div>
+                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
+                                        <span class="data-import-count" data-import-count-key="imported_images">—</span>
+                                        <span class="data-import-last-run" data-import-last-run="imported_images"></span>
+                                    </div>
+                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Manage embedded images (uploads and folder scans copied into the DB). This tile only offers <strong>Clear Data</strong> to remove filesystem-sourced library images; counts reflect embedded images for this archive.</p></div>
+                                    <div class="data-import-actions-td">
+                                        <div class="data-import-card-actions-row data-import-card-actions-row--clear-only">
+                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="filesystem_media" title="Removes all filesystem-sourced images (includes folder uploads and scans)"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
+                                        </div>
+                                    </div>
+                                </article>
                                 <article class="data-import-card data-import-row" data-import="contacts">
                                     <div class="data-import-card-header">
                                         <h3 class="data-import-card-title"><i class="fas fa-address-book"></i> Reprocess Contacts Data</h3>
@@ -1698,21 +1586,7 @@
                                         </div>
                                     </div>
                                 </article>
-                                <article class="data-import-card data-import-row" data-import="upload_photos">
-                                    <div class="data-import-card-header">
-                                        <h3 class="data-import-card-title"><i class="fas fa-cloud-upload-alt"></i> Images stored in the database</h3>
-                                    </div>
-                                    <div class="data-import-card-metrics-source" hidden aria-hidden="true">
-                                        <span class="data-import-count" data-import-count-key="imported_images">—</span>
-                                        <span class="data-import-last-run" data-import-last-run="imported_images"></span>
-                                    </div>
-                                    <div class="data-import-card-detail-body" hidden aria-hidden="true"><p>Manage embedded images (uploads and folder scans copied into the DB). This tile only offers <strong>Clear Data</strong> to remove filesystem-sourced library images; counts reflect embedded images for this archive.</p></div>
-                                    <div class="data-import-actions-td">
-                                        <div class="data-import-card-actions-row data-import-card-actions-row--clear-only">
-                                            <button type="button" class="modal-btn modal-btn-secondary data-import-delete-btn" aria-label="Clear data" data-import-purge-kind="filesystem_media" title="Removes all filesystem-sourced images (includes folder uploads and scans)"><i class="fas fa-trash-alt" aria-hidden="true"></i> Clear Data</button>
-                                        </div>
-                                    </div>
-                                </article>
+
                                 </div>
                             </div>
                             </div>
@@ -2841,83 +2715,12 @@
         </div>
         </div>
 
-        <!-- Relationships Modal -->
-        <div id="relationships-modal" class="modal">
-            <div class="modal-content relationships-modal-content">
-                <div class="modal-header">
-                    <h2><i class="fas fa-project-diagram"></i> Relationships</h2>
-                    <button id="close-relationships-modal" class="modal-close-btn">&times;</button>
-                </div>
-                <div class="rel-dashboard">
-
-                    <div class="rel-control-group rel-type-filters">
-                        <label>Contact Types Filters</label>
-                        <div class="rel-checkbox-grid">
-                            <label><input type="checkbox" id="rel-type-friend" checked class="rel-type-cb"> Friend</label>
-                            <label><input type="checkbox" id="rel-type-family" checked class="rel-type-cb"> Family</label>
-                            <label><input type="checkbox" id="rel-type-colleague" checked class="rel-type-cb"> Colleague</label>
-                            <label><input type="checkbox" id="rel-type-acquaintance" checked class="rel-type-cb"> Acquaintance</label>
-                            <label><input type="checkbox" id="rel-type-business" checked class="rel-type-cb"> Business</label>
-                            <label><input type="checkbox" id="rel-type-social" checked class="rel-type-cb"> Social</label>
-                            <label><input type="checkbox" id="rel-type-promotional" checked class="rel-type-cb"> Promotional</label>
-                            <label><input type="checkbox" id="rel-type-unknown" checked class="rel-type-cb"> Unknown</label>
-                        </div>
-                    </div>
-                    <div class="rel-control-group rel-source-filters">
-                        <label>Source Filters</label>
-                        <div class="rel-checkbox-grid">
-                            <label><input type="checkbox" id="rel-source-email" checked class="rel-source-cb"> Email</label>
-                            <label><input type="checkbox" id="rel-source-facebook" checked class="rel-source-cb"> Facebook</label>
-                            <label><input type="checkbox" id="rel-source-whatsapp" checked class="rel-source-cb"> WhatsApp</label>
-                            <label><input type="checkbox" id="rel-source-sms-imessage" checked class="rel-source-cb"> SMS/iMessage</label>
-                            <label><input type="checkbox" id="rel-source-instagram" checked class="rel-source-cb"> Instagram</label>
-                        </div>
-                    </div>
-                    <div class="rel-control-group">
-                        <button type="button" class="rel-btn rel-btn-primary" id="rel-apply-filters-btn" disabled>Apply Filters</button>
-                        <button type="button" class="rel-btn rel-btn-primary" id="rel-fit-all-btn">Fit and Centre</button>
-                    </div>
-                    <div class="rel-control-group">
-                        <label>Search Person</label>
-                        <input type="text" id="rel-search-input" placeholder="Type a name...">
-                    </div>
-                    <div class="rel-control-group">
-                        <label>Maximum Number of Nodes: <span id="rel-max-nodes-val">100</span></label>
-                        <input type="range" id="rel-max-nodes-slider" min="10" max="2000" value="100">
-                        <label>Min Relationship Strength: <span id="rel-str-val">3</span></label>
-                        <input type="range" id="rel-filter-slider" min="0" max="10" value="3">
-                        <label>Base NodeSize: <span id="rel-size-val">20</span>px</label>
-                        <input type="range" id="rel-size-slider" min="10" max="40" value="20">
-
-                    </div>
-
-
-                </div>
-                <div class="rel-main-layout">
-                    <div class="rel-cy-container"><div id="rel-cy"></div><div id="rel-balloon" class="rel-balloon"></div></div>
-                    <div class="rel-legend">
-
-                        <h4 style="margin-top:0">Map Legend</h4>
-                        <div class="rel-legend-item"><div class="rel-circle rel-subject"></div> <strong>Subject</strong></div>
-                        <div class="rel-legend-item"><div class="rel-circle rel-influential"></div> Influential</div>
-                        <div class="rel-legend-item"><div class="rel-circle rel-standard"></div> Standard</div>
-                        <!-- <hr>
-                        <div class="rel-legend-item"><div class="rel-line rel-strong"></div> Strong (8-10)</div>
-                        <div class="rel-legend-item"><div class="rel-line rel-weak"></div> Weak (1-3)</div> -->
-
-                        <div id="rel-node-details" class="rel-node-details" style="margin-bottom: 1em; padding: 0.75em; background: #f8f9fa; border-radius: 6px; min-height: 3em; font-size: var(--text-emphasis);">
-                            <em style="color: #666;">Click a person to view details</em>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Contacts Modal -->
         <div id="contacts-modal" class="modal">
             <div class="modal-content contacts-modal-content" style="max-width: 90vw;">
                 <div class="modal-header">
-                    <h2><i class="fas fa-address-book"></i> Contacts</h2>
+                    <h2><i class="fas fa-address-book"></i> Contacts and Relationships</h2>
                     <button id="close-contacts-modal" class="modal-close-btn">&times;</button>
                 </div>
                 <!-- <div style="margin-bottom: 1em;">
@@ -2926,12 +2729,21 @@
                     </button>
                 </div> -->
                 <div class="contacts-modal-body">
+                    <div class="manage-contacts-tabs" style="display: flex; flex-direction: row; border-bottom: 2px solid #bfc9da; margin-bottom: 0.5em; flex-shrink: 0;">
+                        <button type="button" class="manage-contacts-tab-btn active" data-manage-contacts-tab="contacts-directory">Contacts</button>
+                        <button type="button" class="manage-contacts-tab-btn" data-manage-contacts-tab="relationships">Relationships</button>
+                        <button type="button" class="manage-contacts-tab-btn" data-manage-contacts-tab="email-classifications">Contact Classifications</button>
+                        <button type="button" class="manage-contacts-tab-btn" data-manage-contacts-tab="email-matches">Email Matches</button>
+                        <button type="button" class="manage-contacts-tab-btn" data-manage-contacts-tab="email-exclusions">Email Exclusions</button>
+
+                    </div>
+                    <div id="contacts-directory-tab-content" class="manage-contacts-tab-content active" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
                     <div id="contacts-loading" style="padding: 2em; text-align: center; color: #666;">
                         <i class="fas fa-spinner fa-spin"></i> Loading contacts...
                     </div>
                     <div id="contacts-table-container" class="contacts-table-container" style="display: none;">
                         <div id="contacts-pagination-top" class="contacts-pagination-row contacts-controls-top">
-                            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;margin-top:16px">
                                 <label style="display: flex; align-items: center; gap: 6px; font-size: var(--text-md); color: #666;">
                                     Search: <input type="text" id="contacts-search" placeholder="Name or email (Enter to search)" style="width: 200px; padding: 4px 8px;">
                                 </label>
@@ -2971,6 +2783,203 @@
                         </table>
                         </div>
                     </div>
+                    </div>
+                    <div id="relationships-tab-content" class="manage-contacts-tab-content" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+                        <div class="contacts-relationships-panel">
+                    <div class="rel-dashboard">
+
+                        <div class="rel-control-group rel-type-filters">
+                            <label>Contact Types Filters</label>
+                            <div class="rel-checkbox-grid">
+                                <label><input type="checkbox" id="rel-type-friend" checked class="rel-type-cb"> Friend</label>
+                                <label><input type="checkbox" id="rel-type-family" checked class="rel-type-cb"> Family</label>
+                                <label><input type="checkbox" id="rel-type-colleague" checked class="rel-type-cb"> Colleague</label>
+                                <label><input type="checkbox" id="rel-type-acquaintance" checked class="rel-type-cb"> Acquaintance</label>
+                                <label><input type="checkbox" id="rel-type-business" checked class="rel-type-cb"> Business</label>
+                                <label><input type="checkbox" id="rel-type-social" checked class="rel-type-cb"> Social</label>
+                                <label><input type="checkbox" id="rel-type-promotional" checked class="rel-type-cb"> Promotional</label>
+                                <label><input type="checkbox" id="rel-type-unknown" checked class="rel-type-cb"> Unknown</label>
+                            </div>
+                        </div>
+                        <div class="rel-control-group rel-source-filters">
+                            <label>Source Filters</label>
+                            <div class="rel-checkbox-grid">
+                                <label><input type="checkbox" id="rel-source-email" checked class="rel-source-cb"> Email</label>
+                                <label><input type="checkbox" id="rel-source-facebook" checked class="rel-source-cb"> Facebook</label>
+                                <label><input type="checkbox" id="rel-source-whatsapp" checked class="rel-source-cb"> WhatsApp</label>
+                                <label><input type="checkbox" id="rel-source-sms-imessage" checked class="rel-source-cb"> SMS/iMessage</label>
+                                <label><input type="checkbox" id="rel-source-instagram" checked class="rel-source-cb"> Instagram</label>
+                            </div>
+                        </div>
+                        <div class="rel-control-group">
+                            <button type="button" class="rel-btn rel-btn-primary" id="rel-apply-filters-btn" disabled>Apply Filters</button>
+                            <button type="button" class="rel-btn rel-btn-primary" id="rel-fit-all-btn">Fit and Centre</button>
+                        </div>
+                        <div class="rel-control-group">
+                            <label>Search Person</label>
+                            <input type="text" id="rel-search-input" placeholder="Type a name...">
+                        </div>
+                        <div class="rel-control-group">
+                            <label>Maximum Number of Nodes: <span id="rel-max-nodes-val">100</span></label>
+                            <input type="range" id="rel-max-nodes-slider" min="10" max="2000" value="100">
+                            <label>Min Relationship Strength: <span id="rel-str-val">3</span></label>
+                            <input type="range" id="rel-filter-slider" min="0" max="10" value="3">
+                            <label>Base NodeSize: <span id="rel-size-val">20</span>px</label>
+                            <input type="range" id="rel-size-slider" min="10" max="40" value="20">
+
+                        </div>
+
+
+                    </div>
+                    <div class="rel-main-layout">
+                        <div class="rel-cy-container"><div id="rel-cy"></div><div id="rel-balloon" class="rel-balloon"></div></div>
+                        <div class="rel-legend">
+
+                            <!-- <h4 style="margin-top:0">Map Legend</h4>
+                            <div class="rel-legend-item"><div class="rel-circle rel-subject"></div> <strong>Subject</strong></div>
+                            <div class="rel-legend-item"><div class="rel-circle rel-influential"></div> Influential</div>
+                            <div class="rel-legend-item"><div class="rel-circle rel-standard"></div> Standard</div> -->
+                            <!-- <hr>
+                            <div class="rel-legend-item"><div class="rel-line rel-strong"></div> Strong (8-10)</div>
+                            <div class="rel-legend-item"><div class="rel-line rel-weak"></div> Weak (1-3)</div> -->
+
+                            <div id="rel-node-details" class="rel-node-details" style="margin-bottom: 1em; padding: 0.75em; background: #f8f9fa; border-radius: 6px; min-height: 3em;">
+                                <em style="color: #666;">Click a person to view details</em>
+                            </div>
+                        </div>
+                    </div>
+                        </div>
+                    </div>
+                        <div id="email-matches-tab-content" class="manage-contacts-tab-content" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+                            <div class="setting-group" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                                <p style="color: #666; margin-bottom: 10px; flex-shrink: 0;">
+                                    Manage email matches used to merge duplicate contacts. Each row maps an email address to a primary contact name.
+                                </p>
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; flex-shrink: 0;">
+                                    <input type="text" id="email-matches-filter" placeholder="Filter by primary name..." style="padding: 6px 10px; width: 220px; border: 1px solid #bfc9da; border-radius: 4px;">
+                                    <button type="button" id="email-matches-refresh-btn" class="modal-btn modal-btn-secondary">
+                                        <i class="fas fa-sync-alt"></i> Refresh
+                                    </button>
+                                    <button type="button" id="email-matches-create-btn" class="modal-btn modal-btn-primary">
+                                        <i class="fas fa-plus"></i> Add Match
+                                    </button>
+                                    <button type="button" id="email-matches-export-btn" class="modal-btn modal-btn-secondary" title="Save to JSON file">
+                                        <i class="fas fa-download"></i> Save
+                                    </button>
+                                    <button type="button" id="email-matches-import-btn" class="modal-btn modal-btn-secondary" title="Load from JSON file">
+                                        <i class="fas fa-upload"></i> Load
+                                    </button>
+                                    <input type="file" id="email-matches-import-file" accept=".json" style="display:none">
+                                </div>
+                                <div id="email-matches-loading" class="loading-state" style="flex-shrink: 0;">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading...
+                                </div>
+                                <div id="email-matches-table-container" style="overflow: auto; flex: 1; min-height: 0;">
+                                    <table class="contacts-table manage-contacts-data-table" id="email-matches-table" style="width: 100%; margin-top: 0;">
+                                        <thead>
+                                            <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
+                                                <th class="manage-contacts-th">Primary Name</th>
+                                                <th class="manage-contacts-th">Email</th>
+                                                <th class="manage-contacts-th manage-contacts-th-actions">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="email-matches-tbody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p id="email-matches-empty-msg" style="display: none; padding: 1em; color: #666; text-align: center; flex-shrink: 0;">No email matches. Add one to map emails to a primary contact name.</p>
+                            </div>
+                        </div>
+                        <div id="email-exclusions-tab-content" class="manage-contacts-tab-content" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+                            <div class="setting-group" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                                <p style="color: #666; margin-bottom: 10px; flex-shrink: 0;">
+                                    Manage email and name exclusions used to filter out contacts during import. Email patterns exclude by email substring; name patterns by name; name+email pairs exclude a specific name when paired with a specific email.
+                                </p>
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; flex-shrink: 0;">
+                                    <input type="text" id="email-exclusions-filter" placeholder="Filter by email or name..." style="padding: 6px 10px; width: 220px; border: 1px solid #bfc9da; border-radius: 4px;">
+                                    <select id="email-exclusions-type-filter" style="padding: 6px 10px; border: 1px solid #bfc9da; border-radius: 4px;">
+                                        <option value="">All types</option>
+                                        <option value="email">Email pattern</option>
+                                        <option value="name">Name pattern</option>
+                                        <option value="name_email">Name+Email pair</option>
+                                    </select>
+                                    <button type="button" id="email-exclusions-refresh-btn" class="modal-btn modal-btn-secondary">
+                                        <i class="fas fa-sync-alt"></i> Refresh
+                                    </button>
+                                    <button type="button" id="email-exclusions-create-btn" class="modal-btn modal-btn-primary">
+                                        <i class="fas fa-plus"></i> Add Exclusion
+                                    </button>
+                                    <button type="button" id="email-exclusions-export-btn" class="modal-btn modal-btn-secondary" title="Save to JSON file">
+                                        <i class="fas fa-download"></i> Save
+                                    </button>
+                                    <button type="button" id="email-exclusions-import-btn" class="modal-btn modal-btn-secondary" title="Load from JSON file">
+                                        <i class="fas fa-upload"></i> Load
+                                    </button>
+                                    <input type="file" id="email-exclusions-import-file" accept=".json" style="display:none">
+                                </div>
+                                <div id="email-exclusions-loading" class="loading-state" style="flex-shrink: 0;">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading...
+                                </div>
+                                <div id="email-exclusions-table-container" style="overflow: auto; flex: 1; min-height: 0;">
+                                    <table class="contacts-table manage-contacts-data-table" id="email-exclusions-table" style="width: 100%; margin-top: 0;">
+                                        <thead>
+                                            <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
+                                                <th class="manage-contacts-th">Email</th>
+                                                <th class="manage-contacts-th">Name</th>
+                                                <th class="manage-contacts-th">Type</th>
+                                                <th class="manage-contacts-th manage-contacts-th-actions">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="email-exclusions-tbody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p id="email-exclusions-empty-msg" style="display: none; padding: 1em; color: #666; text-align: center; flex-shrink: 0;">No email exclusions. Add one to exclude emails or names during contact import.</p>
+                            </div>
+                        </div>
+                        <div id="email-classifications-tab-content" class="manage-contacts-tab-content" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+                            <div class="setting-group" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                                <p style="color: #666; margin-bottom: 10px; flex-shrink: 0;">
+                                    Manage contact classifications (friend, family, colleague, etc.) used to categorise contacts.
+                                </p>
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; flex-shrink: 0;">
+                                    <input type="text" id="email-classifications-filter" placeholder="Filter by name..." style="padding: 6px 10px; width: 220px; border: 1px solid #bfc9da; border-radius: 4px;">
+                                    <select id="email-classifications-type-filter" style="padding: 6px 10px; border: 1px solid #bfc9da; border-radius: 4px;">
+                                        <option value="">All types</option>
+                                    </select>
+                                    <button type="button" id="email-classifications-refresh-btn" class="modal-btn modal-btn-secondary">
+                                        <i class="fas fa-sync-alt"></i> Refresh
+                                    </button>
+                                    <button type="button" id="email-classifications-create-btn" class="modal-btn modal-btn-primary">
+                                        <i class="fas fa-plus"></i> Add Classification
+                                    </button>
+                                    <button type="button" id="email-classifications-export-btn" class="modal-btn modal-btn-secondary" title="Save to JSON file">
+                                        <i class="fas fa-download"></i> Save
+                                    </button>
+                                    <button type="button" id="email-classifications-import-btn" class="modal-btn modal-btn-secondary" title="Load from JSON file">
+                                        <i class="fas fa-upload"></i> Load
+                                    </button>
+                                    <input type="file" id="email-classifications-import-file" accept=".json" style="display:none">
+                                </div>
+                                <div id="email-classifications-loading" class="loading-state" style="flex-shrink: 0;">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading...
+                                </div>
+                                <div id="email-classifications-table-container" style="overflow: auto; flex: 1; min-height: 0;">
+                                    <table class="contacts-table manage-contacts-data-table" id="email-classifications-table" style="width: 100%; margin-top: 0;">
+                                        <thead>
+                                            <tr style="background: #f0f4f8; border-bottom: 2px solid #bfc9da;">
+                                                <th class="manage-contacts-th">Name</th>
+                                                <th class="manage-contacts-th">Classification</th>
+                                                <th class="manage-contacts-th manage-contacts-th-actions">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="email-classifications-tbody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p id="email-classifications-empty-msg" style="display: none; padding: 1em; color: #666; text-align: center; flex-shrink: 0;">No email classifications. Add one to assign a contact to a classification.</p>
+                            </div>
+                        </div>
                 </div>
             </div>
         </div>
@@ -3412,7 +3421,7 @@
                     <p class="guide-modal-intro">Select a topic for step-by-step help.</p>
                     <div class="guide-modal-quick-actions">
                         <button type="button" id="guide-restart-onboarding-btn" class="modal-btn modal-btn-secondary">
-                            <i class="fas fa-rotate-right"></i> Restart onboarding
+                            <i class="fas fa-rotate-right"></i> Reeanble Welcome Dialog
                         </button>
                     </div>
                     <div id="guide-topics-list" class="guide-topics-list" role="list"></div>
@@ -4484,8 +4493,11 @@
             <div class="info-box-archive-overview" aria-label="Archive overview" style="padding:10px;">
                 <section class="info-box-onboarding-controls" aria-label="Getting started controls">
                     <div class="info-box-onboarding-actions">
+                        <button type="button" id="welcome-identity-profile-btn" class="modal-btn modal-btn-primary">
+                            <i class="fas fa-id-card"></i> Enter Profile Information
+                        </button>
                         <button type="button" id="welcome-start-quick-setup-btn" class="modal-btn modal-btn-primary">
-                            <i class="fas fa-play"></i> Start quick setup
+                            <i class="fas fa-play"></i> Start Data Import
                         </button>
                         <button type="button" id="welcome-open-guide-btn" class="modal-btn modal-btn-secondary">
                             <i class="fas fa-question-circle"></i> Open guide
@@ -4501,41 +4513,6 @@
                         <input type="checkbox" id="welcome-dont-show-again-checkbox">
                         <span>Don't show this welcome dialog automatically</span>
                     </label>
-                </section>
-                <section id="onboarding-checklist-panel" class="info-box-onboarding-checklist" aria-label="Starter checklist">
-                    <h4 class="info-box-onboarding-checklist-heading">Starter checklist</h4>
-                    <ul class="info-box-onboarding-checklist-list">
-                        <li class="onboarding-checklist-item" data-onboarding-step="import_data">
-                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-import-btn">
-                                Add or import some data
-                            </button>
-                            <span class="onboarding-checklist-status" id="onboarding-step-status-import_data">Pending</span>
-                        </li>
-                        <li class="onboarding-checklist-item" data-onboarding-step="subject_config">
-                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-subject-btn">
-                                Review Subject Configuration
-                            </button>
-                            <span class="onboarding-checklist-status" id="onboarding-step-status-subject_config">Pending</span>
-                        </li>
-                        <li class="onboarding-checklist-item" data-onboarding-step="identity_profile">
-                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-identity-btn">
-                                Build your Identity Profile
-                            </button>
-                            <span class="onboarding-checklist-status" id="onboarding-step-status-identity_profile">Pending</span>
-                        </li>
-                        <li class="onboarding-checklist-item" data-onboarding-step="ask_first_question">
-                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-question-btn">
-                                Ask your first question
-                            </button>
-                            <span class="onboarding-checklist-status" id="onboarding-step-status-ask_first_question">Pending</span>
-                        </li>
-                        <li class="onboarding-checklist-item" data-onboarding-step="unlock_sensitive">
-                            <button type="button" class="onboarding-checklist-link" id="onboarding-checklist-unlock-btn">
-                                Unlock encryption (optional)
-                            </button>
-                            <span class="onboarding-checklist-status" id="onboarding-step-status-unlock_sensitive">Optional</span>
-                        </li>
-                    </ul>
                 </section>
             </div>
         </div>
@@ -4693,12 +4670,14 @@
         <!-- AI document import — fixed at bottom of Basic Identity step -->
         <div class="wizard-parse-section">
           <p class="wizard-parse-label">Import from existing document — paste any biography, CV, or personal document and AI will extract the details</p>
-          <textarea id="wizard-parse-input" class="form-control wizard-parse-textarea" rows="4" placeholder="Paste any existing biography, CV, or personal document here&#8230;"></textarea>
-          <div class="wizard-parse-actions">
-            <button id="wizard-parse-btn" type="button" class="modal-btn modal-btn-secondary">
-              <i class="fas fa-magic"></i> Extract with AI
-            </button>
-            <span id="wizard-parse-status" class="wizard-parse-status"></span>
+          <div class="wizard-parse-body">
+            <textarea id="wizard-parse-input" class="wizard-parse-textarea" placeholder="Paste any existing biography, CV, or personal document here&#8230;"></textarea>
+            <div class="wizard-parse-side">
+              <button id="wizard-parse-btn" type="button" class="modal-btn wizard-parse-run-btn">
+                <i class="fas fa-magic"></i> Extract with AI
+              </button>
+              <span id="wizard-parse-status" class="wizard-parse-status"></span>
+            </div>
           </div>
         </div>
       </div>

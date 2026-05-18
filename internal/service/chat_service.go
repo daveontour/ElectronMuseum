@@ -902,38 +902,62 @@ Return ONLY valid JSON with exactly this structure. Use null for any field you c
 Document to extract from:
 `
 
-// ExtractIdentityProfile uses Claude (falling back to Gemini) to parse free-text and return
-// a structured map of identity fields for the profile wizard.
+// ExtractIdentityProfile parses free-text into structured identity fields for the profile wizard.
+// Provider order: Claude → Gemini → DeepSeek → Local AI.
 func (s *ChatService) ExtractIdentityProfile(ctx context.Context, r *http.Request, text string) (map[string]any, error) {
 	prompt := identityExtractionPrompt + text
 
-	var raw string
-	var usage *appai.LLMUsage
+	type simpleGen interface {
+		SimpleGenerate(context.Context, string) (string, *appai.LLMUsage, error)
+	}
+
+	var ai simpleGen
 	var providerName string
 
-	claude := s.effectiveClaudeProvider(ctx, r, "")
-	if claude != nil && claude.IsAvailable() {
-		providerName = "claude"
-		if cp, ok := claude.(*appai.ClaudeProvider); ok {
-			var err error
-			raw, usage, err = cp.SimpleGenerate(ctx, prompt)
-			if err != nil {
-				return make(map[string]any), err
+	tryProvider := func(name string, p appai.ChatProvider) bool {
+		if p == nil || !p.IsAvailable() {
+			return false
+		}
+		switch name {
+		case "claude":
+			if cp, ok := p.(*appai.ClaudeProvider); ok && cp != nil {
+				ai, providerName = cp, name
+				return true
+			}
+		case "gemini":
+			if gp, ok := p.(*appai.GeminiProvider); ok && gp != nil {
+				ai, providerName = gp, name
+				return true
+			}
+		case "deepseek":
+			if dp, ok := p.(*appai.DeepSeekProvider); ok && dp != nil {
+				ai, providerName = dp, name
+				return true
+			}
+		case "localai":
+			if lp, ok := p.(*appai.LocalAIProvider); ok && lp != nil {
+				ai, providerName = lp, name
+				return true
 			}
 		}
-	} else {
-		providerName = "gemini"
-		gemini := s.effectiveGeminiProvider(ctx, r, "")
-		if gemini == nil || !gemini.IsAvailable() {
-			return make(map[string]any), fmt.Errorf("no AI provider available for extraction")
-		}
-		if gp, ok := gemini.(*appai.GeminiProvider); ok {
-			var err error
-			raw, usage, err = gp.SimpleGenerate(ctx, prompt)
-			if err != nil {
-				return make(map[string]any), err
-			}
-		}
+		return false
+	}
+
+	switch {
+	case tryProvider("claude", s.effectiveClaudeProvider(ctx, r, "")):
+	case tryProvider("gemini", s.effectiveGeminiProvider(ctx, r, "")):
+	case tryProvider("deepseek", s.effectiveDeepSeekProvider(ctx, r, "")):
+	case tryProvider("localai", s.effectiveLocalAIProvider()):
+	default:
+		return make(map[string]any), fmt.Errorf("no AI provider available for extraction")
+	}
+
+	var raw string
+	var usage *appai.LLMUsage
+	var err error
+	raw, usage, err = ai.SimpleGenerate(ctx, prompt)
+	if err != nil {
+		return make(map[string]any), err
 	}
 	_ = providerName
 	s.applyUsageKeySourceToLLMUsage(ctx, r, "", usage)

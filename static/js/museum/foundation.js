@@ -189,8 +189,6 @@ const DOM = {
     haveYourSayName: document.getElementById('have-your-say-name'),
     haveYourSayRelationship: document.getElementById('have-your-say-relationship'),
     // Reference Documents (manage modal opened from Data Import tile)
-    relationshipsModal: document.getElementById('relationships-modal'),
-    closeRelationshipsModalBtn: document.getElementById('close-relationships-modal'),
     contactsModal: document.getElementById('contacts-modal'),
     closeContactsModalBtn: document.getElementById('close-contacts-modal'),
     extractContactsBtn: document.getElementById('extract-contacts-btn'),

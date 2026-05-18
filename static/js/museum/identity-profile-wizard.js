@@ -97,6 +97,7 @@ Modals.IdentityProfileWizard = (() => {
     async function open() {
         formData = {};
         existingDocId = null;
+        currentStep = -1; // prevent collectStep overwriting loaded data on first goToStep
         await loadProfile();
         const modal = document.getElementById('identity-profile-wizard-modal');
         if (modal) modal.style.display = 'flex';
@@ -500,22 +501,6 @@ Modals.IdentityProfileWizard = (() => {
                 if (chip) chip.classList.toggle('selected');
             });
         });
-
-        // First-run detection: open automatically if no profile exists
-        void (async () => {
-            try {
-                const res = await fetch('/api/identity-profile/status', { credentials: 'same-origin' });
-                if (!res.ok) return;
-                const st = await res.json();
-                if (!st.has_profile) {
-                    setTimeout(() => {
-                        // Only open if no other modal is already visible
-                        const anyOpen = document.querySelector('.modal[style*="flex"]');
-                        if (!anyOpen) open();
-                    }, 1000);
-                }
-            } catch (_) {}
-        })();
     }
 
     return { open, close, init };

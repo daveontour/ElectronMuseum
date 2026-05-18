@@ -22,37 +22,37 @@ const Guide = {
             recommended: true,
             steps: [
                 {
-                    text: 'Open Import & Manage Data and run at least one import.',
+                    // text: 'Open Import & Manage Data and run at least one import.',
                     glow: '#data-import-sidebar-btn',
                     navigate() {
                         const btn = document.getElementById('data-import-sidebar-btn');
                         if (btn) btn.click();
                     }
                 },
-                {
-                    text: 'Open Configuration and review Subject Configuration details.',
-                    glow: '#settings-data-import-sidebar-btn',
-                    navigate() {
-                        const cfgBtn = document.getElementById('settings-data-import-sidebar-btn');
-                        if (cfgBtn) cfgBtn.click();
-                        setTimeout(() => {
-                            const subjectTab = document.querySelector('.config-tab-button[data-tab="subject-configuration"]');
-                            if (subjectTab) subjectTab.click();
-                        }, 120);
-                    }
-                },
-                { text: 'Ask your first question in chat to verify everything is working.', glow: '#user-input' },
-                {
-                    text: 'Optional: unlock encryption for sensitive-data tools and private store access.',
-                    glow: '#master-key-unlock-submit',
-                    position: 'middle-center',
-                    navigate() {
-                        const modal = document.getElementById('master-key-unlock-modal');
-                        const input = document.getElementById('master-key-unlock-input');
-                        if (modal) modal.style.display = 'flex';
-                        if (input) input.focus();
-                    }
-                }
+                // {
+                //     text: 'Open Configuration and review Subject Configuration details.',
+                //     glow: '#settings-data-import-sidebar-btn',
+                //     navigate() {
+                //         const cfgBtn = document.getElementById('settings-data-import-sidebar-btn');
+                //         if (cfgBtn) cfgBtn.click();
+                //         setTimeout(() => {
+                //             const subjectTab = document.querySelector('.config-tab-button[data-tab="subject-configuration"]');
+                //             if (subjectTab) subjectTab.click();
+                //         }, 120);
+                //     }
+                // },
+                // { text: 'Ask your first question in chat to verify everything is working.', glow: '#user-input' },
+                // {
+                //     text: 'Optional: unlock encryption for sensitive-data tools and private store access.',
+                //     glow: '#master-key-unlock-submit',
+                //     position: 'middle-center',
+                //     navigate() {
+                //         const modal = document.getElementById('master-key-unlock-modal');
+                //         const input = document.getElementById('master-key-unlock-input');
+                //         if (modal) modal.style.display = 'flex';
+                //         if (input) input.focus();
+                //     }
+                // }
             ]
         },
         AskingQuestions: {
@@ -79,12 +79,12 @@ const Guide = {
         },
         'Managing contacts': {
             title: 'Managing contacts',
-            description: 'Use Contacts, Profiles, and Relationships effectively.',
+            description: 'Use Contacts and Relationships, Profiles, and contact tools effectively.',
             category: 'Daily Use',
             steps: [
-                { text: 'Open Contacts in the right sidebar to view people found across messages and email.', glow: '#contacts-sidebar-btn' },
+                { text: 'Open Contacts and Relationships in the right sidebar to browse people or open the Relationships tab for the connection map.', glow: '#contacts-sidebar-btn' },
                 { text: 'Open Profiles to view detailed notes and relationship context.', glow: '#profiles-sidebar-btn' },
-                { text: 'Open Relationships for a visual network of people and connections.', glow: '#relationships-btn' },
+                { text: 'Use the Relationships tab for a visual network of people and connection strength.', glow: '#contacts-sidebar-btn' },
                 { text: 'Use Configuration to classify contacts and tune contact recognition.', glow: '#settings-data-import-sidebar-btn', position: 'bottom-center' }
             ]
         },
